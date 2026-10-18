@@ -107,6 +107,8 @@ export class Game {
     const seed = m.map.seed;
     const st = {
       tick: 0, time: 0, seed,
+      rngState: (seed ^ 0x51ED2707) >>> 0, // детерминированный ГПСЧ боя (см. srand)
+      repathsThisTick: 0,                  // бюджет пересчётов пути на тик
       factions: {
         player: m.faction,
         enemy: m.faction === 'alien' ? 'human' : 'alien',
@@ -425,9 +427,10 @@ export class Game {
         const units = s.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
           !e.dead && !e.garrison && e.cfg.dmg > 0);
         if (!units.length) return;
-        const offs = U.formationOffsets(units.length);
+        // Слоты строя проверяются по карте (не в стене) — как у обычного движения.
+        const goals = U.formationGoals(s, units, wx, wy);
         for (let i = 0; i < units.length; i++) {
-          U.orderAttackMove(s, units[i], wx + offs[i][0], wy + offs[i][1]);
+          U.orderAttackMove(s, units[i], goals[i].x, goals[i].y);
         }
         this.sound.ack();
       },
@@ -571,6 +574,7 @@ export class Game {
     const st = this.state;
     st.tick++;
     st.time += LOGIC_DT;
+    st.repathsThisTick = 0; // новый тик — новый бюджет A* на репути
     st.shakeT = Math.max(0, st.shakeT - LOGIC_DT);
     if (st.shakeT === 0) st.shakeMag = 0;
 
@@ -736,6 +740,12 @@ export class Game {
       U.drawUnit(ctx, u, wx - cam.x, wy - cam.y);
     }
 
+    // Маршруты выделенных: пунктирная линия пути + флажок цели.
+    // Учит читать приказы: видно, как маршрут огибает препятствия и
+    // куда юнит идёт «точно по задаче». Рисуем только для своих —
+    // чужие приказы игроку ни к чему.
+    this.drawMovePaths(ctx, st, cam, alpha);
+
     // Снаряды — светящиеся трассеры в цвете команды (бирюза/оранж).
     for (const p of st.projectiles) {
       if (!inView(p.x, p.y, 20)) continue;
@@ -788,6 +798,61 @@ export class Game {
     ctx.textAlign = 'left';
 
     if (st.shakeT > 0) ctx.restore(); // конец зоны тряски
+  }
+
+  // Пунктиры маршрутов выделенных юнитов (см. вызов в render).
+  // Цель-точка (move/attackMove) — кольцо-флажок; цель-сущность
+  // (атака/добыча/стройка) — линия к ней. Недостижимая цель —
+  // красный флажок: игрок сразу видит, что приказ не выполнить.
+  drawMovePaths(ctx, st, cam, alpha) {
+    let drawn = 0;
+    for (const u of st.selection) {
+      if (drawn >= 24) break; // толпу целиком не разрисовываем — только первые
+      if (!u || u.kind !== 'unit' || u.dead || u.garrison || u.side !== 'player') continue;
+      const o = u.order;
+      if (!o || o.kind === 'idle') continue;
+      const wx = u.prevX + (u.x - u.prevX) * alpha;
+      const wy = u.prevY + (u.y - u.prevY) * alpha;
+      const bad = u.idleReason === 'unreachable';
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = bad ? '#ff6a5e' : '#8ff5e2';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(wx - cam.x, wy - cam.y);
+      let gx = null, gy = null;
+      if (u.path && u.pathI < u.path.length) {
+        for (let k = u.pathI; k < u.path.length; k++) {
+          ctx.lineTo(u.path[k].x - cam.x, u.path[k].y - cam.y);
+        }
+        const last = u.path[u.path.length - 1];
+        gx = last.x; gy = last.y;
+      }
+      // Цель приказа точнее конца пути: ведём хвостик до неё.
+      const tgt = o.target;
+      if (tgt && !tgt.dead) {
+        gx = tgt.x; gy = tgt.y;
+        ctx.lineTo(gx - cam.x, gy - cam.y);
+      } else if (o.gx != null) {
+        gx = o.gx; gy = o.gy;
+        ctx.lineTo(gx - cam.x, gy - cam.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (gx != null) {
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(gx - cam.x, gy - cam.y, 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(gx - cam.x, gy - cam.y - 5);
+        ctx.lineTo(gx - cam.x, gy - cam.y - 12);
+        ctx.stroke();
+      }
+      ctx.restore();
+      drawn++;
+    }
   }
 
   drawCrystal(ctx, c, camX, camY) {

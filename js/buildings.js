@@ -308,7 +308,26 @@ function rr(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+// Маленький помощник: многоугольник из плоского массива [x0,y0,x1,y1...].
+function poly(ctx, p) {
+  ctx.beginPath();
+  ctx.moveTo(p[0], p[1]);
+  for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+  ctx.closePath();
+}
 
+// ------------------------------------------------------------
+// Отрисовка здания. camX/camY — смещение камеры (мир → экран).
+// Стиль-гайд v2 (тот же, что у юнитов): семейства «угловатые машины /
+// круглая органика», тёмный контур силуэта, слои
+// тень→подиум→корпус→панели→механизмы→ОДНО светящееся ядро
+// (shadowBlur ≤ 9). Анимация рендерная (performance.now + b.id):
+// радары, маяки, шестерни, дыхание мешков, покачивание щупалец.
+// Живые детали по состоянию: ствол турели смотрит в b.angle,
+// жвала схлопываются после выстрела (b.cd), в бойнице бункера —
+// по стволу на каждого сидящего внутри, у повреждённых — трещины.
+// ghost=true — «память» о вражеском здании.
+// ------------------------------------------------------------
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   const px = b.tx * TILE - camX, py = b.ty * TILE - camY;
   const w = b.w * TILE, h = b.h * TILE;
@@ -318,273 +337,673 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   const bright = isP ? COLORS.playerBright : COLORS.enemyBright;
   const bio = '#9ff5b8';
   const amber = '#f3c579';
+  const heat = '#ffb36b';
+  const hull = '#101f27';       // тёмный металл Гелиоса
+  const hull2 = '#23414c';      // светлая панель
+  const flesh = '#221a33';      // тёмная плоть кхарид
+  const flesh2 = '#322645';     // светлая плоть
+  const maw = '#150d1c';        // пасть / нутро / жерло
+  const bone = '#bcc7ae';       // хитин, зубы, рога
+  const sand = '#7a6a4a';       // мешки бункера
+  const outline = isP ? '#081418' : '#2a1113';
   const alien = b.faction === 'alien';
   const cx = px + w / 2, cy = py + h / 2;
+
+  // Рендерное время (на симуляцию не влияет). b.id может отсутствовать
+  // у призрака стройки — тогда анимация общая, без фазового сдвига.
+  const bid = b.id || 0;
+  const t = performance.now() * 0.001 + bid * 1.618;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2.6);   // пульс ядер 0..1
+  const blink = (ph) => 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(t * 5 + ph));
+  const breathe = Math.sin(t * 2 + bid);         // дыхание органики −1..1
+  const cdMax = (b.cfg && b.cfg.cooldown) || 1;
+  const recoil = b.cd > 0 ? Math.min(1, b.cd / cdMax) : 0; // 1 — только выстрелил
+  const gar = (b.garrison && b.garrison.length) || 0;      // сидящие внутри
 
   ctx.save();
   if (ghost) ctx.globalAlpha = 0.42;
   else if (!b.done) ctx.globalAlpha = 0.45 + 0.3 * b.progress;
 
-  // Мягкая тень + подиум корпуса.
+  // Мягкая тень.
   ctx.fillStyle = 'rgba(0,7,13,0.48)';
   rr(ctx, px + 5, py + 8, w - 7, h - 4, 10); ctx.fill();
-  ctx.fillStyle = b.done ? dark : '#20302e';
-  ctx.strokeStyle = b.done ? main : '#9da79a';
-  ctx.lineWidth = 2;
-  rr(ctx, px + 4, py + 3, w - 8, h - 8, 9); ctx.fill(); ctx.stroke();
 
   if (alien) {
-    // ============ КХАРИД: органика улья на скруглённом подиуме ============
+    // ---- Подиум улья: ложе крипа с био-прожилками ----
+    ctx.fillStyle = '#1c1428';
+    rr(ctx, px + 4, py + 3, w - 8, h - 8, 12); ctx.fill();
+    ctx.strokeStyle = dark; ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.strokeStyle = bio; ctx.lineWidth = 1;
+    ctx.globalAlpha *= 0.5;
+    ctx.beginPath(); ctx.moveTo(px + 8, py + h - 10); ctx.quadraticCurveTo(cx, cy + h * 0.3, px + w - 8, py + h - 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + 10, py + 10); ctx.quadraticCurveTo(cx - w * 0.2, cy, px + w * 0.3, py + h - 8); ctx.stroke();
+    ctx.globalAlpha /= 0.5;
+
     if (b.type === 'cc') {
-      // Гнездо-улей: курган с светящимся кольцом и жерлами.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 12); ctx.fill();
-      ctx.shadowColor = main; ctx.shadowBlur = 13;
-      ctx.fillStyle = main;
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.26, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#16333c';
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.16, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = bright; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.19, -0.35 + Math.sin(b.id + px) * 0.12, 2.4); ctx.stroke();
+      // Гнездо-улей: сердце роя — курган с бьющимся ядром и жерлами.
+      for (const [sx, sy, ex, ey] of [[-1, -1, -0.42, -0.4], [1, -1, 0.42, -0.4], [-1, 1, -0.42, 0.42], [1, 1, 0.42, 0.42]]) {
+        ctx.strokeStyle = dark; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(cx + ex * w, cy + ey * h);
+        ctx.quadraticCurveTo(cx + sx * w * 0.3, cy + sy * h * 0.3, cx + sx * (w / 2 - 8), cy + sy * (h / 2 - 8)); ctx.stroke();
+      }
+      ctx.fillStyle = flesh;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.4, h * 0.37, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.4, h * 0.37, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.3, h * 0.27, 0, 0, Math.PI * 2); ctx.fill();
+      // Венец шипов.
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI * 0.85 + (i * Math.PI * 0.7) / 4;
+        const sx = cx + Math.cos(a) * w * 0.38, sy = cy + 3 + Math.sin(a) * h * 0.35;
+        ctx.fillStyle = flesh2;
+        poly(ctx, [sx - 4, sy + 2, sx + Math.cos(a) * 12, sy + Math.sin(a) * 12 - 3, sx + 4, sy + 2]); ctx.fill();
+        ctx.fillStyle = bio;
+        ctx.beginPath(); ctx.arc(sx + Math.cos(a) * 12, sy + Math.sin(a) * 12 - 3, 1.4, 0, Math.PI * 2); ctx.fill();
+      }
+      // Жерла-венты дышат.
       ctx.fillStyle = bio;
       for (let i = 0; i < 4; i++) {
-        const a = i * Math.PI / 2 + 0.4;
+        const a = (i * Math.PI) / 2 + 0.4;
+        const ph = 0.5 + 0.5 * Math.sin(t * 3 + i * 1.7);
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * w * 0.34, cy + Math.sin(a) * h * 0.3, 3.4, 0, Math.PI * 2);
+        ctx.arc(cx + Math.cos(a) * w * 0.34, cy + 3 + Math.sin(a) * h * 0.31, 2.4 + ph * 1.4, 0, Math.PI * 2);
         ctx.fill();
       }
+      // Пасть и бьющееся сердце.
+      ctx.fillStyle = maw;
+      ctx.beginPath(); ctx.arc(cx, cy + 3, Math.min(w, h) * 0.17, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = bright; ctx.shadowBlur = 9;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(cx, cy + 3, 4 + pulse * 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy + 3, Math.min(w, h) * 0.21, t * 1.3, t * 1.3 + Math.PI * 1.2); ctx.stroke();
     } else if (b.type === 'barracks') {
-      // Инкубатор: выводковая камера с икрой.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.32, cy - h * 0.28, w * 0.64, h * 0.56, 8); ctx.fill();
-      ctx.strokeStyle = main; ctx.lineWidth = 3;
+      // Инкубатор: выводковая камера — три икринки, одна вот-вот лопнет.
+      ctx.fillStyle = flesh;
+      rr(ctx, cx - w * 0.36, cy - h * 0.32, w * 0.72, h * 0.64, 14); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.4;
       for (let i = 0; i < 3; i++) {
-        const yy = cy - h * 0.16 + i * (h * 0.14);
-        ctx.beginPath(); ctx.moveTo(cx - w * 0.24, yy); ctx.lineTo(cx + w * 0.24, yy); ctx.stroke();
+        const yy = cy - h * 0.18 + i * h * 0.18;
+        ctx.beginPath(); ctx.moveTo(cx - w * 0.3, yy); ctx.quadraticCurveTo(cx, yy + 5, cx + w * 0.3, yy); ctx.stroke();
       }
-      ctx.fillStyle = '#0b1b24';
-      rr(ctx, cx - w * 0.14, cy - h * 0.1, w * 0.28, h * 0.26, 4); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.fillRect(cx - w * 0.04, cy - h * 0.05, w * 0.08, h * 0.16);
+      // Питательный бассейн.
+      ctx.fillStyle = maw;
+      ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.26, w * 0.28, h * 0.09, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx - 8, cy + h * 0.25, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 6, cy + h * 0.28, 1.3, 0, Math.PI * 2); ctx.fill();
+      // Икринки: средняя светится, крайняя справа трескается и дрожит.
+      const eggs = [-0.22, 0, 0.22];
       for (let i = 0; i < 3; i++) {
-        ctx.beginPath(); ctx.arc(cx - w * 0.2 + i * w * 0.14, cy + h * 0.26, 3, 0, Math.PI * 2); ctx.fill();
+        const ex = cx + eggs[i] * w + (i === 2 ? Math.sin(t * 9) * 1.2 : 0);
+        const ey = cy - h * 0.02, er = Math.min(w, h) * 0.16;
+        ctx.fillStyle = i === 1 ? dark : flesh2;
+        ctx.beginPath(); ctx.ellipse(ex, ey, er * 0.8, er, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = outline; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.ellipse(ex, ey, er * 0.8, er, 0, 0, Math.PI * 2); ctx.stroke();
+        if (i === 2) {
+          ctx.strokeStyle = bright; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(ex - 3, ey - er * 0.7); ctx.lineTo(ex + 1, ey - 1); ctx.lineTo(ex - 2, ey + er * 0.5); ctx.stroke();
+        }
       }
+      ctx.shadowColor = bio; ctx.shadowBlur = 7;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx, cy - h * 0.02, 3 + pulse * 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
     } else if (b.type === 'turret') {
-      // Жвала: органическая башня с клешнями по углу на цель.
-      ctx.fillStyle = '#152e36';
-      ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = bright; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
+      // Жвала: охотничья башня — клешни наводятся на цель и схлопываются.
+      ctx.fillStyle = flesh;
+      ctx.beginPath(); ctx.arc(cx, cy + 1, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(cx, cy + 1, 13, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = bio;
+      for (let i = 0; i < 4; i++) {
+        const a = (i * Math.PI) / 2 + 0.78;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 11, cy + 1 + Math.sin(a) * 11, 1.4, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(b.angle != null ? b.angle : -Math.PI / 4);
-      ctx.strokeStyle = '#3a4a40'; ctx.lineWidth = 3.4;
-      ctx.beginPath(); ctx.moveTo(2, -3); ctx.lineTo(19, -8); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(2, 3); ctx.lineTo(19, 8); ctx.stroke();
-      ctx.shadowColor = main; ctx.shadowBlur = 8;
-      ctx.fillStyle = main;
-      ctx.beginPath(); ctx.arc(0, 0, 7.4, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = bio;
-      ctx.beginPath(); ctx.arc(3, 0, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    } else if (b.type === 'wall') {
-      // Хитиновая стена: пластины со светлым швом.
-      ctx.fillStyle = '#152e36';
-      rr(ctx, px + 2, py + 2, w - 4, h - 4, 4); ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.4, h * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = bio; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px + 6, py + h - 6); ctx.lineTo(cx, py + 6); ctx.lineTo(px + w - 6, py + h - 6); ctx.stroke();
-    } else if (b.type === 'bunker') {
-      // Кокон: пульсирующие кольца со светлой жилой.
-      ctx.fillStyle = '#132f39';
-      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 10); ctx.fill();
-      ctx.strokeStyle = main; ctx.lineWidth = 2;
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, w * (0.1 + i * 0.09), h * (0.07 + i * 0.08), 0.5, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.shadowColor = bio; ctx.shadowBlur = 6;
-      ctx.fillStyle = bio;
-      ctx.fillRect(cx - 1, py + 6, 2, h - 12);
-      ctx.shadowBlur = 0;
-    } else if (b.type === 'lab') {
-      // Узел эволюции: жерло с парящими светящимися гранями.
-      ctx.fillStyle = '#241c34';
-      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 10); ctx.fill();
-      ctx.strokeStyle = bio; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.18, h * 0.13, 0, 0, Math.PI * 2); ctx.stroke();
-      const floats = [[-10, -6, 5], [4, -12, 6], [12, -3, 4.4]];
+      // Раствор клешней: после выстрела — схлопнуты, к концу перезарядки — раскрыты.
+      const open = 3 + (1 - recoil) * 5;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = outline; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(10, -open - 1, 17, -open - 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(10, open + 1, 17, open + 3); ctx.stroke();
+      ctx.strokeStyle = flesh2; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(10, -open - 1, 17, -open - 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(10, open + 1, 17, open + 3); ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(-4, -5, 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-4, 5, 1.5, 0, Math.PI * 2); ctx.fill();
       ctx.shadowColor = bio; ctx.shadowBlur = 7;
       ctx.fillStyle = bio;
-      for (const [fx, fy, fr] of floats) {
-        ctx.beginPath();
-        ctx.moveTo(cx + fx - fr, cy + fy);
-        ctx.lineTo(cx + fx, cy + fy - fr * 1.6);
-        ctx.lineTo(cx + fx + fr, cy + fy);
-        ctx.closePath(); ctx.fill();
-      }
+      ctx.beginPath(); ctx.arc(2, 0, 2.2 + pulse * 0.9, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
-    } else if (b.type === 'factory') {
-      // Яма выводка: кратер с икрой и щупальцами по краю.
-      ctx.fillStyle = '#241c34';
-      rr(ctx, cx - w * 0.32, cy - h * 0.28, w * 0.64, h * 0.56, 12); ctx.fill();
+      ctx.restore();
+    } else if (b.type === 'wall') {
+      // Хитиновая стена: чешуя внахлёст с живой жилой по центру.
+      ctx.fillStyle = flesh;
+      rr(ctx, px + 2, py + 2, w - 4, h - 4, 4); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.fillStyle = flesh2;
+      ctx.beginPath(); ctx.ellipse(cx - 4, cy - 3, 9, 6, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 5, cy + 4, 8, 5.4, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.ellipse(cx - 4, cy - 3, 9, 6, -0.3, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx + 5, cy + 4, 8, 5.4, 0.3, 0, Math.PI * 2); ctx.stroke();
+      // Жила светится, шипики по углам.
+      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.strokeStyle = bio; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(cx, py + 5); ctx.lineTo(cx, py + h - 5); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bone;
+      poly(ctx, [px + 4, py + 4, px + 8, py + 4, px + 5, py + 9]); ctx.fill();
+      poly(ctx, [px + w - 4, py + h - 4, px + w - 8, py + h - 4, px + w - 5, py + h - 9]); ctx.fill();
+    } else if (b.type === 'bunker') {
+      // Кокон: дышащая камера — кольца пульсируют, жильцы светятся в щели.
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        ctx.strokeStyle = dark; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(cx + sx * w * 0.2, cy + sy * h * 0.2);
+        ctx.quadraticCurveTo(cx + sx * w * 0.34, cy + sy * h * 0.3, cx + sx * (w / 2 - 6), cy + sy * (h / 2 - 6)); ctx.stroke();
+      }
+      ctx.fillStyle = flesh;
+      ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.32, h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.32, h * 0.3, 0, 0, Math.PI * 2); ctx.stroke();
+      // Дыхание: кольца расходятся.
+      ctx.strokeStyle = main; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        const k = 0.36 + i * 0.2 + pulse * 0.05;
+        ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.32 * k * 2.2, h * 0.3 * k * 2.2, 0.4, 0, Math.PI * 2); ctx.stroke();
+      }
+      // Мембранная щель и жильцы внутри.
+      ctx.fillStyle = maw;
+      rr(ctx, cx - 3, cy - h * 0.2, 6, h * 0.4, 3); ctx.fill();
+      ctx.fillStyle = bio;
+      for (let i = 0; i < Math.min(4, gar); i++) {
+        const yy = cy - h * 0.13 + i * h * 0.087;
+        ctx.beginPath(); ctx.arc(cx, yy, 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowColor = bio; ctx.shadowBlur = 7;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx, cy + h * 0.3 + breathe * 1.5, 2.2 + pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (b.type === 'lab') {
+      // Узел эволюции: шпиль с лучом и парящими осколками.
+      ctx.strokeStyle = bio; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.3, w * 0.3, h * 0.1, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.3, w * 0.2, h * 0.065, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = flesh;
+      ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.22, w * 0.26, h * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.22, w * 0.26, h * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+      // Шпиль с био-кольцами.
+      ctx.fillStyle = flesh2;
+      poly(ctx, [cx - 9, cy + h * 0.2, cx, cy - h * 0.34, cx + 9, cy + h * 0.2]); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.strokeStyle = bio; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        const yy = cy + h * 0.1 - i * h * 0.11, ww = 7 - i * 2;
+        ctx.beginPath(); ctx.moveTo(cx - ww, yy); ctx.lineTo(cx + ww, yy); ctx.stroke();
+      }
+      // Луч эволюции и парящие осколки.
+      ctx.strokeStyle = bio; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy - h * 0.34); ctx.lineTo(cx, cy - h * 0.44); ctx.stroke();
+      ctx.shadowColor = bio; ctx.shadowBlur = 8;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx, cy - h * 0.44, 2.6 + pulse * 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      const shards = [[-0.24, -0.1, 0], [0.2, -0.2, 2.1], [0.05, 0.05, 4.2]];
+      ctx.fillStyle = bio;
+      for (const [fx, fy, ph] of shards) {
+        const sx = cx + fx * w, sy = cy + fy * h + Math.sin(t * 1.5 + ph) * 3;
+        poly(ctx, [sx - 4, sy, sx, sy - 6, sx + 4, sy, sx, sy + 6]); ctx.fill();
+      }
+      // Полипы у подножия.
       ctx.fillStyle = main;
-      for (let i = 0; i < 5; i++) {
-        const a = i * Math.PI * 2 / 5 + 0.5;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath(); ctx.arc(cx - 16 + i * 16, cy + h * 0.34, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (b.type === 'factory') {
+      // Яма выводка: кратер с кладкой, щупальцами и светящейся топью.
+      ctx.fillStyle = flesh;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.4, h * 0.38, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.4, h * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
+      // Зубы венца.
+      ctx.fillStyle = bone;
+      for (let i = 0; i < 7; i++) {
+        const a = (i * Math.PI * 2) / 7 + 0.3;
+        const sx = cx + Math.cos(a) * w * 0.38, sy = cy + 2 + Math.sin(a) * h * 0.36;
+        poly(ctx, [sx - 3, sy + 2, sx + Math.cos(a) * 7, sy + Math.sin(a) * 7, sx + 3, sy + 2]); ctx.fill();
+      }
+      // Топь.
+      ctx.fillStyle = maw;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.26, h * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+      // Кладка по ободу топи.
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI * 2) / 6 + 0.5;
+        const ph = 0.5 + 0.5 * Math.sin(t * 2.4 + i * 1.3);
+        ctx.fillStyle = i % 2 ? bio : bright;
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * w * 0.26, cy + Math.sin(a) * h * 0.24, 3.4, 0, Math.PI * 2);
+        ctx.arc(cx + Math.cos(a) * w * 0.27, cy + 2 + Math.sin(a) * h * 0.25, 2.4 + ph * 1.2, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.strokeStyle = bio; ctx.lineWidth = 2;
+      // Щупальца покачиваются.
+      ctx.strokeStyle = flesh2; ctx.lineWidth = 3; ctx.lineCap = 'round';
       for (let i = 0; i < 4; i++) {
-        const a = i * Math.PI / 2 + 0.8;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * w * 0.4, cy + Math.sin(a) * h * 0.34);
-        ctx.quadraticCurveTo(
-          cx + Math.cos(a) * w * 0.52, cy + Math.sin(a) * h * 0.44,
-          cx + Math.cos(a) * w * 0.46, cy + Math.sin(a) * h * 0.54);
-        ctx.stroke();
+        const a = (i * Math.PI) / 2 + 0.8 + Math.sin(t * 2 + i * 1.9) * 0.12;
+        const sx = cx + Math.cos(a) * w * 0.34, sy = cy + 2 + Math.sin(a) * h * 0.32;
+        ctx.beginPath(); ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(sx + Math.cos(a) * 10, sy + Math.sin(a) * 10 - 4, sx + Math.cos(a) * 8, sy + Math.sin(a) * 8 - 12); ctx.stroke();
       }
-    } else {
-      // Нарост-кладовая: пузатый мешок-хранилище.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 12); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.beginPath(); ctx.ellipse(cx - 3, cy + 1, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.lineCap = 'butt';
+      ctx.shadowColor = bio; ctx.shadowBlur = 8;
       ctx.fillStyle = bio;
-      ctx.beginPath(); ctx.arc(cx + 6, cy - 2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, 5 + pulse * 2, 3.4 + pulse * 1.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Нарост-кладовая: живой склад — большой мешок с питательными зёрнами.
+      ctx.strokeStyle = dark; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.2, cy + h * 0.2);
+      ctx.quadraticCurveTo(cx - w * 0.3, cy + h * 0.34, cx - w * 0.42, cy + h * 0.36); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.2, cy + h * 0.2);
+      ctx.quadraticCurveTo(cx + w * 0.3, cy + h * 0.34, cx + w * 0.42, cy + h * 0.36); ctx.stroke();
+      ctx.fillStyle = flesh2;
+      ctx.beginPath(); ctx.ellipse(cx + w * 0.22, cy + h * 0.16, 7, 6, 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.ellipse(cx - w * 0.06, cy, w * 0.24 + breathe, h * 0.28 + breathe, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.ellipse(cx - w * 0.06, cy, w * 0.24 + breathe, h * 0.28 + breathe, 0, 0, Math.PI * 2); ctx.stroke();
+      // Складки мешка и зёрна внутри.
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.2, cy - h * 0.1); ctx.quadraticCurveTo(cx - w * 0.06, cy - h * 0.02, cx + w * 0.08, cy - h * 0.1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.2, cy + h * 0.1); ctx.quadraticCurveTo(cx - w * 0.06, cy + h * 0.18, cx + w * 0.08, cy + h * 0.1); ctx.stroke();
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(cx - w * 0.1, cy - h * 0.04, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - w * 0.02, cy + h * 0.06, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - w * 0.12, cy + h * 0.1, 1.3, 0, Math.PI * 2); ctx.fill();
+      // Пупок мешка светится.
+      ctx.shadowColor = bio; ctx.shadowBlur = 7;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx - w * 0.06, cy - h * 0.26, 2.4 + pulse, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
     }
   } else {
-    // ============ ГЕЛИОС: стальные ховер-постройки ============
+    // ---- Подиум Гелиоса: бронеплита, болты, бортовые огни ----
+    ctx.fillStyle = hull;
+    rr(ctx, px + 4, py + 3, w - 8, h - 8, 9); ctx.fill();
+    ctx.strokeStyle = outline; ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.strokeStyle = main; ctx.lineWidth = 1.2;
+    rr(ctx, px + 7, py + 6, w - 14, h - 14, 7); ctx.stroke();
+    ctx.fillStyle = hull2;
+    for (const [X, Y] of [[px + 10, py + 9], [px + w - 10, py + 9], [px + 10, py + h - 9], [px + w - 10, py + h - 9]]) {
+      ctx.beginPath(); ctx.arc(X, Y, 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = main;
+    ctx.beginPath(); ctx.arc(px + 11, cy, 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.save();
+    ctx.globalAlpha *= blink(0);
+    ctx.fillStyle = amber;
+    ctx.beginPath(); ctx.arc(px + w - 11, cy, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
     if (b.type === 'cc') {
-      // Командный центр: площадка, светящееся ядро, антенна.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 10); ctx.fill();
-      ctx.shadowColor = main; ctx.shadowBlur = 13;
-      ctx.fillStyle = main;
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.24, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#16333c';
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = bright; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.17, 0.3 + Math.sin(b.id + px) * 0.12, 3.1); ctx.stroke();
-      ctx.fillStyle = amber;
-      ctx.fillRect(px + w - 12, py + 4, 3, 12);
-      ctx.beginPath(); ctx.arc(px + w - 10.5, py + 4, 3, 0, Math.PI * 2); ctx.fill();
-    } else if (b.type === 'barracks') {
-      // Казарма: ворота, полосы, маячок.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 6); ctx.fill();
-      ctx.fillStyle = '#0b1b24';
-      rr(ctx, cx - w * 0.12, cy - h * 0.02, w * 0.24, h * 0.3, 3); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.fillRect(cx - w * 0.05, cy + h * 0.06, w * 0.1, h * 0.18);
+      // Командный центр: штаб — купол с радаром, ядро командования, мачта.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.36, cy - h * 0.3, w * 0.72, h * 0.6, 8); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.strokeStyle = main; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.32, cy - h * 0.18); ctx.lineTo(cx - w * 0.05, cy - h * 0.18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.32, cy + h * 0.18); ctx.lineTo(cx - w * 0.05, cy + h * 0.18); ctx.stroke();
+      // Купол с вращающимся радаром.
+      ctx.fillStyle = hull;
+      ctx.beginPath(); ctx.arc(cx - w * 0.2, cy, Math.min(w, h) * 0.15, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(cx - w * 0.2, cy, Math.min(w, h) * 0.15, 0, Math.PI * 2); ctx.stroke();
+      ctx.save();
+      ctx.translate(cx - w * 0.2, cy); ctx.rotate(t * 1.4);
+      ctx.fillStyle = bright;
+      ctx.fillRect(-Math.min(w, h) * 0.13, -1.2, Math.min(w, h) * 0.26, 2.4);
+      ctx.restore();
+      // Ядро командования.
       ctx.strokeStyle = main; ctx.lineWidth = 3;
-      for (let i = 0; i < 3; i++) {
-        const yy = cy - h * 0.18 + i * (h * 0.15);
-        ctx.beginPath(); ctx.moveTo(cx - w * 0.26, yy); ctx.lineTo(cx + w * 0.26, yy); ctx.stroke();
-      }
+      ctx.beginPath(); ctx.arc(cx + w * 0.16, cy, Math.min(w, h) * 0.14, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowColor = main; ctx.shadowBlur = 8;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(cx + w * 0.16, cy, 3.4 + pulse * 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // Мачта с маяком и посадочные площадки.
+      ctx.strokeStyle = hull2; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.02, cy - h * 0.3); ctx.lineTo(cx + w * 0.02, py + 5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.02 - 5, py + 11); ctx.lineTo(cx + w * 0.02 + 5, py + 11); ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha *= blink(1);
       ctx.fillStyle = amber;
-      ctx.beginPath(); ctx.arc(px + w - 8, py + 6, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + w * 0.02, py + 4, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      for (const sx of [-1, 1]) {
+        ctx.fillStyle = hull;
+        ctx.fillRect(cx + sx * w * 0.3 - 9, py + h - 22, 18, 11);
+        ctx.strokeStyle = main; ctx.lineWidth = 1;
+        ctx.strokeRect(cx + sx * w * 0.3 - 9, py + h - 22, 18, 11);
+        ctx.fillStyle = main;
+        ctx.fillRect(cx + sx * w * 0.3 - 2, py + h - 19, 4, 5);
+      }
+      // Ворота штаба.
+      ctx.fillStyle = maw;
+      rr(ctx, cx - 12, cy + h * 0.3 - 12, 24, 12, 2); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - 12, cy + h * 0.3 - 12, 24, 3);
+    } else if (b.type === 'barracks') {
+      // Казарма: ворота с шевроном, прожектор, маяк, пристрой с трубами.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.36, cy - h * 0.32, w * 0.72, h * 0.64, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.stroke();
+      // Окна казармы.
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = i % 2 ? main : hull;
+        ctx.fillRect(cx - w * 0.3 + i * 13, cy - h * 0.32 + 5, 8, 5);
+      }
+      // Ворота с шевроном.
+      ctx.fillStyle = maw;
+      rr(ctx, cx - 14, cy - h * 0.05, 28, h * 0.37, 3); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - 8, cy + h * 0.2); ctx.lineTo(cx, cy + h * 0.1); ctx.lineTo(cx + 8, cy + h * 0.2); ctx.stroke();
+      ctx.fillStyle = amber;
+      ctx.fillRect(cx - 17, cy - h * 0.05, 3, 6); ctx.fillRect(cx + 14, cy - h * 0.05, 3, 6);
+      // Маяк на крыше.
+      ctx.strokeStyle = hull; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.28, cy - h * 0.32); ctx.lineTo(cx + w * 0.28, cy - h * 0.32 - 10); ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha *= blink(2);
+      ctx.shadowColor = amber; ctx.shadowBlur = 7;
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(cx + w * 0.28, cy - h * 0.32 - 11, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      // Прожектор слева и пристрой справа.
+      ctx.strokeStyle = hull; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.36, cy + h * 0.1); ctx.lineTo(cx - w * 0.36 - 6, cy - h * 0.2); ctx.stroke();
+      ctx.fillStyle = bright;
+      ctx.fillRect(cx - w * 0.36 - 9, cy - h * 0.2 - 5, 6, 5);
+      ctx.fillStyle = hull;
+      ctx.fillRect(cx + w * 0.36 - 2, cy - 6, 10, 22);
+      ctx.strokeStyle = main; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.36 + 1, cy - 6); ctx.lineTo(cx + w * 0.36 + 1, cy + 16); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.36 + 6, cy - 6); ctx.lineTo(cx + w * 0.36 + 6, cy + 16); ctx.stroke();
     } else if (b.type === 'turret') {
-      // Турель «Скорпион»: вращающаяся спарка на круглом основании.
-      ctx.fillStyle = '#152e36';
-      ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = bright; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
+      // Турель «Скорпион»: основание на болтах, башня наводится на цель.
+      ctx.fillStyle = hull2;
+      ctx.beginPath(); ctx.arc(cx, cy + 1, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(cx, cy + 1, 13, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = hull;
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 10.5, cy + 1 + Math.sin(a) * 10.5, 1.3, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(b.angle != null ? b.angle : -Math.PI / 4);
-      ctx.fillStyle = main;
-      rr(ctx, -5, -20, 10, 30, 3); ctx.fill();
-      ctx.fillStyle = '#e5f7e8';
-      ctx.fillRect(-2.4, -23, 4.8, 7);
-      ctx.restore();
-      ctx.fillStyle = main;
-      ctx.fillRect(px + 7, py + 7, 5, 5); ctx.fillRect(px + w - 12, py + 7, 5, 5);
-      ctx.fillRect(px + 7, py + h - 12, 5, 5); ctx.fillRect(px + w - 12, py + h - 12, 5, 5);
-    } else if (b.type === 'wall') {
-      // Секция стены: кладка со светлым швом.
-      ctx.fillStyle = '#152e36';
-      rr(ctx, px + 2, py + 2, w - 4, h - 4, 3); ctx.fill();
-      ctx.strokeStyle = bright; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px + 3, cy); ctx.lineTo(px + w - 3, cy); ctx.stroke();
-      ctx.fillStyle = main;
-      ctx.fillRect(px + 5, py + 5, 5, 3); ctx.fillRect(px + w - 10, py + h - 8, 5, 3);
-    } else if (b.type === 'bunker') {
-      // Бункер: толстые стены, бойница, светящаяся кромка.
-      ctx.fillStyle = '#132f39';
-      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 7); ctx.fill();
-      ctx.fillStyle = '#0b1b24';
-      ctx.fillRect(cx - w * 0.2, cy - 3, w * 0.4, 6);
-      ctx.fillStyle = main;
-      ctx.fillRect(px + 5, py + 5, w - 10, 4);
-      ctx.fillStyle = amber;
-      for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-        ctx.ellipse(cx - 12 + i * 12, py + h - 8, 4.4, 2.8, 0, 0, Math.PI * 2);
-        ctx.fill();
+      ctx.fillStyle = hull;
+      rr(ctx, -6, -6, 13, 12, 3); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 1.2;
+      ctx.stroke();
+      // Ствол с откатом и дульным тормозом.
+      const bl = 15 - recoil * 3;
+      ctx.fillStyle = '#0a1418';
+      ctx.fillRect(5, -1.9, bl, 3.8);
+      ctx.fillStyle = hull2;
+      ctx.fillRect(5 + bl - 2.5, -2.8, 2.5, 5.6);
+      if (recoil > 0.4) {
+        ctx.fillStyle = heat;
+        ctx.beginPath(); ctx.arc(5 + bl + 1.5, 0, 2.2, 0, Math.PI * 2); ctx.fill();
       }
-    } else if (b.type === 'lab') {
-      // Лаборатория: купол-обсерватория с тарелкой и маяком.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.32, cy - h * 0.2, w * 0.64, h * 0.44, 6); ctx.fill();
-      ctx.fillStyle = '#2c4a52';
-      ctx.beginPath(); ctx.arc(cx - 6, cy - 2, 12, Math.PI, 0); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.fillRect(px + 6, cy - h * 0.2, w - 12, 4);
-      ctx.strokeStyle = bright; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(px + w - 10, cy - 2); ctx.lineTo(px + w - 10, py + 4); ctx.stroke();
-      ctx.beginPath(); ctx.arc(px + w - 10, py + 3, 5, Math.PI * 0.15, Math.PI * 0.95); ctx.stroke();
-      ctx.shadowColor = amber; ctx.shadowBlur = 6;
+      // Барабан боепитания сбоку.
+      ctx.fillStyle = hull2;
+      ctx.beginPath(); ctx.arc(-3, 7.5, 3, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = amber;
-      ctx.beginPath(); ctx.arc(px + 9, py + 10, 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-    } else if (b.type === 'factory') {
-      // Завод: цех с воротами, труба, вращающаяся шестерня.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 6); ctx.fill();
-      ctx.fillStyle = '#0b1b24';
-      rr(ctx, cx - 16, cy + h * 0.06, 32, h * 0.2, 3); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.fillRect(cx - 16, cy + h * 0.06, 32, 5);
-      ctx.fillStyle = '#2c4a52';
-      ctx.fillRect(px + 8, py - 4, 8, 12);
-      ctx.save();
-      ctx.translate(px + w - 15, cy + 4);
-      ctx.rotate(b.id + px * 0.001);
-      ctx.fillStyle = main;
-      for (let i = 0; i < 6; i++) { ctx.rotate(Math.PI / 3); ctx.fillRect(-2.6, -12, 5.2, 6); }
-      ctx.restore();
+      ctx.beginPath(); ctx.arc(-3, 7.5, 1.2, 0, Math.PI * 2); ctx.fill();
       ctx.shadowColor = bright; ctx.shadowBlur = 6;
       ctx.fillStyle = bright;
-      ctx.beginPath(); ctx.arc(px + w - 15, cy + 4, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, 1.8 + pulse * 0.6, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
-    } else {
-      // Дом (депо): низкий блок с шевронами и маячком.
-      ctx.fillStyle = '#1d3b46';
-      rr(ctx, cx - w * 0.34, cy - h * 0.26, w * 0.68, h * 0.52, 6); ctx.fill();
-      ctx.fillStyle = main;
-      ctx.fillRect(px + 5, cy - h * 0.26, w - 10, 4);
-      ctx.fillStyle = '#0b1b24';
-      for (let i = 0; i < 2; i++) {
-        const bx = px + 9 + i * 17;
-        ctx.beginPath();
-        ctx.moveTo(bx, cy - 4);
-        ctx.lineTo(bx + 8, cy + 2);
-        ctx.lineTo(bx, cy + 8);
-        ctx.lineTo(bx + 4, cy + 2);
-        ctx.closePath();
-        ctx.fill();
+      ctx.restore();
+    } else if (b.type === 'wall') {
+      // Секция стены: бронеплиты на болтах со светящимся швом.
+      ctx.fillStyle = hull2;
+      rr(ctx, px + 2, py + 2, w - 4, h - 4, 3); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.strokeStyle = hull; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(px + 4, cy - 5); ctx.lineTo(px + w - 4, cy - 5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px + 4, cy + 5); ctx.lineTo(px + w - 4, cy + 5); ctx.stroke();
+      ctx.fillStyle = hull;
+      for (const [X, Y] of [[px + 6, py + 6], [px + w - 6, py + 6], [px + 6, py + h - 6], [px + w - 6, py + h - 6]]) {
+        ctx.beginPath(); ctx.arc(X, Y, 1.4, 0, Math.PI * 2); ctx.fill();
       }
+      ctx.shadowColor = main; ctx.shadowBlur = 6;
+      ctx.strokeStyle = main; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(cx, py + 4); ctx.lineTo(cx, py + h - 4); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = amber;
+      poly(ctx, [px + 3, py + h - 8, px + 7, py + h - 8, px + 3, py + h - 4]); ctx.fill();
+      poly(ctx, [px + w - 3, py + 8, px + w - 7, py + 8, px + w - 3, py + 4]); ctx.fill();
+    } else if (b.type === 'bunker') {
+      // Бункер: дот — толстые стены, бойница, по стволу на жильца.
+      ctx.fillStyle = hull;
+      rr(ctx, cx - w * 0.36, cy - h * 0.32, w * 0.72, h * 0.64, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2;
+      ctx.stroke();
+      // Крыша: люк и мешки.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.3, cy - h * 0.32, w * 0.6, h * 0.2, 4); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = sand;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath(); ctx.ellipse(cx - w * 0.2 + i * w * 0.13, cy - h * 0.22, 5, 3, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = hull;
+      ctx.beginPath(); ctx.arc(cx + w * 0.24, cy - h * 0.22, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx + w * 0.24, cy - h * 0.22, 3.4, 0, Math.PI * 2); ctx.stroke();
+      // Бойница и стволы жильцов.
+      ctx.fillStyle = maw;
+      ctx.fillRect(cx - w * 0.3, cy + h * 0.08, w * 0.6, 7);
+      ctx.fillStyle = '#0a1418';
+      for (let i = 0; i < Math.min(4, gar); i++) {
+        const bx = cx - w * 0.21 + i * w * 0.14;
+        ctx.fillRect(bx - 1.5, cy + h * 0.08 + 4, 3, 9);
+      }
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - w * 0.3, cy + h * 0.08, w * 0.6, 2);
+      // Дежурный огонёк.
+      ctx.save();
+      ctx.globalAlpha *= blink(3);
+      ctx.shadowColor = amber; ctx.shadowBlur = 6;
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(cx - w * 0.28, cy - h * 0.05, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    } else if (b.type === 'lab') {
+      // Лаборатория: купол обсерватории, тарелка, светящийся атом.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.36, cy - h * 0.14, w * 0.72, h * 0.44, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.stroke();
+      // Полоса окон мерцает рабочим светом.
+      for (let i = 0; i < 5; i++) {
+        ctx.save();
+        ctx.globalAlpha *= 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(t * 3 + i * 2.2));
+        ctx.fillStyle = main;
+        ctx.fillRect(cx - w * 0.3 + i * 12, cy + h * 0.02, 8, 6);
+        ctx.restore();
+      }
+      // Купол с щелью.
+      ctx.fillStyle = hull;
+      ctx.beginPath(); ctx.arc(cx - w * 0.2, cy - h * 0.14, Math.min(w, h) * 0.17, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(cx - w * 0.2, cy - h * 0.14, Math.min(w, h) * 0.17, Math.PI, 0); ctx.stroke();
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.2, cy - h * 0.14 - Math.min(w, h) * 0.17); ctx.lineTo(cx - w * 0.2, cy - h * 0.14 - 3); ctx.stroke();
+      // Тарелка покачивается, следя за небом.
+      ctx.save();
+      ctx.translate(cx + w * 0.24, cy - h * 0.1);
+      ctx.rotate(-0.5 + Math.sin(t * 0.7) * 0.15);
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 9, Math.PI * 0.15, Math.PI * 0.95); ctx.stroke();
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(0, -2, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = hull; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.24, cy - h * 0.1 + 6); ctx.lineTo(cx + w * 0.24, cy - h * 0.02); ctx.stroke();
+      // Атом — эмблема науки.
+      ctx.strokeStyle = main; ctx.lineWidth = 1.4;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath(); ctx.ellipse(cx + w * 0.02, cy + h * 0.16, 11, 4, (i * Math.PI) / 3, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.shadowColor = bright; ctx.shadowBlur = 7;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(cx + w * 0.02, cy + h * 0.16, 2.2 + pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // Мачта с маяком.
+      ctx.strokeStyle = hull; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.36 + 6, cy - h * 0.14); ctx.lineTo(cx - w * 0.36 + 6, cy - h * 0.14 - 14); ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha *= blink(1);
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(cx - w * 0.36 + 6, cy - h * 0.14 - 15, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    } else if (b.type === 'factory') {
+      // Завод техники: цех с воротами, труба, шестерни, силос.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.38, cy - h * 0.3, w * 0.56, h * 0.62, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.stroke();
+      // Рёбра крыши цеха.
+      ctx.strokeStyle = hull; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const xx = cx - w * 0.3 + i * w * 0.14;
+        ctx.beginPath(); ctx.moveTo(xx, cy - h * 0.3); ctx.lineTo(xx, cy - h * 0.3 + 10); ctx.stroke();
+      }
+      // Ворота цеха с полосой и шевронами.
+      ctx.fillStyle = maw;
+      rr(ctx, cx - w * 0.28, cy + h * 0.06, w * 0.36, h * 0.26, 3); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - w * 0.28, cy + h * 0.06, w * 0.36, 5);
+      ctx.fillStyle = amber;
+      for (let i = 0; i < 3; i++) {
+        poly(ctx, [cx - w * 0.24 + i * 12, cy + h * 0.28, cx - w * 0.24 + i * 12 + 6, cy + h * 0.28, cx - w * 0.24 + i * 12 + 3, cy + h * 0.28 - 5]); ctx.fill();
+      }
+      // Шестерни крутятся вразнобой.
+      const gear = (gx, gy, gr, dir, ph) => {
+        ctx.save();
+        ctx.translate(gx, gy); ctx.rotate(dir * t * 0.9 + ph);
+        ctx.fillStyle = hull;
+        for (let i = 0; i < 6; i++) { ctx.rotate(Math.PI / 3); ctx.fillRect(-gr * 0.22, -gr * 1.05, gr * 0.44, gr * 0.5); }
+        ctx.restore();
+        ctx.fillStyle = hull;
+        ctx.beginPath(); ctx.arc(gx, gy, gr * 0.62, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = main; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(gx, gy, gr * 0.62, 0, Math.PI * 2); ctx.stroke();
+      };
+      gear(cx - w * 0.24, cy - h * 0.12, 11, 1, 0);
+      gear(cx - w * 0.24 + 19, cy - h * 0.12 + 13, 7, -1, 1);
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(cx - w * 0.24, cy - h * 0.12, 2.4 + pulse * 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // Труба с маяком и силос с трубоводами.
+      ctx.fillStyle = hull;
+      ctx.fillRect(cx + w * 0.2, cy - h * 0.38, 12, h * 0.7);
+      ctx.fillStyle = hull2;
+      ctx.fillRect(cx + w * 0.2 - 2, cy - h * 0.38, 16, 5);
+      ctx.save();
+      ctx.globalAlpha *= blink(2);
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(cx + w * 0.2 + 6, cy - h * 0.38 - 3, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = hull2;
+      rr(ctx, cx + w * 0.2 + 18, cy - h * 0.05, 14, h * 0.37, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.strokeStyle = main; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.2 + 12, cy + h * 0.1); ctx.lineTo(cx + w * 0.2 + 18, cy + h * 0.1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.2 + 12, cy + h * 0.2); ctx.lineTo(cx + w * 0.2 + 18, cy + h * 0.2); ctx.stroke();
+    } else {
+      // Дом: жилой блок — тёплые окна, подъезд, шевроны, маячок.
+      ctx.fillStyle = hull2;
+      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 6); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
+      ctx.stroke();
+      // Крыша: надстройка и антеннка.
+      ctx.fillStyle = hull;
+      ctx.fillRect(cx - w * 0.2, cy - h * 0.3 - 7, 16, 8);
+      ctx.strokeStyle = hull; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(cx + w * 0.2, cy - h * 0.3); ctx.lineTo(cx + w * 0.2, cy - h * 0.3 - 9); ctx.stroke();
+      ctx.save();
+      ctx.globalAlpha *= blink(0);
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(cx + w * 0.2, cy - h * 0.3 - 10, 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // Тёплые окна 2×3, одно моргает.
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 3; c++) {
+          const flicker = r === 1 && c === 2;
+          ctx.save();
+          if (flicker) ctx.globalAlpha *= blink(4);
+          ctx.fillStyle = amber;
+          ctx.fillRect(cx - w * 0.26 + c * 12, cy - h * 0.2 + r * 11, 8, 6);
+          ctx.restore();
+          ctx.strokeStyle = hull; ctx.lineWidth = 1;
+          ctx.strokeRect(cx - w * 0.26 + c * 12, cy - h * 0.2 + r * 11, 8, 6);
+        }
+      }
+      // Подъезд с козырьком и шевроны.
+      ctx.fillStyle = hull;
+      ctx.fillRect(cx + w * 0.05, cy - h * 0.3, 14, 4);
+      ctx.fillStyle = maw;
+      ctx.fillRect(cx + w * 0.05 + 2, cy - h * 0.18, 10, h * 0.42);
+      ctx.fillStyle = main;
+      ctx.fillRect(cx + w * 0.05 + 2, cy - h * 0.18, 10, 3);
+      ctx.shadowColor = main; ctx.shadowBlur = 6;
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - w * 0.34, cy - h * 0.3, w * 0.68, 3);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = amber;
+      poly(ctx, [cx - w * 0.3, cy + h * 0.22, cx - w * 0.3 + 7, cy + h * 0.22, cx - w * 0.3 + 3.5, cy + h * 0.22 - 5]); ctx.fill();
+      poly(ctx, [cx - w * 0.3 + 10, cy + h * 0.22, cx - w * 0.3 + 17, cy + h * 0.22, cx - w * 0.3 + 13.5, cy + h * 0.22 - 5]); ctx.fill();
     }
+  }
+
+  // Трещины повреждённого здания: deterministic по b.id.
+  if (b.done && !ghost && b.hp < b.maxHp * 0.5) {
+    const j = (bid % 3) * 5;
+    ctx.strokeStyle = 'rgba(8,4,7,0.6)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px + w * 0.2 + j, py + h * 0.25);
+    ctx.lineTo(px + w * 0.4, py + h * 0.5);
+    ctx.lineTo(px + w * 0.32 + j, py + h * 0.72);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px + w * 0.75, py + h * 0.3);
+    ctx.lineTo(px + w * 0.6, py + h * 0.55);
+    ctx.lineTo(px + w * 0.68 - j, py + h * 0.8);
+    ctx.stroke();
   }
 
   // Стройплощадка: тёмная заливка, штриховка, прогресс-бар.
@@ -631,3 +1050,4 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   }
   ctx.restore();
 }
+

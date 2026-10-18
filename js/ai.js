@@ -8,7 +8,7 @@
 // «читерство» простых RTS-ИИ, допустимо для аркады).
 // ============================================================
 import { AI, BUILDINGS, UNITS, UPGRADES, SUPPLY_MAX, TILE } from './config.js';
-import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit } from './units.js';
+import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit, srand } from './units.js';
 import { canPlace, placeBuildingCmd, enqueueUnit, startResearch } from './buildings.js';
 import { pathToRect } from './pathfinding.js';
 
@@ -57,26 +57,26 @@ export class AIController {
     if (!cc) return;
     const wave = [];
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = TILE * (2.5 + Math.random() * 2);
+      const a = srand(st) * Math.PI * 2;
+      const r = TILE * (2.5 + srand(st) * 2);
       const u = spawnUnit(st, 'enemy', 'marine', cc.x + Math.cos(a) * r, cc.y + Math.sin(a) * r);
       wave.push(u);
     }
     // Каждая третья волна усиливается быстрыми единицами.
     if (this.defWaveNum % 3 === 2) {
       for (let i = 0; i < 2; i++) {
-        const u = spawnUnit(st, 'enemy', 'buggy', cc.x + (Math.random() - 0.5) * TILE * 4, cc.y + TILE * 3);
+        const u = spawnUnit(st, 'enemy', 'buggy', cc.x + (srand(st) - 0.5) * TILE * 4, cc.y + TILE * 3);
         wave.push(u);
       }
     }
     // Поздние волны разнообразятся по профилю: кислотники — каждая вторая, мортиры — каждая пятая.
     if (this.defWaveNum % 2 === 0 && this.p.flamers > 0) {
       for (let i = 0; i < 2; i++) {
-        wave.push(spawnUnit(st, 'enemy', 'flamer', cc.x + (Math.random() - 0.5) * TILE * 4, cc.y + TILE * 2.5));
+        wave.push(spawnUnit(st, 'enemy', 'flamer', cc.x + (srand(st) - 0.5) * TILE * 4, cc.y + TILE * 2.5));
       }
     }
     if (this.defWaveNum % 5 === 4 && this.p.arty > 0) {
-      wave.push(spawnUnit(st, 'enemy', 'arty', cc.x + (Math.random() - 0.5) * TILE * 3, cc.y + TILE * 4));
+      wave.push(spawnUnit(st, 'enemy', 'arty', cc.x + (srand(st) - 0.5) * TILE * 3, cc.y + TILE * 4));
     }
     const target = nearestPlayerBuilding(st, cc);
     for (const u of wave) if (target) orderAttack(st, u, target);
