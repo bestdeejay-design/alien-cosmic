@@ -736,15 +736,20 @@ export class Game {
       U.drawUnit(ctx, u, wx - cam.x, wy - cam.y);
     }
 
-    // Снаряды — светящиеся трассеры (пули тонкие, снаряды толстые).
+    // Снаряды — светящиеся трассеры в цвете команды (бирюза/оранж).
     for (const p of st.projectiles) {
       if (!inView(p.x, p.y, 20)) continue;
-      ctx.strokeStyle = p.splash ? '#ffb36b' : '#ffd977';
+      const own = p.src && p.src.side === 'player';
+      ctx.save();
+      ctx.shadowColor = own ? '#9efded' : '#ffae87';
+      ctx.shadowBlur = 8;
+      ctx.strokeStyle = own ? '#d9fff0' : '#ffd7a4';
       ctx.lineWidth = p.splash ? 3.5 : 2;
       ctx.beginPath();
       ctx.moveTo(p.x - cam.x, p.y - cam.y);
       ctx.lineTo(p.x - (p.tx - p.x) * 0.03 - cam.x, p.y - (p.ty - p.y) * 0.03 - cam.y);
       ctx.stroke();
+      ctx.restore();
     }
 
     this.drawEffects(ctx, st, inView, cam.x, cam.y);
@@ -754,10 +759,13 @@ export class Game {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(st.fog.canvas, cam.x / TILE, cam.y / TILE, W / TILE, H / TILE, 0, 0, W, H);
 
-    // Рамка выделения.
+    // Рамка выделения — бирюза «Рубежа 64».
     if (this.box) {
       const b = this.box;
-      ctx.strokeStyle = 'rgba(120,255,150,0.9)';
+      ctx.fillStyle = 'rgba(118,227,215,0.1)';
+      ctx.fillRect(Math.min(b.x0, b.x1) - cam.x, Math.min(b.y0, b.y1) - cam.y,
+        Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
+      ctx.strokeStyle = 'rgba(143,255,226,0.9)';
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 1.5;
       ctx.strokeRect(Math.min(b.x0, b.x1) - cam.x, Math.min(b.y0, b.y1) - cam.y,
@@ -784,22 +792,29 @@ export class Game {
 
   drawCrystal(ctx, c, camX, camY) {
     const s = 0.45 + 0.55 * (c.amount / c.max);
+    const now = performance.now();
+    const glint = Math.sin(now * 0.003 + c.x) * 1.8;
     ctx.save();
     ctx.translate(c.x - camX, c.y - camY);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath(); ctx.ellipse(0, 7, 13 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(5,19,24,0.45)';
+    ctx.beginPath(); ctx.ellipse(0, 9, 12 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
     ctx.scale(s, s);
-    const shard = (pts, fill, stroke) => {
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-      ctx.closePath();
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
-    };
-    shard([[-10, 7], [-4, -13], [1, 7]], '#38cfe0', '#a5edf5');
-    shard([[0, 8], [7, -9], [12, 8]], '#2fb9cc', '#7fd4de');
-    shard([[-4, 9], [0, -2], [5, 9]], '#229aa8', '#66b8c2');
+    // Основная грань со свечением (язык «Рубежа 64»).
+    ctx.shadowColor = '#7ed9e7'; ctx.shadowBlur = 13;
+    ctx.fillStyle = '#61b6c8';
+    ctx.beginPath();
+    ctx.moveTo(0, -13 - glint); ctx.lineTo(10, -2); ctx.lineTo(5, 11); ctx.lineTo(-8, 9); ctx.lineTo(-10, -3);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    // Светлая и тёмная грани — объём.
+    ctx.fillStyle = '#b9f5ed';
+    ctx.beginPath();
+    ctx.moveTo(0, -12 - glint); ctx.lineTo(3, 4); ctx.lineTo(-4, 8);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#3b809a';
+    ctx.beginPath();
+    ctx.moveTo(3, 4); ctx.lineTo(10, -2); ctx.lineTo(5, 11);
+    ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
@@ -813,9 +828,13 @@ export class Game {
       for (let x = tx; x < tx + cfg.w && ok; x++)
         if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) ok = false;
 
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = ok ? '#3fff6e' : '#ff4b3f';
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = ok ? 'rgba(118,227,215,0.55)' : 'rgba(255,96,87,0.5)';
     ctx.fillRect(tx * TILE - cam.x, ty * TILE - cam.y, cfg.w * TILE, cfg.h * TILE);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tx * TILE - cam.x + 1, ty * TILE - cam.y + 1, cfg.w * TILE - 2, cfg.h * TILE - 2);
     ctx.globalAlpha = 0.55;
     B.drawBuilding(ctx, {
       tx, ty, w: cfg.w, h: cfg.h, side: 'player', type: pl.type, cfg,

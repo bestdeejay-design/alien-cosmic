@@ -12,6 +12,7 @@
     <canvas id="game-canvas"></canvas>
 
     <div id="topbar">
+      <div class="brand">ALIEN <b>COSMIC</b><small>RTS</small></div>
       <div class="res"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
       <div class="res"><span class="dot supply"></span><span id="res-supply">0/0</span></div>
       <div class="res"><span id="res-time">00:00</span></div>
@@ -40,15 +41,15 @@
           <button id="btn-skirmish" class="big-btn ghost-btn">🎲 Быстрый бой</button>
         </div>
         <div class="fac-teaser">
-          <div class="fac-chip fac-human">ГЕЛИОС — люди: техника и турели</div>
-          <div class="fac-chip fac-alien">КХАРИД — рой: шипы и органика</div>
+          <div class="fac-chip fac-human">ГЕЛИОС — ховер-техника и плазма</div>
+          <div class="fac-chip fac-alien">КХАРИД — кристаллическая органика</div>
         </div>
         <div class="help">
           <p><b>ЛКМ</b> — выделение, рамка &nbsp;·&nbsp; <b>двойной клик</b> — все такие же юниты на экране &nbsp;·&nbsp; <b>ПКМ</b> — идти / добывать / атаковать / ремонтировать</p>
           <p><b>A + ЛКМ</b> — атака-движение: идти и бить всех по дороге &nbsp;·&nbsp; <b>СКМ (зажать)</b> — двигать карту &nbsp;·&nbsp; <b>Стрелки / край экрана</b> — камера &nbsp;·&nbsp; <b>Пробел</b> — к базе</p>
           <p><b>Ctrl/Shift + 1…9</b> — отряд &nbsp;·&nbsp; <b>B</b> — стройка (турели, стены, бункеры, завод, лаборатория) &nbsp;·&nbsp; <b>S</b> — стоп</p>
           <p><b>Лаборатория</b> — исследования: оружие и броня пехоты, орудия и плиты техники &nbsp;·&nbsp; точка сбора на кристалле — новые рабочие сразу добывают</p>
-          <p>Рабочие после стройки сами возвращаются к добыче · занятые бойцы отстреливаются на ходу · медики лечат на марше · наведите курсор на кнопку — полная справка</p>
+          <p>Дроны-техники после стройки сами возвращаются к добыче · занятые бойцы отстреливаются на ходу · наниты лечат на марше · наведите курсор на кнопку — полная справка</p>
         </div>
         <button id="btn-start" class="big-btn ghost-btn small-start">Быстрый старт — миссия 1</button>
       </div>
@@ -89,13 +90,13 @@
         <div class="fac-cards">
           <button id="btn-skirmish-human" class="fac-card fac-human">
             <div class="fc-title">ГЕЛИОС</div>
-            <div class="fc-sub">Корпорация людей</div>
-            <div class="fc-list">Морпехи · Огнемётчики · Медики<br>Багги · Танки · САУ «Гром»<br>Турели · Бункеры · Лаборатория</div>
+            <div class="fc-sub">Экспедиционный корпус корпорации</div>
+            <div class="fc-list">Рейнджеры · Плазмеры · Наниты<br>Скифы · Бастионы · Мортиры «Нова»<br>Турели · Бункеры · Лаборатория</div>
           </button>
           <button id="btn-skirmish-alien" class="fac-card fac-alien">
             <div class="fc-title">КХАРИД</div>
-            <div class="fc-sub">Кристаллорождённый рой</div>
-            <div class="fc-list">Жалящие · Жгуты · Спорыша<br>Скорчи · Колоссы · Метатели<br>Жвала · Коконы · Узел эволюции</div>
+            <div class="fc-sub">Кристаллорождённые аборигены</div>
+            <div class="fc-list">Кристожалы · Кислотники · Цветни<br>Скользни · Громилы · Спогромы<br>Жвала · Коконы · Узел эволюции</div>
           </button>
         </div>
         <button id="btn-skirmish-back" class="big-btn ghost-btn">← Назад</button>

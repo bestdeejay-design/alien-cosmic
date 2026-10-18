@@ -39,59 +39,65 @@ export const REPAIR_HP_PER_MINERAL = 6; // сколько HP ремонтиру�
 // vehicle: true — «техника»: ремонтируется рабочими, взрывается крупнее
 // (у кхарид вместо техники — крупные существа, логика та же).
 // hname/aname — имя юнита у людей / у кхарид.
+//
+// РОСТЕР «ALIEN COSMIC» (обновлённая линейка, не из старой версии):
+//   Гелиос — ховер-технологии и плазма: Дрон-техник, Рейнджер, Скиф,
+//   Нанит, Плазмер, Бастион, Мортира «Нова»;
+//   кхарид — кристаллическая органика: Собиратель, Кристожал,
+//   Скользень, Цветень, Кислотник, Громила, Спогром.
 export const UNITS = {
   worker: {
-    key: 'worker', hname: 'Рабочий', aname: 'Сборщик', hp: 60, dmg: 4, range: 26, cooldown: 1.0,
-    sightTiles: 7, speed: 88, r: 10, supply: 1, cost: 50, trainTime: 12,
+    key: 'worker', hname: 'Дрон-техник', aname: 'Собиратель', hp: 60, dmg: 4, range: 26, cooldown: 1.0,
+    sightTiles: 7, speed: 92, r: 10, supply: 1, cost: 50, trainTime: 12,
     canMine: true, canBuild: true, canRepair: true,
     projectile: 'none',
-    hdesc: 'Добывает минералы, возводит и ремонтирует здания и технику',
-    adesc: 'Собирает эрг-кристаллы, взращивает улей и латаёт сородичей',
+    hdesc: 'Ховер-дрон Гелиоса: добывает кристаллы, возводит и ремонтирует постройки и технику',
+    adesc: 'Кристаллоносец улья: собирает эрг-кристаллы, взращивает гнёзда и латает сородичей',
   },
   marine: {
-    key: 'marine', hname: 'Морпех', aname: 'Жалящий', hp: 45, dmg: 6, range: 134, cooldown: 0.85,
-    sightTiles: 7, speed: 96, r: 10, supply: 1, cost: 50, trainTime: 13,
+    key: 'marine', hname: 'Рейнджер', aname: 'Кристожал', hp: 52, dmg: 7, range: 134, cooldown: 0.85,
+    sightTiles: 7, speed: 100, r: 10, supply: 1, cost: 50, trainTime: 13,
     canMine: false, canBuild: false, projectile: 'bullet',
-    hdesc: 'Стрелок — основной боец; помещается в бункер',
-    adesc: 'Плюётся кристаллическими шипами; прячется в коконе',
+    hdesc: 'Штурмовой стрелок с плазменным карабином — костяк любой атаки; помещается в бункер',
+    adesc: 'Ползун с гребнем шипов: плюётся кристаллическими дротиками; прячется в коконе',
   },
   buggy: {
-    key: 'buggy', hname: 'Багги «Оса»', aname: 'Скорч', hp: 90, dmg: 7, range: 132, cooldown: 0.5,
-    sightTiles: 8, speed: 150, r: 11, supply: 2, cost: 100, trainTime: 16,
+    key: 'buggy', hname: 'Скиф', aname: 'Скользень', hp: 85, dmg: 8, range: 132, cooldown: 0.45,
+    sightTiles: 8, speed: 158, r: 11, supply: 2, cost: 100, trainTime: 16,
     canMine: false, canBuild: false, vehicle: true, projectile: 'bullet',
-    hdesc: 'Быстрый разведчик с пулемётом — рейды по флангам',
-    adesc: 'Четвероногий хищник-скаут, налетает и исчезает',
+    hdesc: 'Стремительный ховер-разведчик со спаркой импульсных пушек — рейды по флангам',
+    adesc: 'Четырёхлапый хищник-скользень: налетает, жалит и растворяется в пустошах',
   },
   tank: {
-    key: 'tank', hname: 'Танк «Гроза»', aname: 'Колосс', hp: 240, dmg: 34, range: 190, cooldown: 2.4,
+    key: 'tank', hname: 'Бастион', aname: 'Громила', hp: 260, dmg: 36, range: 200, cooldown: 2.4,
     sightTiles: 9, speed: 62, r: 14, supply: 3, cost: 180, trainTime: 28,
     canMine: false, canBuild: false, vehicle: true, projectile: 'shell',
     splash: { r: 46, frac: 0.6 },
-    hdesc: 'Тяжёлая пушка, осколки задевают всех вокруг цели',
-    adesc: 'Громадина; его плевок взрывается снопом осколков',
+    hdesc: 'Тяжёлый ховер-танк с осколочной пушкой: один залп накрывает всю группу',
+    adesc: 'Исполин с кристаллическими рогами: его плевок взрывается снопом осколков',
   },
   medic: {
-    key: 'medic', hname: 'Медик', aname: 'Спорыш', hp: 60, dmg: 2, range: 26, cooldown: 1.0,
-    sightTiles: 7, speed: 100, r: 9, supply: 1, cost: 75, trainTime: 16,
-    canMine: false, canBuild: false, projectile: 'none', canHeal: true, healRate: 6,
-    hdesc: 'Лечит раненую пехоту рядом (6 ОЗ/с); скальпель — лишь для самообороны',
-    adesc: 'Спора-нянька: латает сородичей заживляющей слизью (6 ОЗ/с)',
+    key: 'medic', hname: 'Нанит', aname: 'Цветень', hp: 60, dmg: 2, range: 26, cooldown: 1.0,
+    sightTiles: 7, speed: 104, r: 9, supply: 1, cost: 75, trainTime: 16,
+    canMine: false, canBuild: false, projectile: 'none', canHeal: true, healRate: 7,
+    hdesc: 'Наномедик: роящиеся наниты латают пехоту рядом (7 ОЗ/с); скальпель — лишь для самообороны',
+    adesc: 'Спора-цветень: заживляющая пыльца лечит сородичей (7 ОЗ/с)',
   },
   flamer: {
-    key: 'flamer', hname: 'Огнемётчик', aname: 'Жгут', hp: 75, dmg: 12, range: 74, cooldown: 0.9,
+    key: 'flamer', hname: 'Плазмер', aname: 'Кислотник', hp: 75, dmg: 14, range: 74, cooldown: 0.9,
     sightTiles: 7, speed: 90, r: 10, supply: 1, cost: 75, trainTime: 15,
     canMine: false, canBuild: false, projectile: 'shell',
-    splash: { r: 32, frac: 0.7 },
-    hdesc: 'Огненная струя выжигает группы врагов; страшен в упор, уязвим издали',
-    adesc: 'Кислотный сноп по площади; в упор разрывает даже броню',
+    splash: { r: 36, frac: 0.7 },
+    hdesc: 'Плазмометатель: выжигает группы врагов коротким залпом; страшен в упор, уязвим издали',
+    adesc: 'Пузатый плевун: кислотный сноп по площади разъедает даже панцири',
   },
   arty: {
-    key: 'arty', hname: 'САУ «Гром»', aname: 'Метатель', hp: 160, dmg: 46, range: 400, cooldown: 3.6,
+    key: 'arty', hname: 'Мортира «Нова»', aname: 'Спогром', hp: 160, dmg: 48, range: 400, cooldown: 3.4,
     sightTiles: 10, speed: 48, r: 13, supply: 3, cost: 220, trainTime: 34,
     canMine: false, canBuild: false, vehicle: true, projectile: 'shell',
     splash: { r: 62, frac: 0.65 },
-    hdesc: 'Осадное орудие: бьёт на 12 тайлов осколками по площади; медлителен и беззащитен вблизи',
-    adesc: 'Мечет взрывные споры через полкарты; держите его позади роя',
+    hdesc: 'Самоходная мортира: бьёт на 12 тайлов осколками по площади; медлительна и беззащитна вблизи',
+    adesc: 'Огромный червь со спорной мортирой на спине: мечет взрывы через полкарты; держите его позади роя',
   },
 };
 
@@ -103,13 +109,13 @@ export const UNITS = {
 export const BUILDINGS = {
   cc:       { key: 'cc',       hname: 'Командный центр', aname: 'Гнездо-улей', w: 4, h: 3, hp: 1500, cost: 400, buildTime: 30, supplyGain: 10, sightTiles: 9, produces: 'worker',
     hdesc: 'Штаб базы: обучает рабочих, принимает минералы, +10 населения',
-    adesc: 'Сердце улья: растит сборщиков, принимает эрг-кристаллы, +10 населения' },
+    adesc: 'Сердце улья: растит собирателей, принимает эрг-кристаллы, +10 населения' },
   depot:    { key: 'depot',    hname: 'Дом',             aname: 'Нарост-кладовая', w: 2, h: 2, hp: 500,  cost: 100, buildTime: 14, supplyGain: 8,  sightTiles: 5, produces: null,
     hdesc: 'Жильё колонистов: +8 населения. Без домов армия не растёт',
     adesc: 'Живой склад: расширяет улей, +8 населения' },
   barracks: { key: 'barracks', hname: 'Казарма',         aname: 'Инкубатор', w: 3, h: 2, hp: 1000, cost: 150, buildTime: 20, supplyGain: 0,  sightTiles: 6, produces: ['marine', 'flamer', 'medic'],
-    hdesc: 'Обучает пехоту: морпехи, огнемётчики и медики. Очередь — до 5 юнитов',
-    adesc: 'Выводит из икры жалящих, жгутов и спорышей. Очередь — до 5 юнитов' },
+    hdesc: 'Обучает пехоту: рейнджеры, плазмеры и наниты. Очередь — до 5 юнитов',
+    adesc: 'Выводит из икры кристожалов, кислотников и цветней. Очередь — до 5 юнитов' },
   turret:   { key: 'turret',   hname: 'Турель «Скорпион»', aname: 'Жвала', w: 1, h: 1, hp: 380, cost: 100, buildTime: 12, supplyGain: 0, sightTiles: 9,
               attack: true, dmg: 8, range: 150, cooldown: 0.65, projectile: 'bullet',
     hdesc: 'Автоматическая пушка: сама находит и обстреливает врагов в радиусе 150',
@@ -123,8 +129,8 @@ export const BUILDINGS = {
     adesc: 'Кокон: 4 бойца прячутся внутри и жалят через щели' },
   factory:  { key: 'factory',  hname: 'Завод техники',   aname: 'Яма выводка', w: 3, h: 3, hp: 1300, cost: 250, buildTime: 35, supplyGain: 0,  sightTiles: 7,
               produces: ['buggy', 'tank', 'arty'], requires: 'barracks',
-    hdesc: 'Производит технику: багги, танки и САУ. Нужна казарма',
-    adesc: 'Яма выводка: выползают скорчи, колоссы и метатели. Нужен инкубатор' },
+    hdesc: 'Производит технику: скифы, бастионы и мортиры «Нова». Нужна казарма',
+    adesc: 'Яма выводка: выползают скользни, громилы и спогромы. Нужен инкубатор' },
   lab:      { key: 'lab',      hname: 'Лаборатория',     aname: 'Узел эволюции', w: 3, h: 3, hp: 900,  cost: 200, buildTime: 32, supplyGain: 0,  sightTiles: 6,
               requires: 'barracks', research: true,
     hdesc: 'Исследует улучшения армии: оружие, броня пехоты, орудия и плиты техники',
@@ -167,9 +173,9 @@ export const AI = {
   factory: false,        // строить ли завод техники
   maxBuggies: 0,         // лимит быстрых единиц
   maxTanks: 0,           // лимит тяжёлых единиц
-  medics: 0,             // лимит медиков/спорышей
-  flamers: 0,            // лимит огнемётчиков/жгутов
-  arty: 0,               // лимит САУ/метателей
+  medics: 0,             // лимит нанитов/цветней
+  flamers: 0,            // лимит плазмеров/кислотников
+  arty: 0,               // лимит мортир/спогромов
   research: false,       // строить ли лабораторию и исследовать улучшения
   repair: false,         // чинить ли здания и технику
 };
@@ -179,11 +185,14 @@ export const EDGE_SCROLL_SPEED = 560; // прокрутка мышью у кра
 export const KEY_SCROLL_SPEED = 720;  // прокрутка стрелками, px/с
 export const EDGE_MARGIN = 26;        // ширина зоны у края экрана, px
 
-// --- Палитра сторон (цвет игрока/врага одинаков для обеих рас) ---
+// --- Палитра сторон (язык цвета «Рубежа 64»: бирюза против огня) ---
+// player — бирюзовый («свечение своих»), enemy — раскалённо-оранжевый.
 export const COLORS = {
-  player: '#4f8fe8', playerDark: '#2c5da8',
-  enemy:  '#d84f3f', enemyDark:  '#8f2f26',
-  mineral: '#3fd3e8',
+  player: '#76e3d7', playerDark: '#245e68', playerBright: '#c5fff1',
+  enemy:  '#ff806e', enemyDark:  '#713943', enemyBright: '#ffd0b5',
+  mineral: '#7ed9e7',
+  hpLow: '#ff806e',
+  amber: '#f3c579',
 };
 
 // --- Подписи по фракции: у людей и кхарид разные имена/описания ---
@@ -194,24 +203,25 @@ export function fdesc(cfg, faction) {
   return faction === 'alien' ? (cfg.adesc || cfg.hdesc) : cfg.hdesc;
 }
 
-// --- Биомы планет (палитры генератора карт) ---
+// --- Биомы планет (палитры генератора карт): тёмные, чтобы светящиеся
+// юниты/кристаллы «горели» на фоне — язык визуала «Рубежа 64» ---
 export const BIOMES = {
-  mars: { // Актан-4: ржавая пустыня, базальтовые гряды, солёные низины
-    ground: '#6e4630', tones: ['#5e3a28', '#7d5136', '#83553a', '#67422c'],
-    speck1: 'rgba(40,20,12,0.28)', speck2: 'rgba(200,150,110,0.18)',
-    water: '#3a5d6e', waterGlint: 'rgba(140,210,220,0.3)', shore: 'rgba(160,110,70,0.5)',
-    rock: ['#5a4440', '#6f544e', '#866460'], dust: 'rgba(150,95,60,0.3)',
+  mars: { // Актан-4: тёмные ржавые пустоши, базальтовые гряды
+    ground: '#3d281e', tones: ['#33201a', '#4a2f24', '#513527', '#37231b'],
+    speck1: 'rgba(18,8,4,0.32)', speck2: 'rgba(226,150,96,0.14)',
+    water: '#12414a', waterGlint: 'rgba(126,217,231,0.3)', shore: 'rgba(122,72,42,0.55)',
+    rock: ['#38302e', '#4a3d3a', '#5e4c48'], dust: 'rgba(196,116,66,0.16)',
   },
   nest: { // Брок-Тхаал: фиолетовые пустоши улья, светящиеся кислотные озёра
-    ground: '#4a3a5c', tones: ['#3f3150', '#56436c', '#5d4a75', '#443557'],
-    speck1: 'rgba(20,12,32,0.3)', speck2: 'rgba(190,160,230,0.16)',
-    water: '#2e6e4e', waterGlint: 'rgba(150,255,190,0.35)', shore: 'rgba(90,60,120,0.5)',
-    rock: ['#4c4458', '#5f566e', '#746a86'], dust: 'rgba(120,90,160,0.3)',
+    ground: '#2a2140', tones: ['#221b34', '#332a4d', '#392e55', '#262039'],
+    speck1: 'rgba(10,6,20,0.34)', speck2: 'rgba(150,120,220,0.15)',
+    water: '#0f4436', waterGlint: 'rgba(126,255,190,0.32)', shore: 'rgba(72,52,110,0.55)',
+    rock: ['#332e44', '#443d59', '#574e70'], dust: 'rgba(140,100,220,0.16)',
   },
-  moon: { // Селенит-Б: серые лунные равнины, реголит, кратеры
-    ground: '#55565c', tones: ['#4a4b51', '#616269', '#68696f', '#4f5056'],
-    speck1: 'rgba(20,20,24,0.28)', speck2: 'rgba(190,190,200,0.16)',
-    water: '#26455c', waterGlint: 'rgba(150,200,240,0.3)', shore: 'rgba(120,120,130,0.5)',
-    rock: ['#4a4d54', '#5d6168', '#71767e'], dust: 'rgba(130,130,140,0.3)',
+  moon: { // Селенит-Б: графитовые лунные равнины, реголит, кратеры
+    ground: '#2b2e35', tones: ['#23262c', '#34383f', '#3a3e46', '#282b31'],
+    speck1: 'rgba(8,9,12,0.32)', speck2: 'rgba(170,190,210,0.13)',
+    water: '#123246', waterGlint: 'rgba(140,200,240,0.28)', shore: 'rgba(80,86,98,0.5)',
+    rock: ['#2c2f36', '#3b3f47', '#4c515a'], dust: 'rgba(150,170,190,0.14)',
   },
 };

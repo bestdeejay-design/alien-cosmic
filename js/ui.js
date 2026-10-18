@@ -27,106 +27,106 @@ function icon(type) {
   c.width = 26; c.height = 26;
   const g = c.getContext('2d');
   g.translate(13, 13);
-  const blue = '#4f8fe8', green = '#67c98a', orange = '#f0a53a', steel = '#9aa2ad';
-  const purple = '#8f6fd8';
+  const teal = '#57d3c3', green = '#67c98a', amber = '#f3c579', steel = '#8fb5b3';
+  const purple = '#a78bdb';
   switch (type) {
     case 'worker':
-      g.fillStyle = blue; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = orange; g.fillRect(-9, -2, 4, 8);
-      g.fillStyle = '#d7e3f5'; g.beginPath(); g.arc(2, 0, 3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.fillRect(-9, -2, 4, 8);
+      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(2, 0, 3, 0, Math.PI * 2); g.fill();
       break;
     case 'marine':
-      g.fillStyle = blue; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#2c3138'; g.fillRect(2, -1, 11, 3);
-      g.fillStyle = '#d7e3f5'; g.beginPath(); g.arc(1, 0, 3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#16262b'; g.fillRect(2, -1, 11, 3);
+      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(1, 0, 3, 0, Math.PI * 2); g.fill();
       break;
     case 'buggy':
-      g.fillStyle = '#23262b'; g.fillRect(-9, -7, 5, 5); g.fillRect(4, -7, 5, 5);
+      g.fillStyle = '#0d2129'; g.fillRect(-9, -7, 5, 5); g.fillRect(4, -7, 5, 5);
       g.fillRect(-9, 2, 5, 5); g.fillRect(4, 2, 5, 5);
-      g.fillStyle = blue; g.beginPath();
+      g.fillStyle = teal; g.beginPath();
       g.moveTo(-7, -4); g.lineTo(8, -2); g.lineTo(8, 2); g.lineTo(-7, 4); g.closePath(); g.fill();
       break;
     case 'tank':
-      g.fillStyle = '#23262b'; g.fillRect(-10, -8, 20, 5); g.fillRect(-10, 3, 20, 5);
-      g.fillStyle = blue; g.fillRect(-8, -4, 15, 8);
-      g.fillStyle = '#2c3138'; g.fillRect(4, -1.5, 12, 3);
+      g.fillStyle = '#0d2129'; g.fillRect(-10, -8, 20, 5); g.fillRect(-10, 3, 20, 5);
+      g.fillStyle = teal; g.fillRect(-8, -4, 15, 8);
+      g.fillStyle = '#16262b'; g.fillRect(4, -1.5, 12, 3);
       break;
     case 'cc':
       g.fillStyle = steel; g.fillRect(-10, -8, 20, 15);
-      g.strokeStyle = blue; g.lineWidth = 2;
+      g.strokeStyle = teal; g.lineWidth = 2;
       g.beginPath(); g.ellipse(0, 0, 6, 4.5, 0, 0, Math.PI * 2); g.stroke();
       break;
     case 'barracks':
       g.fillStyle = steel; g.fillRect(-10, -7, 20, 14);
-      g.fillStyle = '#3a3f45'; g.fillRect(-4, 0, 8, 7);
-      g.fillStyle = blue; g.fillRect(-10, -7, 20, 3);
+      g.fillStyle = '#0b1b24'; g.fillRect(-4, 0, 8, 7);
+      g.fillStyle = teal; g.fillRect(-10, -7, 20, 3);
       break;
     case 'depot':
       g.fillStyle = steel; g.fillRect(-10, -5, 20, 11);
-      g.fillStyle = blue; g.fillRect(-10, -5, 20, 3);
-      g.fillStyle = '#3a3f45';
+      g.fillStyle = teal; g.fillRect(-10, -5, 20, 3);
+      g.fillStyle = '#0b1b24';
       g.beginPath(); g.moveTo(-4, 0); g.lineTo(1, 3); g.lineTo(-4, 6); g.closePath(); g.fill();
       break;
     case 'turret':
       g.fillStyle = steel; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#2c3138'; g.lineWidth = 3;
+      g.strokeStyle = '#16262b'; g.lineWidth = 3;
       g.beginPath(); g.moveTo(0, 0); g.lineTo(9, -6); g.stroke();
       break;
     case 'wall':
       g.fillStyle = steel; g.fillRect(-10, -5, 20, 11);
-      g.strokeStyle = '#565c64'; g.lineWidth = 1.5;
+      g.strokeStyle = '#2c4a52'; g.lineWidth = 1.5;
       g.beginPath(); g.moveTo(-10, 0); g.lineTo(10, 0); g.stroke();
       g.beginPath(); g.moveTo(-3, -5); g.lineTo(-3, 5); g.moveTo(4, -5); g.lineTo(4, 5); g.stroke();
       break;
     case 'bunker':
       g.fillStyle = steel; g.fillRect(-10, -7, 20, 14);
-      g.fillStyle = '#3a3f45'; g.fillRect(-7, -2, 14, 4);
-      g.fillStyle = blue; g.fillRect(-10, -7, 20, 3);
+      g.fillStyle = '#0b1b24'; g.fillRect(-7, -2, 14, 4);
+      g.fillStyle = teal; g.fillRect(-10, -7, 20, 3);
       break;
     case 'factory':
       g.fillStyle = steel; g.fillRect(-10, -4, 20, 12);
-      g.fillStyle = '#3a3f45'; g.fillRect(-4, 0, 8, 8);
-      g.fillStyle = '#565c64'; g.fillRect(-8, -10, 4, 7);
+      g.fillStyle = '#0b1b24'; g.fillRect(-4, 0, 8, 8);
+      g.fillStyle = '#2c4a52'; g.fillRect(-8, -10, 4, 7);
       break;
     case 'medic':
-      g.fillStyle = '#e8edf4'; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#e04b3f'; g.fillRect(-1.5, -4, 3, 12); g.fillRect(-6, 0.5, 12, 3);
-      g.fillStyle = '#2c3138'; g.fillRect(6, 0, 8, 3);
+      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ff806e'; g.fillRect(-1.5, -4, 3, 12); g.fillRect(-6, 0.5, 12, 3);
+      g.fillStyle = '#16262b'; g.fillRect(6, 0, 8, 3);
       break;
     case 'flamer':
-      g.fillStyle = blue; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#e04b3f'; g.fillRect(-9, -4, 5, 8);
-      g.fillStyle = '#f0a53a'; g.fillRect(4, 0, 11, 4);
-      g.fillStyle = '#ffd977'; g.beginPath(); g.arc(15, 2, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#ff806e'; g.fillRect(-9, -4, 5, 8);
+      g.fillStyle = '#f3c579'; g.fillRect(4, 0, 11, 4);
+      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(15, 2, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'arty':
-      g.fillStyle = '#23262b'; g.fillRect(-9, -8, 18, 4); g.fillRect(-9, 4, 18, 4);
-      g.fillStyle = blue; g.fillRect(-7, -4, 14, 8);
-      g.fillStyle = '#2c3138'; g.fillRect(0, -1.5, 15, 3);
+      g.fillStyle = '#0d2129'; g.fillRect(-9, -8, 18, 4); g.fillRect(-9, 4, 18, 4);
+      g.fillStyle = teal; g.fillRect(-7, -4, 14, 8);
+      g.fillStyle = '#16262b'; g.fillRect(0, -1.5, 15, 3);
       break;
     case 'lab':
       g.fillStyle = steel; g.fillRect(-10, -2, 20, 12);
-      g.fillStyle = '#565c64'; g.beginPath(); g.arc(-3, -2, 7, Math.PI, 0); g.fill();
-      g.strokeStyle = blue; g.lineWidth = 2;
+      g.fillStyle = '#2c4a52'; g.beginPath(); g.arc(-3, -2, 7, Math.PI, 0); g.fill();
+      g.strokeStyle = teal; g.lineWidth = 2;
       g.beginPath(); g.arc(6, -6, 4, Math.PI * 0.2, Math.PI); g.stroke();
       break;
     case 'u_infAtk':
-      g.strokeStyle = '#e04b3f'; g.lineWidth = 2.5;
+      g.strokeStyle = '#ff806e'; g.lineWidth = 2.5;
       g.beginPath(); g.moveTo(-6, 6); g.lineTo(6, -6); g.stroke();
-      g.strokeStyle = orange; g.lineWidth = 2;
+      g.strokeStyle = amber; g.lineWidth = 2;
       g.beginPath(); g.moveTo(-4, 1); g.lineTo(-1, 4); g.moveTo(-6, 8); g.lineTo(-8, 6); g.stroke();
       break;
     case 'u_infArm':
-      g.strokeStyle = blue; g.lineWidth = 2;
+      g.strokeStyle = teal; g.lineWidth = 2;
       g.beginPath(); g.moveTo(0, -8); g.lineTo(7, -5); g.lineTo(7, 2);
       g.quadraticCurveTo(7, 7, 0, 9); g.quadraticCurveTo(-7, 7, -7, 2);
       g.lineTo(-7, -5); g.closePath(); g.stroke();
-      g.fillStyle = blue; g.fillRect(-1.5, -4, 3, 8); g.fillRect(-4, -1.5, 8, 3);
+      g.fillStyle = teal; g.fillRect(-1.5, -4, 3, 8); g.fillRect(-4, -1.5, 8, 3);
       break;
     case 'u_vehAtk':
-      g.fillStyle = '#2c3138'; g.fillRect(-3, -9, 6, 13);
-      g.fillStyle = orange; g.fillRect(-5, 2, 10, 6);
-      g.fillStyle = '#ffd977'; g.beginPath(); g.arc(0, -9, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#16262b'; g.fillRect(-3, -9, 6, 13);
+      g.fillStyle = amber; g.fillRect(-5, 2, 10, 6);
+      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(0, -9, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'u_vehArm':
       g.strokeStyle = steel; g.lineWidth = 2;
@@ -141,15 +141,15 @@ function icon(type) {
       break;
     case 'build':
       g.fillStyle = steel; g.fillRect(-9, -8, 10, 8);           // боёк молота
-      g.fillStyle = orange; g.fillRect(-2, -4, 12, 4);          // ручка
-      g.fillStyle = blue; g.fillRect(-11, 4, 22, 4);            // «фундамент»
+      g.fillStyle = amber; g.fillRect(-2, -4, 12, 4);          // ручка
+      g.fillStyle = teal; g.fillRect(-11, 4, 22, 4);            // «фундамент»
       break;
     case 'stop':
-      g.strokeStyle = '#e04b3f'; g.lineWidth = 3;
+      g.strokeStyle = '#ff806e'; g.lineWidth = 3;
       g.beginPath(); g.moveTo(-7, -7); g.lineTo(7, 7); g.moveTo(7, -7); g.lineTo(-7, 7); g.stroke();
       break;
     case 'exit':
-      g.strokeStyle = orange; g.lineWidth = 2.5;
+      g.strokeStyle = amber; g.lineWidth = 2.5;
       g.strokeRect(-9, -8, 12, 16);
       g.beginPath(); g.moveTo(-1, 0); g.lineTo(9, 0); g.stroke();
       g.beginPath(); g.moveTo(5, -4); g.lineTo(9, 0); g.lineTo(5, 4); g.stroke();
@@ -219,7 +219,7 @@ function icon(type) {
       g.beginPath(); g.ellipse(0, 0, 5, 3.6, 0.5, 0, Math.PI * 2); g.stroke();
       break;
     case 'a_factory':
-      g.fillStyle = '#3a2f4c'; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#2a2140'; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#b7f0c8';
       g.beginPath(); g.arc(-4, 0, 2, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.arc(3, -1, 2, 0, Math.PI * 2); g.fill();
@@ -233,17 +233,17 @@ function icon(type) {
       break;
     case 'a_flamer':
       g.fillStyle = purple; g.beginPath(); g.ellipse(-1, 2, 9, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#f0a53a'; g.fillRect(6, 0, 9, 4);
-      g.fillStyle = '#ffd977'; g.beginPath(); g.arc(15, 2, 2.2, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#f3c579'; g.fillRect(6, 0, 9, 4);
+      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(15, 2, 2.2, 0, Math.PI * 2); g.fill();
       break;
     case 'a_arty':
       g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 10, 7.5, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#3a2f4c'; g.lineWidth = 3;
+      g.strokeStyle = '#2a2140'; g.lineWidth = 3;
       g.beginPath(); g.moveTo(-3, -4); g.lineTo(-11, -11); g.stroke();
       g.fillStyle = '#b7f0c8'; g.beginPath(); g.arc(-11, -12, 2.8, 0, Math.PI * 2); g.fill();
       break;
     case 'a_lab':
-      g.fillStyle = '#3a2f4c'; g.beginPath(); g.ellipse(0, 4, 10, 7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#2a2140'; g.beginPath(); g.ellipse(0, 4, 10, 7, 0, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#b7f0c8';
       g.beginPath(); g.moveTo(-5, 2); g.lineTo(-2, -6); g.lineTo(1, 2); g.closePath(); g.fill();
       g.beginPath(); g.moveTo(2, 2); g.lineTo(5, -4); g.lineTo(8, 2); g.closePath(); g.fill();
@@ -760,14 +760,14 @@ export function drawMinimap(game) {
   for (const b of st.buildings) {
     if (b.dead) continue;
     if (b.side === 'enemy' && !b.spotted) continue;
-    g.fillStyle = b.side === 'player' ? '#6db1ff' : '#ff7a6b';
+    g.fillStyle = b.side === 'player' ? '#76e3d7' : '#ff806e';
     g.fillRect(b.tx * TILE * k, b.ty * TILE * k, Math.max(4, b.w * TILE * k), Math.max(3, b.h * TILE * k));
   }
   // Юниты (враги — только видимые).
   for (const u of st.units) {
     if (u.dead || u.garrison) continue;
     if (u.side === 'enemy' && !u.visible) continue;
-    g.fillStyle = u.side === 'player' ? '#a8d4ff' : '#ffb1a8';
+    g.fillStyle = u.side === 'player' ? '#c5fff1' : '#ffd0b5';
     g.fillRect(u.x * k - 1.5, u.y * k - 1.5, 3, 3);
   }
   // Туман войны.
@@ -781,7 +781,7 @@ export function drawMinimap(game) {
   // Пинги тревоги.
   for (const p of st.pings) {
     const a = 1 - p.t / 2.5;
-    g.strokeStyle = `rgba(255,70,50,${a})`;
+    g.strokeStyle = `rgba(255,128,110,${a})`;
     g.lineWidth = 2;
     g.beginPath();
     g.arc(p.x * k, p.y * k, 4 + p.t * 10, 0, Math.PI * 2);

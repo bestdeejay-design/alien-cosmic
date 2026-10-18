@@ -65,14 +65,17 @@ export function placeBuildingCmd(st, side, type, tx, ty, builders) {
   st.map.markBuilding(b);
   st.bcount[side]++;
 
-  // Выселение юнитов, оказавшихся на площадке: каждому — своя точка
-  // вокруг пятна застройки; если свободных тайлов нет, отправляем от
-  // центра наружу — путь сам обогнёт пятно (анти-застревание).
+  // Выселение с площадки: ТОЛЬКО стоящих без приказа. Маршевые, воюющие
+  // и добывающие сохраняют приказ — их мягко выдавит из корпуса физика
+  // (resolveBuildings), а маршрут перестроит repathIfBlocked. Раньше
+  // выселение затирало приказ «идти туда-то» у идущих юнитов: после
+  // выселения они замирали — класс жалоб «юнит встал и всё».
   const spot = nearestFreeTileAround(st.map, tx, ty, cfg.w, cfg.h);
   for (const u of st.units) {
     if (u.dead || u.garrison) continue;
     if (u.x > tx * TILE - u.r && u.x < (tx + cfg.w) * TILE + u.r &&
         u.y > ty * TILE - u.r && u.y < (ty + cfg.h) * TILE + u.r) {
+      if (u.order.kind !== 'idle') continue; // занят своим делом — не трогаем
       if (spot) {
         orderMove(st, u, (spot.x + 0.5) * TILE, (spot.y + 0.5) * TILE);
       } else {
@@ -291,323 +294,340 @@ export function buildingAt(st, wx, wy) {
 
 // ------------------------------------------------------------
 // Отрисовка здания. camX/camY — смещение камеры (мир → экран).
-// ghost=true — «запомненное» вражеское здание вне зоны видимости.
+// Визуальный язык «Рубежа 64»: скруглённый тёмный корпус с окантовкой
+// команды, светящееся ядро, анимированные детали, стройплощадка со
+// штриховкой и прогресс-баром. ghost=true — «память» о вражеском здании.
 // ------------------------------------------------------------
+function rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   const px = b.tx * TILE - camX, py = b.ty * TILE - camY;
   const w = b.w * TILE, h = b.h * TILE;
   const isP = b.side === 'player';
-  const col = isP ? COLORS.player : COLORS.enemy;
+  const main = isP ? COLORS.player : COLORS.enemy;
   const dark = isP ? COLORS.playerDark : COLORS.enemyDark;
+  const bright = isP ? COLORS.playerBright : COLORS.enemyBright;
+  const bio = '#9ff5b8';
+  const amber = '#f3c579';
+  const alien = b.faction === 'alien';
+  const cx = px + w / 2, cy = py + h / 2;
 
   ctx.save();
-  if (ghost) ctx.globalAlpha = 0.4;
+  if (ghost) ctx.globalAlpha = 0.42;
   else if (!b.done) ctx.globalAlpha = 0.45 + 0.3 * b.progress;
 
-  // Тень и корпус.
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.fillRect(px + 4, py + 6, w, h);
-  ctx.fillStyle = '#787e87';
-  ctx.fillRect(px, py, w, h);
-  ctx.fillStyle = dark;
-  ctx.fillRect(px, py, w, 6);
+  // Мягкая тень + подиум корпуса.
+  ctx.fillStyle = 'rgba(0,7,13,0.48)';
+  rr(ctx, px + 5, py + 8, w - 7, h - 4, 10); ctx.fill();
+  ctx.fillStyle = b.done ? dark : '#20302e';
+  ctx.strokeStyle = b.done ? main : '#9da79a';
+  ctx.lineWidth = 2;
+  rr(ctx, px + 4, py + 3, w - 8, h - 8, 9); ctx.fill(); ctx.stroke();
 
-  if (b.faction === 'alien') {
-    // ===== Постройки кхарид: органика улья =====
+  if (alien) {
+    // ============ КХАРИД: органика улья на скруглённом подиуме ============
     if (b.type === 'cc') {
-      // Гнездо-улей: курган с жерлами и светящимся кольцом.
-      ctx.fillStyle = '#4c3f60';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 4, w * 0.42, h * 0.38, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2, w * 0.34, h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.22, h * 0.18, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
+      // Гнездо-улей: курган с светящимся кольцом и жерлами.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 12); ctx.fill();
+      ctx.shadowColor = main; ctx.shadowBlur = 13;
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.26, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#16333c';
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.19, -0.35 + Math.sin(b.id + px) * 0.12, 2.4); ctx.stroke();
+      ctx.fillStyle = bio;
       for (let i = 0; i < 4; i++) {
         const a = i * Math.PI / 2 + 0.4;
         ctx.beginPath();
-        ctx.arc(px + w / 2 + Math.cos(a) * w * 0.28, py + h / 2 + Math.sin(a) * h * 0.24, 4, 0, Math.PI * 2);
+        ctx.arc(cx + Math.cos(a) * w * 0.34, cy + Math.sin(a) * h * 0.3, 3.4, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.15, h * 0.11, 0, 0, Math.PI * 2); ctx.stroke();
     } else if (b.type === 'barracks') {
-      // Инкубатор: бугор с выводковой камерой и икрой.
-      ctx.fillStyle = '#4c3f60';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 3, w * 0.44, h * 0.36, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(px + w / 2 - 4, py + h / 2, w * 0.3, h * 0.28, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.ellipse(px + w / 2 + 8, py + h / 2, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
+      // Инкубатор: выводковая камера с икрой.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.32, cy - h * 0.28, w * 0.64, h * 0.56, 8); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 3;
       for (let i = 0; i < 3; i++) {
-        ctx.beginPath();
-        ctx.arc(px + w / 2 - 12 + i * 9, py + h / 2 + 4, 3.2, 0, Math.PI * 2);
-        ctx.fill();
+        const yy = cy - h * 0.16 + i * (h * 0.14);
+        ctx.beginPath(); ctx.moveTo(cx - w * 0.24, yy); ctx.lineTo(cx + w * 0.24, yy); ctx.stroke();
+      }
+      ctx.fillStyle = '#0b1b24';
+      rr(ctx, cx - w * 0.14, cy - h * 0.1, w * 0.28, h * 0.26, 4); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - w * 0.04, cy - h * 0.05, w * 0.08, h * 0.16);
+      ctx.fillStyle = bio;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath(); ctx.arc(cx - w * 0.2 + i * w * 0.14, cy + h * 0.26, 3, 0, Math.PI * 2); ctx.fill();
       }
     } else if (b.type === 'turret') {
-      // Жвала: органическая башня со раскрывшимися клешнями.
-      ctx.fillStyle = '#4c3f60';
-      ctx.beginPath(); ctx.arc(px + w / 2, py + h / 2 + 2, 11, 0, Math.PI * 2); ctx.fill();
+      // Жвала: органическая башня с клешнями по углу на цель.
+      ctx.fillStyle = '#152e36';
+      ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = bright; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
       ctx.save();
-      ctx.translate(px + w / 2, py + h / 2);
+      ctx.translate(cx, cy);
       ctx.rotate(b.angle != null ? b.angle : -Math.PI / 4);
-      ctx.strokeStyle = '#3a4a40'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(2, -3); ctx.lineTo(18, -7); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(2, 3); ctx.lineTo(18, 7); ctx.stroke();
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
+      ctx.strokeStyle = '#3a4a40'; ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.moveTo(2, -3); ctx.lineTo(19, -8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(2, 3); ctx.lineTo(19, 8); ctx.stroke();
+      ctx.shadowColor = main; ctx.shadowBlur = 8;
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.arc(0, 0, 7.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(3, 0, 3, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     } else if (b.type === 'wall') {
-      // Хитиновая стена: пластинчатый нарост.
-      ctx.fillStyle = '#4c3f60';
-      ctx.fillRect(px + 1, py + 1, w - 2, h - 2);
+      // Хитиновая стена: пластины со светлым швом.
+      ctx.fillStyle = '#152e36';
+      rr(ctx, px + 2, py + 2, w - 4, h - 4, 4); ctx.fill();
       ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2, w * 0.42, h * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px + 6, py + h - 6); ctx.lineTo(px + w / 2, py + 6); ctx.lineTo(px + w - 6, py + h - 6); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.4, h * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = bio; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px + 6, py + h - 6); ctx.lineTo(cx, py + 6); ctx.lineTo(px + w - 6, py + h - 6); ctx.stroke();
     } else if (b.type === 'bunker') {
-      // Кокон: пульсирующий мешок с зелёным просветом.
-      ctx.fillStyle = '#4c3f60';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.44, h * 0.38, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2, w * 0.34, h * 0.28, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 2;
+      // Кокон: пульсирующие кольца со светлой жилой.
+      ctx.fillStyle = '#132f39';
+      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 10); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 2;
       for (let i = 0; i < 3; i++) {
         ctx.beginPath();
-        ctx.ellipse(px + w / 2, py + h / 2, w * (0.1 + i * 0.09), h * (0.07 + i * 0.08), 0.5, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, w * (0.1 + i * 0.09), h * (0.07 + i * 0.08), 0.5, 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.fillStyle = '#b7f0c8';
-      ctx.fillRect(px + w / 2 - 1, py + 4, 2, h - 8);
+      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.fillStyle = bio;
+      ctx.fillRect(cx - 1, py + 6, 2, h - 12);
+      ctx.shadowBlur = 0;
     } else if (b.type === 'lab') {
-      // Узел эволюции: жерло с парящими гранями-кристаллами.
-      ctx.fillStyle = '#3a2f4c';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 5, w * 0.42, h * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+      // Узел эволюции: жерло с парящими светящимися гранями.
       ctx.fillStyle = '#241c34';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.26, h * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.18, h * 0.13, 0, 0, Math.PI * 2); ctx.stroke();
-      // Три парящие грани на разной высоте (мнимая левитация).
+      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 10); ctx.fill();
+      ctx.strokeStyle = bio; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.18, h * 0.13, 0, 0, Math.PI * 2); ctx.stroke();
       const floats = [[-10, -6, 5], [4, -12, 6], [12, -3, 4.4]];
+      ctx.shadowColor = bio; ctx.shadowBlur = 7;
+      ctx.fillStyle = bio;
       for (const [fx, fy, fr] of floats) {
-        ctx.fillStyle = '#b7f0c8';
         ctx.beginPath();
-        ctx.moveTo(px + w / 2 + fx - fr, py + h / 2 + fy);
-        ctx.lineTo(px + w / 2 + fx, py + h / 2 + fy - fr * 1.6);
-        ctx.lineTo(px + w / 2 + fx + fr, py + h / 2 + fy);
+        ctx.moveTo(cx + fx - fr, cy + fy);
+        ctx.lineTo(cx + fx, cy + fy - fr * 1.6);
+        ctx.lineTo(cx + fx + fr, cy + fy);
         ctx.closePath(); ctx.fill();
       }
-    } else if (b.type === 'lab') {
-      // Узел эволюции: жерло с парящими гранями-кристаллами.
-      ctx.fillStyle = '#3a2f4c';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 5, w * 0.42, h * 0.36, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#241c34';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.26, h * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 2, w * 0.18, h * 0.13, 0, 0, Math.PI * 2); ctx.stroke();
-      // Три парящие грани на разной высоте (мнимая левитация).
-      const floats = [[-10, -6, 5], [4, -12, 6], [12, -3, 4.4]];
-      for (const [fx, fy, fr] of floats) {
-        ctx.fillStyle = '#b7f0c8';
-        ctx.beginPath();
-        ctx.moveTo(px + w / 2 + fx - fr, py + h / 2 + fy);
-        ctx.lineTo(px + w / 2 + fx, py + h / 2 + fy - fr * 1.6);
-        ctx.lineTo(px + w / 2 + fx + fr, py + h / 2 + fy);
-        ctx.closePath(); ctx.fill();
-      }
+      ctx.shadowBlur = 0;
     } else if (b.type === 'factory') {
       // Яма выводка: кратер с икрой и щупальцами по краю.
-      ctx.fillStyle = '#3a2f4c';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 4, w * 0.44, h * 0.38, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#241c34';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2, w * 0.3, h * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = col;
+      rr(ctx, cx - w * 0.32, cy - h * 0.28, w * 0.64, h * 0.56, 12); ctx.fill();
+      ctx.fillStyle = main;
       for (let i = 0; i < 5; i++) {
         const a = i * Math.PI * 2 / 5 + 0.5;
         ctx.beginPath();
-        ctx.arc(px + w / 2 + Math.cos(a) * w * 0.3, py + h / 2 + Math.sin(a) * h * 0.26, 3.4, 0, Math.PI * 2);
+        ctx.arc(cx + Math.cos(a) * w * 0.26, cy + Math.sin(a) * h * 0.24, 3.4, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.strokeStyle = '#9ff5b8'; ctx.lineWidth = 2;
+      ctx.strokeStyle = bio; ctx.lineWidth = 2;
       for (let i = 0; i < 4; i++) {
         const a = i * Math.PI / 2 + 0.8;
         ctx.beginPath();
-        ctx.moveTo(px + w / 2 + Math.cos(a) * w * 0.44, py + h / 2 + Math.sin(a) * h * 0.38);
+        ctx.moveTo(cx + Math.cos(a) * w * 0.4, cy + Math.sin(a) * h * 0.34);
         ctx.quadraticCurveTo(
-          px + w / 2 + Math.cos(a) * w * 0.56, py + h / 2 + Math.sin(a) * h * 0.5,
-          px + w / 2 + Math.cos(a) * w * 0.5, py + h / 2 + Math.sin(a) * h * 0.62);
+          cx + Math.cos(a) * w * 0.52, cy + Math.sin(a) * h * 0.44,
+          cx + Math.cos(a) * w * 0.46, cy + Math.sin(a) * h * 0.54);
         ctx.stroke();
       }
     } else {
       // Нарост-кладовая: пузатый мешок-хранилище.
-      ctx.fillStyle = '#4c3f60';
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2 + 3, w * 0.42, h * 0.36, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(px + w / 2, py + h / 2, w * 0.32, h * 0.27, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.ellipse(px + w / 2 - 3, py + h / 2 + 1, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
-      ctx.beginPath(); ctx.arc(px + w / 2 + 6, py + h / 2 - 2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 12); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.ellipse(cx - 3, cy + 1, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(cx + 6, cy - 2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
     }
-  } else if (b.type === 'cc') {
-    // Командный центр: посадочная площадка + антенна.
-    ctx.fillStyle = '#5a6069';
-    ctx.fillRect(px + 8, py + 10, w - 16, h - 18);
-    ctx.strokeStyle = col; ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.ellipse(px + w / 2, py + h / 2 + 2, Math.min(w, h) * 0.28, Math.min(w, h) * 0.22, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = '#454b54';
-    ctx.beginPath();
-    ctx.ellipse(px + w / 2, py + h / 2 + 2, Math.min(w, h) * 0.2, Math.min(w, h) * 0.15, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = col;
-    ctx.fillRect(px + w - 12, py + 2, 3, 12); // антенна
-    ctx.beginPath(); ctx.arc(px + w - 10.5, py + 2, 3, 0, Math.PI * 2); ctx.fill();
-  } else if (b.type === 'barracks') {
-    // Казарма: ворота, полосы крыши, флаг.
-    ctx.fillStyle = '#6b727a';
-    ctx.fillRect(px + 6, py + 10, w - 12, h - 16);
-    ctx.fillStyle = '#3a3f45';
-    ctx.fillRect(px + w / 2 - 10, py + h - 22, 20, 16);
-    ctx.fillStyle = col;
-    ctx.globalAlpha *= 0.55;
-    ctx.fillRect(px + 6, py + 12, w - 12, 4);
-    ctx.fillRect(px + 6, py + 20, w - 12, 4);
-    ctx.globalAlpha = ghost ? 0.4 : (b.done ? 1 : 0.45 + 0.3 * b.progress);
-    ctx.fillStyle = '#c8cdd4';
-    ctx.fillRect(px + w - 8, py - 10, 2, 14);          // флагшток
-    ctx.beginPath();
-    ctx.moveTo(px + w - 6, py - 10);
-    ctx.lineTo(px + w - 6 + 14, py - 6);
-    ctx.lineTo(px + w - 6, py - 2);
-    ctx.closePath();
-    ctx.fillStyle = col;
-    ctx.fill();
-  } else if (b.type === 'turret') {
-    // Турель: бетонное основание + вращающаяся спарка.
-    ctx.fillStyle = '#5a6069';
-    ctx.fillRect(px + 3, py + 3, w - 6, h - 6);
-    ctx.fillStyle = '#454b54';
-    ctx.beginPath(); ctx.arc(px + w / 2, py + h / 2 + 2, 10, 0, Math.PI * 2); ctx.fill();
-    ctx.save();
-    ctx.translate(px + w / 2, py + h / 2);
-    ctx.rotate(b.angle != null ? b.angle : -Math.PI / 4);
-    ctx.fillStyle = '#2c3138';
-    ctx.fillRect(4, -4, 16, 3);
-    ctx.fillRect(4, 1, 16, 3);
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#d7e3f5';
-    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  } else if (b.type === 'wall') {
-    // Секция стены: кладка.
-    ctx.fillStyle = '#6d737b';
-    ctx.fillRect(px + 1, py + 1, w - 2, h - 2);
-    ctx.fillStyle = '#565c64';
-    ctx.fillRect(px + 1, py + h / 2 - 1, w - 2, 2);
-    ctx.fillStyle = '#82898f';
-    for (let i = 0; i < 3; i++) ctx.fillRect(px + 3 + i * 10, py + 4, 6, 3);
-  } else if (b.type === 'bunker') {
-    // Бункер: толстые стены, бойница, мешки с песком.
-    ctx.fillStyle = '#5f656d';
-    ctx.fillRect(px + 2, py + 2, w - 4, h - 4);
-    ctx.fillStyle = '#3a3f45';
-    ctx.fillRect(px + 6, py + h / 2 - 3, w - 12, 6);
-    ctx.fillStyle = col;
-    ctx.fillRect(px + 2, py + 2, w - 4, 4);
-    ctx.fillStyle = '#8a8f75';
-    for (let i = 0; i < 4; i++) {
-      ctx.beginPath();
-      ctx.ellipse(px + 8 + i * 11, py + h - 4, 5.5, 3.4, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (b.type === 'lab') {
-    // Лаборатория: купол-обсерватория с тарелкой антенны.
-    ctx.fillStyle = '#6b727a';
-    ctx.fillRect(px + 3, py + 10, w - 6, h - 16);
-    ctx.fillStyle = '#565c64';
-    ctx.beginPath(); ctx.arc(px + w / 2 - 6, py + h / 2, 13, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = col;
-    ctx.fillRect(px + 3, py + 10, w - 6, 4);
-    ctx.strokeStyle = '#c8cdd4'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px + w - 10, py + 8); ctx.lineTo(px + w - 10, py - 6); ctx.stroke();
-    ctx.strokeStyle = col; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(px + w - 10, py - 8, 5, Math.PI * 0.15, Math.PI * 0.95); ctx.stroke();
-    ctx.fillStyle = '#ffd977';
-    ctx.beginPath(); ctx.arc(px + 8, py + 6, 2.5, 0, Math.PI * 2); ctx.fill();
-  } else if (b.type === 'factory') {
-    // Завод техники: цех с воротами, труба с дымом, шестерня.
-    ctx.fillStyle = '#6b727a';
-    ctx.fillRect(px + 4, py + 8, w - 8, h - 12);
-    ctx.fillStyle = '#3a3f45';
-    ctx.fillRect(px + w / 2 - 16, py + h - 26, 32, 22); // ворота
-    ctx.fillStyle = col;
-    ctx.fillRect(px + w / 2 - 16, py + h - 26, 32, 5);
-    ctx.fillStyle = '#565c64';
-    ctx.fillRect(px + 6, py - 6, 9, 14);               // труба
-    ctx.fillStyle = 'rgba(200,200,200,0.25)';
-    ctx.beginPath(); ctx.arc(px + 10, py - 12, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(px + w - 14, py + 10, 6, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(px + w - 14, py + 10, 2.4, 0, Math.PI * 2); ctx.fill();
   } else {
-    // Дом (депо): низкий блок с шевронами.
-    ctx.fillStyle = '#6a7078';
-    ctx.fillRect(px + 3, py + 8, w - 6, h - 12);
-    ctx.fillStyle = col;
-    ctx.fillRect(px + 3, py + 8, w - 6, 5);
-    ctx.fillStyle = '#3a3f45';
-    for (let i = 0; i < 2; i++) {
-      const bx = px + 8 + i * 16;
-      ctx.beginPath();
-      ctx.moveTo(bx, py + h / 2 - 4);
-      ctx.lineTo(bx + 8, py + h / 2 + 2);
-      ctx.lineTo(bx, py + h / 2 + 8);
-      ctx.lineTo(bx + 4, py + h / 2 + 2);
-      ctx.closePath();
-      ctx.fill();
+    // ============ ГЕЛИОС: стальные ховер-постройки ============
+    if (b.type === 'cc') {
+      // Командный центр: площадка, светящееся ядро, антенна.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 10); ctx.fill();
+      ctx.shadowColor = main; ctx.shadowBlur = 13;
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.24, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#16333c';
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.14, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, Math.min(w, h) * 0.17, 0.3 + Math.sin(b.id + px) * 0.12, 3.1); ctx.stroke();
+      ctx.fillStyle = amber;
+      ctx.fillRect(px + w - 12, py + 4, 3, 12);
+      ctx.beginPath(); ctx.arc(px + w - 10.5, py + 4, 3, 0, Math.PI * 2); ctx.fill();
+    } else if (b.type === 'barracks') {
+      // Казарма: ворота, полосы, маячок.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 6); ctx.fill();
+      ctx.fillStyle = '#0b1b24';
+      rr(ctx, cx - w * 0.12, cy - h * 0.02, w * 0.24, h * 0.3, 3); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - w * 0.05, cy + h * 0.06, w * 0.1, h * 0.18);
+      ctx.strokeStyle = main; ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        const yy = cy - h * 0.18 + i * (h * 0.15);
+        ctx.beginPath(); ctx.moveTo(cx - w * 0.26, yy); ctx.lineTo(cx + w * 0.26, yy); ctx.stroke();
+      }
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(px + w - 8, py + 6, 2.6, 0, Math.PI * 2); ctx.fill();
+    } else if (b.type === 'turret') {
+      // Турель «Скорпион»: вращающаяся спарка на круглом основании.
+      ctx.fillStyle = '#152e36';
+      ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = bright; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2); ctx.stroke();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(b.angle != null ? b.angle : -Math.PI / 4);
+      ctx.fillStyle = main;
+      rr(ctx, -5, -20, 10, 30, 3); ctx.fill();
+      ctx.fillStyle = '#e5f7e8';
+      ctx.fillRect(-2.4, -23, 4.8, 7);
+      ctx.restore();
+      ctx.fillStyle = main;
+      ctx.fillRect(px + 7, py + 7, 5, 5); ctx.fillRect(px + w - 12, py + 7, 5, 5);
+      ctx.fillRect(px + 7, py + h - 12, 5, 5); ctx.fillRect(px + w - 12, py + h - 12, 5, 5);
+    } else if (b.type === 'wall') {
+      // Секция стены: кладка со светлым швом.
+      ctx.fillStyle = '#152e36';
+      rr(ctx, px + 2, py + 2, w - 4, h - 4, 3); ctx.fill();
+      ctx.strokeStyle = bright; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px + 3, cy); ctx.lineTo(px + w - 3, cy); ctx.stroke();
+      ctx.fillStyle = main;
+      ctx.fillRect(px + 5, py + 5, 5, 3); ctx.fillRect(px + w - 10, py + h - 8, 5, 3);
+    } else if (b.type === 'bunker') {
+      // Бункер: толстые стены, бойница, светящаяся кромка.
+      ctx.fillStyle = '#132f39';
+      rr(ctx, cx - w * 0.34, cy - h * 0.3, w * 0.68, h * 0.6, 7); ctx.fill();
+      ctx.fillStyle = '#0b1b24';
+      ctx.fillRect(cx - w * 0.2, cy - 3, w * 0.4, 6);
+      ctx.fillStyle = main;
+      ctx.fillRect(px + 5, py + 5, w - 10, 4);
+      ctx.fillStyle = amber;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.ellipse(cx - 12 + i * 12, py + h - 8, 4.4, 2.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (b.type === 'lab') {
+      // Лаборатория: купол-обсерватория с тарелкой и маяком.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.32, cy - h * 0.2, w * 0.64, h * 0.44, 6); ctx.fill();
+      ctx.fillStyle = '#2c4a52';
+      ctx.beginPath(); ctx.arc(cx - 6, cy - 2, 12, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(px + 6, cy - h * 0.2, w - 12, 4);
+      ctx.strokeStyle = bright; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(px + w - 10, cy - 2); ctx.lineTo(px + w - 10, py + 4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px + w - 10, py + 3, 5, Math.PI * 0.15, Math.PI * 0.95); ctx.stroke();
+      ctx.shadowColor = amber; ctx.shadowBlur = 6;
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(px + 9, py + 10, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (b.type === 'factory') {
+      // Завод: цех с воротами, труба, вращающаяся шестерня.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.32, cy - h * 0.26, w * 0.64, h * 0.52, 6); ctx.fill();
+      ctx.fillStyle = '#0b1b24';
+      rr(ctx, cx - 16, cy + h * 0.06, 32, h * 0.2, 3); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(cx - 16, cy + h * 0.06, 32, 5);
+      ctx.fillStyle = '#2c4a52';
+      ctx.fillRect(px + 8, py - 4, 8, 12);
+      ctx.save();
+      ctx.translate(px + w - 15, cy + 4);
+      ctx.rotate(b.id + px * 0.001);
+      ctx.fillStyle = main;
+      for (let i = 0; i < 6; i++) { ctx.rotate(Math.PI / 3); ctx.fillRect(-2.6, -12, 5.2, 6); }
+      ctx.restore();
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(px + w - 15, cy + 4, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      // Дом (депо): низкий блок с шевронами и маячком.
+      ctx.fillStyle = '#1d3b46';
+      rr(ctx, cx - w * 0.34, cy - h * 0.26, w * 0.68, h * 0.52, 6); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.fillRect(px + 5, cy - h * 0.26, w - 10, 4);
+      ctx.fillStyle = '#0b1b24';
+      for (let i = 0; i < 2; i++) {
+        const bx = px + 9 + i * 17;
+        ctx.beginPath();
+        ctx.moveTo(bx, cy - 4);
+        ctx.lineTo(bx + 8, cy + 2);
+        ctx.lineTo(bx, cy + 8);
+        ctx.lineTo(bx + 4, cy + 2);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
   }
 
-  // Лесах стройки: жёлтые подкосы + полоса прогресса.
+  // Стройплощадка: тёмная заливка, штриховка, прогресс-бар.
   if (!b.done) {
-    ctx.strokeStyle = '#d8b13a';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px + 2, py + 2, w - 4, h - 4);
+    ctx.fillStyle = 'rgba(8,18,23,0.48)';
+    ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(px + 2, py + 2); ctx.lineTo(px + w - 2, py + h - 2);
-    ctx.moveTo(px + w - 2, py + 2); ctx.lineTo(px + 2, py + h - 2);
-    ctx.stroke();
-    ctx.fillStyle = '#1a1012';
-    ctx.fillRect(px, py - 8, w, 6);
-    ctx.fillStyle = '#e8c04a';
-    ctx.fillRect(px, py - 8, w * Math.min(1, b.progress), 6);
+    ctx.rect(px + 5, py + 5, w - 10, h - 10);
+    ctx.clip();
+    ctx.strokeStyle = main; ctx.lineWidth = 1;
+    for (let i = 0; i < w + h; i += 13) {
+      ctx.beginPath();
+      ctx.moveTo(px + 5 + i, py + 5);
+      ctx.lineTo(px + 5 + i - (h - 10), py + h - 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(4,15,19,0.88)';
+    ctx.fillRect(px + 4, py + h - 12, w - 8, 6);
+    ctx.fillStyle = isP ? '#8cedcc' : '#ffb078';
+    ctx.fillRect(px + 5, py + h - 11, (w - 10) * Math.min(1, b.progress), 4);
   } else {
-    // Контур выделения и полоска здоровья.
     if (b.selected) {
-      ctx.strokeStyle = '#4dff7a';
+      ctx.strokeStyle = bright;
       ctx.lineWidth = 2;
-      ctx.strokeRect(px - 2, py - 2, w + 4, h + 4);
+      ctx.setLineDash([7, 4]);
+      ctx.strokeRect(px - 3, py - 3, w + 6, h + 6);
+      ctx.setLineDash([]);
     }
     if (b.hp < b.maxHp || b.selected) {
       const frac = Math.max(0, b.hp / b.maxHp);
-      ctx.fillStyle = '#1a1012';
-      ctx.fillRect(px, py - 8, w, 6);
-      ctx.fillStyle = frac > 0.5 ? '#4be36a' : frac > 0.25 ? '#e8c04a' : '#e04b3f';
-      ctx.fillRect(px + 1, py - 7, (w - 2) * frac, 4);
+      ctx.fillStyle = 'rgba(4,15,19,0.88)';
+      ctx.fillRect(px + 2, py - 9, w - 4, 6);
+      ctx.fillStyle = frac < 0.33 ? '#ff806e' : isP ? '#8cedcc' : '#ffb078';
+      ctx.fillRect(px + 3, py - 8, (w - 6) * frac, 4);
     }
   }
 
   // Вспышка от полученного урона.
   if (b.flashT > 0) {
-    ctx.fillStyle = `rgba(255,255,255,${b.flashT * 2.5})`;
-    ctx.fillRect(px, py, w, h);
+    ctx.fillStyle = `rgba(255,255,255,${b.flashT * 1.8})`;
+    rr(ctx, px + 5, py + 4, w - 10, h - 10, 8); ctx.fill();
   }
   ctx.restore();
 }

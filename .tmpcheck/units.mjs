@@ -9,7 +9,7 @@ import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME,
   REPAIR_HP_PER_MINERAL, COLORS, fname,
 } from './config.js';
-import { pathToPoint, pathToRect, distToRectPx } from './pathfinding.js';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos } from './pathfinding.js';
 
 let nextId = 1;
 
@@ -58,6 +58,12 @@ export class Unit {
     this.cd = 0;                      // перезарядка атаки
     this.scanT = Math.random() * 0.3; // таймер автопоиска цели
     this.repathT = 0;
+    // Анти-застревание: сколько секунд «топчемся на месте» с активным
+    // приказом; счётчик неудачных достроек пути; окно бокового обхода.
+    this.stuckT = 0;
+    this.repaths = 0;
+    this.forceRepath = false;
+    this.nudgeT = 0;
     this.carrying = 0;                // груз минералов
     this.phase = null;                // подстадия добычи
     this.mineT = 0;
@@ -99,9 +105,10 @@ export class SpatialGrid {
 // ------------------------------------------------------------
 export function orderMove(st, u, x, y) {
   if (u.garrison) return; // сидящего в бункере нельзя командовать
-  u.order = { kind: 'move', x, y };
+  u.order = { kind: 'move', x, y, gx: x, gy: y }; // цель помним для репаса
   u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, x, y);
   u.pathI = 0;
+  u.repaths = 0; u.stuckT = 0; u.forceRepath = false;
 }
 
 // Группа идёт в точку «перемешанным строем»: каждой единице свой
@@ -126,6 +133,7 @@ export function orderAttackMove(st, u, x, y) {
   u.order = { kind: 'attackMove', x, y, target: null };
   u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, x, y);
   u.pathI = 0;
+  u.repaths = 0; u.stuckT = 0; u.forceRepath = false;
 }
 
 export function orderGather(st, u, crystal, excludeFail) {
@@ -296,7 +304,20 @@ function updateOrderByKind(st, u, dt, grid) {
       break;
     }
     case 'move': {
-      if (followPath(u)) orderStop(u);
+      // Маршрут мог стать непроходимым (на дороге построили здание) —
+      // раз в 0.5 c проверяем ближайшие точки пути; глубоко застрявших
+      // (толпа в узком проходе) тоже пересчитываем.
+      repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, o.gx, o.gy), 0.5);
+      if (followPath(u)) {
+        // Путь кончился, а до цели ещё далеко (частичный путь из A*) —
+        // достраиваем; после двух неудач честно останавливаемся.
+        const gd = Math.hypot(o.gx - u.x, o.gy - u.y);
+        if (gd > TILE && (u.repaths || 0) < 2) {
+          u.repaths = (u.repaths || 0) + 1;
+          u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, o.gx, o.gy);
+          u.pathI = 0;
+        } else orderStop(u);
+      }
       break;
     }
     case 'attack': updateAttack(st, u, dt, grid); break;
@@ -419,16 +440,62 @@ function updateHeal(st, u, dt) {
     u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y);
     u.pathI = 0;
   }
+  repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y));
   if (followPath(u)) u.path = null;
+}
+
+// ----------------------------------------------------------
+// Пересчёт «протухшего» пути. Две проверки:
+//   1) ближайшие точки пути попали в запрещённые тайлы (дом построили
+//      прямо на точке маршрута);
+//   2) ОТРЕЗКИ пути перестали быть прямыми: сглаженный путь состоит из
+//      LOS-отрезков, и часто это вообще одна точка-цель. Новый дом на
+//      отрезке точки не портит, но прямой проход перекрывает — раньше
+//      юнит в этом случае навсегда шёл в стену (проверки точек не видели
+//      проблемы, а путь пересчитывался только по ним).
+// Застрявших в толпе (forceRepath от интегратора) тоже пересчитываем.
+// Не чаще раза в interval секунд.
+// ----------------------------------------------------------
+function repathIfBlocked(st, u, make, interval = 0.7) {
+  if (!u.path || !u.path.length) return;
+  const force = u.forceRepath;
+  if (u.repathT > 0 && !force) return;
+  u.repathT = interval;
+  u.forceRepath = false;
+  for (let k = u.pathI; k < Math.min(u.path.length, u.pathI + 3); k++) {
+    const wp = u.path[k];
+    if (st.map.blockedAt((wp.x / TILE) | 0, (wp.y / TILE) | 0)) {
+      u.path = make(); u.pathI = 0;
+      return;
+    }
+  }
+  let ax = (u.x / TILE) | 0, ay = (u.y / TILE) | 0;
+  for (let k = u.pathI; k < u.path.length; k++) {
+    const bx = (u.path[k].x / TILE) | 0, by = (u.path[k].y / TILE) | 0;
+    if (!hasLos(st.map, ax, ay, bx, by)) { u.path = make(); u.pathI = 0; return; }
+    ax = bx; ay = by;
+  }
+  if (force) { u.path = make(); u.pathI = 0; }
 }
 
 // Движение по пути: true — путь завершён.
 function followPath(u) {
   if (!u.path || u.pathI >= u.path.length) return true;
+  // Расталкивание могло сместить юнита с линии маршрута: если следующая
+  // точка уже ближе текущей — пропускаем её (анти-«пила» на поворотах).
+  while (u.pathI + 1 < u.path.length) {
+    const a = u.path[u.pathI], b = u.path[u.pathI + 1];
+    if (Math.hypot(b.x - u.x, b.y - u.y) + 4 < Math.hypot(a.x - u.x, a.y - u.y)) u.pathI++;
+    else break;
+  }
   const wp = u.path[u.pathI];
   const dx = wp.x - u.x, dy = wp.y - u.y;
   const d = Math.hypot(dx, dy);
-  const tol = u.pathI === u.path.length - 1 ? 8 : TILE * 0.35;
+  const final = u.pathI === u.path.length - 1;
+  // Допуск растёт вместе с корпусом: крупная единица (r=14) не должна
+  // вечно «крутиться» вокруг точки, к которой не может подойти вплотную
+  // из-за соседей/стен — раньше это выглядело как застревание на маршруте.
+  const tol = final ? Math.max(9, u.r * 0.75) : Math.max(TILE * 0.4, u.r * 0.7);
   if (d <= tol) { u.pathI++; return u.pathI >= u.path.length; }
   u.moveDir = { x: dx / d, y: dy / d };
   return false;
@@ -553,6 +620,7 @@ function updateGather(st, u, dt) {
         }
       }
     }
+    repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: c.tx, y: c.ty, w: 1, h: 1 }));
     if (followPath(u)) u.path = null;
     return;
   }
@@ -602,6 +670,7 @@ function updateGather(st, u, dt) {
       u.path = pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: drop.tx, y: drop.ty, w: drop.w, h: drop.h });
       u.pathI = 0;
     }
+    repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: drop.tx, y: drop.ty, w: drop.w, h: drop.h }));
     if (followPath(u)) u.path = null;
     return;
   }
@@ -638,6 +707,7 @@ function updateBuild(st, u, dt) {
     u.path = pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: b.tx, y: b.ty, w: b.w, h: b.h });
     u.pathI = 0;
   }
+  repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: b.tx, y: b.ty, w: b.w, h: b.h }));
   if (followPath(u)) u.path = null;
 }
 
@@ -682,6 +752,9 @@ function updateRepair(st, u, dt) {
       : pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y);
     u.pathI = 0;
   }
+  repathIfBlocked(st, u, () => isB
+    ? pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: t.tx, y: t.ty, w: t.w, h: t.h })
+    : pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y));
   if (followPath(u)) u.path = null;
 }
 
@@ -760,18 +833,50 @@ function nearestEnemyEntity(st, u, maxD) {
 
 // ------------------------------------------------------------
 // Интеграция движения: скорость по пути + мягкое расталкивание,
-// скольжение вдоль стен (раздельно по осям).
+// скольжение вдоль стен (раздельно по осям) + анти-застревание:
+// детекция «топтания на месте» с боковым обходом и форс-репасом.
 // ------------------------------------------------------------
 function integrate(st, u, dt, grid) {
   let vx = 0, vy = 0;
   if (u.moveDir) {
-    vx = u.moveDir.x * u.cfg.speed;
-    vy = u.moveDir.y * u.cfg.speed;
+    let dir = u.moveDir;
+    u.nudgeT = Math.max(0, (u.nudgeT || 0) - dt);
+    // Застревание: намерение идти есть, но позиции почти не меняются —
+    // пробуем обойти препятствие под углом («танец» вокруг пробки).
+    if (u.stuckT > 0.35 && u.nudgeT <= 0) {
+      const base = Math.atan2(dir.y, dir.x);
+      const r2 = u.r * 0.8;
+      const free = (a) => !hitWall(st.map, u.x + Math.cos(a) * 10, u.y + Math.sin(a) * 10, r2);
+      let picked = null;
+      for (const off of [0.7, -0.7, 1.4, -1.4, 2.2, -2.2]) {
+        const a = base + off;
+        if (free(a)) { picked = a; break; }
+      }
+      if (picked != null) {
+        dir = { x: Math.cos(picked), y: Math.sin(picked) };
+        u.nudgeT = 0.35;
+      }
+    }
+    vx = dir.x * u.cfg.speed;
+    vy = dir.y * u.cfg.speed;
     const sep = separation(u, grid);
     vx += sep.x * 42; vy += sep.y * 42;
   }
   u.moving = Math.abs(vx) + Math.abs(vy) > 1;
   if (vx || vy) tryMove(st.map, u, vx * dt, vy * dt);
+  // Учёт застревания: сколько секунд фактически стоим при активном
+  // приказе. Долго стояим — форсируем пересчёт пути от текущей точки.
+  const disp = Math.hypot(u.x - u.prevX, u.y - u.prevY);
+  if (u.moveDir) {
+    if (disp < u.cfg.speed * dt * 0.3) {
+      u.stuckT += dt;
+      if (u.stuckT > 1.1) { u.stuckT = 0.7; u.forceRepath = true; }
+    } else {
+      u.stuckT = Math.max(0, u.stuckT - dt * 2);
+    }
+  } else {
+    u.stuckT = 0;
+  }
   if (u.moving) u.angle = Math.atan2(vy, vx);
   u.moveDir = null;
 }
@@ -803,7 +908,11 @@ function resolveHard(st, u, grid) {
   });
 }
 
-// Выталкивание из прямоугольников зданий (юнит не может пройти сквозь).
+// Выталкивание из прямоугольников зданий. Ключевой фикс «застрял в
+// здании»: раньше толкали через tryMove, но у юнита внутри корпуса ВСЕ
+// соседние клетки — «стены», проверка стен блокировала любое движение,
+// и юнит оставался внутри навсегда. Теперь толкаем напрямую (направление
+// всё равно наружу), с запасом, чтобы углы корпуса вышли из blocked-зоны.
 function resolveBuildings(st, u) {
   for (const b of st.buildings) {
     if (b.dead) continue;
@@ -813,16 +922,33 @@ function resolveBuildings(st, u) {
     let dx = u.x - cx, dy = u.y - cy;
     let d = Math.hypot(dx, dy);
     if (d === 0) {
-      // центр внутри здания — выталкиваем к ближайшей грани
+      // Центр внутри корпуса — выталкиваем к ближайшей грани напрямую.
       const left = u.x - rx, right = rx + rw - u.x, top = u.y - ry, bottom = ry + rh - u.y;
       const m = Math.min(left, right, top, bottom);
-      if (m === left) tryMove(st.map, u, -(left + u.r), 0);
-      else if (m === right) tryMove(st.map, u, right + u.r, 0);
-      else if (m === top) tryMove(st.map, u, 0, -(top + u.r));
-      else tryMove(st.map, u, 0, bottom + u.r);
-    } else if (d < u.r + 1) {
+      if (m === left) u.x -= left + u.r + 3;
+      else if (m === right) u.x += right + u.r + 3;
+      else if (m === top) u.y -= top + u.r + 3;
+      else u.y += bottom + u.r + 3;
+      u.prevX = u.x; u.prevY = u.y; // без рывка интерполяции
+      u.path = null;                // старый маршрут мог стать бессмысленным
+    } else if (d < u.r) {
       dx /= d; dy /= d;
-      tryMove(st.map, u, dx * (u.r + 1 - d), dy * (u.r + 1 - d));
+      u.x += dx * (u.r + 3 - d);
+      u.y += dy * (u.r + 3 - d);
+      u.prevX = u.x; u.prevY = u.y;
+    }
+  }
+  // Страховка: если центр юнита оказался в непроходимой клетке (зажат
+  // между зданиями и скалой) — переносим на ближайший свободный тайл.
+  // Срабатывает редко, зато «застрявших в зданиях» больше не остаётся.
+  const tx = (u.x / TILE) | 0, ty = (u.y / TILE) | 0;
+  if (st.map.blockedAt(tx, ty)) {
+    const spot = nearestFreeTileAround(st.map, tx, ty, 1, 1);
+    if (spot) {
+      u.x = (spot.x + 0.5) * TILE;
+      u.y = (spot.y + 0.5) * TILE;
+      u.prevX = u.x; u.prevY = u.y;
+      u.path = null;
     }
   }
 }
@@ -990,25 +1116,52 @@ export function crystalAt(st, wx, wy) {
 
 // ------------------------------------------------------------
 // Отрисовка юнита (rx, ry — уже интерполированная позиция).
+// Визуальный язык «Рубежа 64»: тёмные корпуса, командная палитра
+// (бирюза игрока / оранж врага), светящиеся ядра, мягкие тени.
 // ------------------------------------------------------------
+function rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 export function drawUnit(ctx, u, rx, ry) {
   const isP = u.side === 'player';
-  const base = isP ? COLORS.player : COLORS.enemy;
+  const main = isP ? COLORS.player : COLORS.enemy;
   const dark = isP ? COLORS.playerDark : COLORS.enemyDark;
+  const bright = isP ? COLORS.playerBright : COLORS.enemyBright;
+  const bio = '#9ff5b8';        // свечение органики кхарид
+  const amber = '#f3c579';      // акценты техники Гелиоса
+  const alien = u.faction === 'alien';
 
-  // Тень.
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  // Тень под корпусом.
+  ctx.fillStyle = 'rgba(0,8,13,0.47)';
   ctx.beginPath();
-  ctx.ellipse(rx, ry + 5, u.r * 0.95, u.r * 0.55, 0, 0, Math.PI * 2);
+  ctx.ellipse(rx, ry + 6, u.r + 3, u.r * 0.55, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // Кольцо выделения.
+  if (u.selected) {
+    ctx.strokeStyle = bright;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.ellipse(rx, ry + 2, u.r + 6, u.r + 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   ctx.save();
   ctx.translate(rx, ry);
   ctx.rotate(u.angle);
-  const alien = u.faction === 'alien';
-  if (u.type === 'worker') {
-    if (alien) {
-      // Сборщик кхарид: кольчатое тельце с лапками и сумкой для кристаллов.
+
+  if (alien) {
+    // ============ КХАРИД: кристаллическая органика ============
+    if (u.type === 'worker') {
+      // Собиратель: кольчатое тельце, лапки, светлое ядро-фонарь.
       ctx.strokeStyle = dark; ctx.lineWidth = 2;
       for (let i = 0; i < 3; i++) {
         const lx = -6 + i * 6;
@@ -1017,51 +1170,30 @@ export function drawUnit(ctx, u, rx, ry) {
       }
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(-3, 0, 7, 9, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(2, 0, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
+      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(6, 0, 3, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Корпус + оранжевый рюкзак-инструментарий.
-      ctx.fillStyle = dark;
-      ctx.fillRect(-9, -5, 5, 10);
-      ctx.fillStyle = base;
-      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#f0a53a';
-      ctx.fillRect(-12, -4, 4, 8);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(3, 0, 3.4, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'marine') {
-    if (alien) {
-      // Жалящий: ползун с гребнем шипов и светящейся пастью.
+      ctx.shadowBlur = 0;
+    } else if (u.type === 'marine') {
+      // Кристожал: ползун с гребнем светящихся шипов и пастью.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(-2, 0, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#9ff5b8';
+      ctx.fillStyle = bio;
       for (let i = 0; i < 3; i++) {
         ctx.beginPath();
         ctx.moveTo(-8 + i * 5, -4); ctx.lineTo(-6 + i * 5, -12); ctx.lineTo(-4 + i * 5, -4);
         ctx.closePath(); ctx.fill();
       }
-      ctx.fillStyle = '#eafff0';
+      ctx.shadowColor = bright; ctx.shadowBlur = 7;
+      ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(9, 0, 2.6, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Морпех: корпус + плечи + ствол.
-      ctx.fillStyle = dark;
-      ctx.fillRect(-7, -8, 5, 16);
-      ctx.fillRect(-7, 3, 5, 5);
-      ctx.fillStyle = base;
-      ctx.beginPath(); ctx.arc(0, 0, 9.5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(4, -2, 14, 4);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(3, 0, 3.2, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'buggy') {
-    if (alien) {
-      // Скорч: четвероногий хищник с хвостом.
+      ctx.shadowBlur = 0;
+    } else if (u.type === 'buggy') {
+      // Скользень: четвероногий хищник, светящиеся глаза-точки.
       ctx.strokeStyle = dark; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-6, -5); ctx.lineTo(-13, -12); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-6, 5); ctx.lineTo(-13, 12); ctx.stroke();
@@ -1069,164 +1201,213 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.moveTo(6, 5); ctx.lineTo(13, 12); ctx.stroke();
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(-4, 0, 10, 7, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3, 0, 8, 5.4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#9ff5b8';
+      ctx.shadowColor = bio; ctx.shadowBlur = 6;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(9, -2, 2.2, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(9, 2, 2.2, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Багги: колёса, клиновидный корпус, пулемёт.
-      ctx.fillStyle = '#23262b';
-      ctx.fillRect(-9, -11, 7, 5); ctx.fillRect(3, -11, 7, 5);
-      ctx.fillRect(-9, 6, 7, 5);  ctx.fillRect(3, 6, 7, 5);
-      ctx.fillStyle = dark;
-      ctx.fillRect(-11, -6, 7, 12);
-      ctx.fillStyle = base;
-      ctx.beginPath();
-      ctx.moveTo(-6, -7); ctx.lineTo(10, -3); ctx.lineTo(10, 3); ctx.lineTo(-6, 7);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(7, -1.5, 11, 3);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(2, 0, 3, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'tank') {
-    if (alien) {
-      // Колосс: исполин с кристалльными рогами и светящимся ядром.
+      ctx.shadowBlur = 0;
+    } else if (u.type === 'tank') {
+      // Громила: исполин с кристаллическими рогами и ядром во лбу.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(0, 0, 17, 13, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(2, 0, 13, 9.4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#b7f0c8';
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.moveTo(-2, -9); ctx.lineTo(3, -20); ctx.lineTo(8, -8); ctx.closePath(); ctx.fill();
       ctx.beginPath(); ctx.moveTo(-2, 9); ctx.lineTo(3, 20); ctx.lineTo(8, 8); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#eafff0';
+      ctx.shadowColor = bright; ctx.shadowBlur = 9;
+      ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(10, 0, 4, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Танк: гусеницы, корпус, башня со стволом.
-      ctx.fillStyle = '#23262b';
-      ctx.fillRect(-15, -13, 30, 7);
-      ctx.fillRect(-15, 6, 30, 7);
-      ctx.fillStyle = dark;
-      ctx.fillRect(-13, -8, 25, 16);
-      ctx.fillStyle = base;
-      ctx.fillRect(-11, -6, 22, 12);
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(3, -2.5, 21, 5);
-      ctx.beginPath(); ctx.arc(-1, 0, 8.5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(2, 0, 3.4, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'medic') {
-    if (alien) {
-      // Спорыш: приземистая капля с растущим ростком-свечой.
+      ctx.shadowBlur = 0;
+    } else if (u.type === 'medic') {
+      // Цветень: капля с ростком-свечой на спине.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(-2, 0, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#b7f0c8'; ctx.lineWidth = 2;
+      ctx.strokeStyle = bio; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-2, -4); ctx.lineTo(-2, -12); ctx.stroke();
-      ctx.fillStyle = '#9ff5b8';
+      ctx.shadowColor = bio; ctx.shadowBlur = 8;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-2, -13, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#eafff0';
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(6, 0, 2.6, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // Медик: белый комбинезон, красный крест, короткий карабин.
-      ctx.fillStyle = dark;
-      ctx.fillRect(-8, -6, 4, 12);
-      ctx.fillStyle = '#e8edf4';
-      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#e04b3f';
-      ctx.fillRect(-2, -6, 4, 12); ctx.fillRect(-6, -2, 12, 4);
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(5, -1.5, 9, 3);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(3, 0, 3, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'flamer') {
-    if (alien) {
-      // Жгут: пузатый ползун с оранжевой пастью-соплом.
+    } else if (u.type === 'flamer') {
+      // Кислотник: пузатый плевун с раскалённым соплом.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(-1, 0, 11, 9, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(2, 0, 8, 6.6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#f0a53a';
+      ctx.shadowColor = '#ffb36b'; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffb36b';
       ctx.fillRect(8, -3, 8, 6);
-      ctx.fillStyle = '#9ff5b8';
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-5, -5, 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(-5, 5, 2.4, 0, Math.PI * 2); ctx.fill();
     } else {
-      // Огнемётчик: широкий корпус, баллон за спиной, толстое сопло.
-      ctx.fillStyle = '#7a3428';
-      ctx.fillRect(-11, -5, 5, 10);
-      ctx.fillStyle = dark;
-      ctx.fillRect(-6, -8, 5, 16);
-      ctx.fillStyle = base;
-      ctx.beginPath(); ctx.arc(0, 0, 9.5, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#e04b3f';
-      ctx.fillRect(4, -3.5, 6, 7);
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(10, -2, 8, 4);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(3, 0, 3.2, 0, Math.PI * 2); ctx.fill();
-    }
-  } else if (u.type === 'arty') {
-    if (alien) {
-      // Метатель: огромный червь с вздутой спиной-мортирой.
+      // Спогром: огромный червь со спорной мортирой на спине.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(0, 0, 18, 14, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = base;
+      ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3, 0, 13, 9.6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#241c34';
       ctx.beginPath(); ctx.ellipse(-4, 0, 7, 9, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#2c3138'; ctx.lineWidth = 4;
+      ctx.strokeStyle = '#241c34'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(-4, -8); ctx.lineTo(-14, -16); ctx.stroke();
-      ctx.fillStyle = '#b7f0c8';
+      ctx.shadowColor = bio; ctx.shadowBlur = 7;
+      ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-14, -17, 3.4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#eafff0';
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(12, 0, 3.6, 0, Math.PI * 2); ctx.fill();
-    } else {
-      // САУ: длинное орудие на гусеничной платформе, сошник сзади.
-      ctx.fillStyle = '#23262b';
-      ctx.fillRect(-14, -12, 26, 6);
-      ctx.fillRect(-14, 6, 26, 6);
+    }
+  } else {
+    // ============ ГЕЛИОС: ховер-техника и плазма ============
+    if (u.type === 'worker') {
+      // Дрон-техник: парящий корпус, лифты-подсветка, манипуляторы.
+      ctx.fillStyle = '#0f232b';
+      ctx.fillRect(-3, -11, 6, 3); ctx.fillRect(-3, 8, 6, 3);
+      ctx.shadowColor = main; ctx.shadowBlur = 5;
+      ctx.fillStyle = main;
+      ctx.fillRect(-3, -9, 6, 2); ctx.fillRect(-3, 7, 6, 2);
+      ctx.shadowBlur = 0;
       ctx.fillStyle = dark;
-      ctx.fillRect(-12, -7, 22, 14);
-      ctx.fillStyle = base;
-      ctx.fillRect(-9, -5, 18, 10);
-      ctx.fillStyle = '#2c3138';
-      ctx.fillRect(6, -2, 26, 4);
-      ctx.fillRect(-13, -3, 4, 6);
-      ctx.fillStyle = '#d7e3f5';
-      ctx.beginPath(); ctx.arc(1, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+      rr(ctx, -9, -7, 18, 14, 5); ctx.fill();
+      ctx.fillStyle = main;
+      rr(ctx, -6, -4, 12, 8, 3); ctx.fill();
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(3, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = amber;
+      ctx.fillRect(7, -6, 4, 3); ctx.fillRect(7, 3, 4, 3);
+    } else if (u.type === 'marine') {
+      // Рейнджер: шестигранный корпус, ствол, визор-ядро.
+      ctx.fillStyle = '#1c2f36';
+      ctx.beginPath();
+      ctx.moveTo(10, 0); ctx.lineTo(4, -9); ctx.lineTo(-7, -9); ctx.lineTo(-10, 0);
+      ctx.lineTo(-7, 9); ctx.lineTo(4, 9);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.beginPath();
+      ctx.moveTo(7, 0); ctx.lineTo(2, -6); ctx.lineTo(-6, -6); ctx.lineTo(-8, 0);
+      ctx.lineTo(-6, 6); ctx.lineTo(2, 6);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.fillRect(0, -3, 5, 6);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#16262b';
+      ctx.fillRect(6, -1.6, 12, 3.2);
+      ctx.fillStyle = amber;
+      ctx.fillRect(-9, -10, 4, 4); ctx.fillRect(-9, 6, 4, 4);
+    } else if (u.type === 'buggy') {
+      // Скиф: стреловидный ховер, свечение двигателей.
+      ctx.fillStyle = '#12303a';
+      ctx.beginPath();
+      ctx.moveTo(13, 0); ctx.lineTo(-8, -10); ctx.lineTo(-5, 0); ctx.lineTo(-8, 10);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#0d1f26';
+      ctx.fillRect(-9, -12, 5, 4); ctx.fillRect(-9, 8, 5, 4);
+      ctx.shadowColor = bright; ctx.shadowBlur = 7;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(1, 0, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(197,255,241,0.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(-2, 0, 13 + Math.sin(u.id * 1.7) * 2, -0.5, 0.6); ctx.stroke();
+    } else if (u.type === 'tank') {
+      // Бастион: широкий ховер-корпус, спарка осколочных стволов.
+      ctx.fillStyle = '#0d2129';
+      ctx.fillRect(-16, -14, 8, 5); ctx.fillRect(-16, 9, 8, 5);
+      ctx.shadowColor = main; ctx.shadowBlur = 4;
+      ctx.fillStyle = main;
+      ctx.fillRect(-14, -14, 5, 4); ctx.fillRect(-14, 10, 5, 4);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = dark;
+      rr(ctx, -15, -12, 29, 24, 7); ctx.fill();
+      ctx.fillStyle = main;
+      rr(ctx, -11, -9, 22, 18, 5); ctx.fill();
+      ctx.fillStyle = bright;
+      ctx.fillRect(-1, -4, 6, 8);
+      ctx.fillStyle = '#16262b';
+      ctx.fillRect(9, -7, 16, 3.4); ctx.fillRect(9, 3.6, 16, 3.4);
+      ctx.fillStyle = amber;
+      ctx.fillRect(-17, -6, 4, 12);
+    } else if (u.type === 'medic') {
+      // Нанит: круглый дрон-носитель с крестом наномедицины.
+      ctx.fillStyle = '#223a42';
+      ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = main; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, 8.4, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.fillRect(-2, -7, 4, 14); ctx.fillRect(-7, -2, 14, 4);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = main;
+      ctx.fillRect(-14, -3, 4, 6); ctx.fillRect(10, -3, 4, 6);
+    } else if (u.type === 'flamer') {
+      // Плазмер: приземистый корпус с раскалённым плазменным соплом.
+      ctx.fillStyle = '#4a2c22';
+      rr(ctx, -12, -5, 6, 10, 2); ctx.fill();
+      ctx.fillStyle = dark;
+      rr(ctx, -8, -8, 15, 16, 5); ctx.fill();
+      ctx.fillStyle = main;
+      ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = '#ffb36b'; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffb36b';
+      ctx.fillRect(4, -3.5, 7, 7);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#16262b';
+      ctx.fillRect(10, -2, 9, 4);
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(-4, -6, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-4, 6, 2, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Мортира «Нова»: длинная платформа, поднятый ствол-мортира.
+      ctx.fillStyle = '#0d2129';
+      ctx.fillRect(-15, -12, 27, 5); ctx.fillRect(-15, 7, 27, 5);
+      ctx.fillStyle = dark;
+      rr(ctx, -13, -7, 23, 14, 4); ctx.fill();
+      ctx.fillStyle = main;
+      rr(ctx, -10, -5, 18, 10, 3); ctx.fill();
+      ctx.fillStyle = '#16262b';
+      ctx.fillRect(5, -2, 24, 4);
+      ctx.fillStyle = amber;
+      ctx.fillRect(-14, -3, 4, 6);
+      ctx.shadowColor = bright; ctx.shadowBlur = 5;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(0, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
     }
   }
-  // Груз минералов на спине.
+
+  // Груз кристалла на спине (рабочие) — светится, как в Рубеже 64.
   if (u.carrying > 0) {
+    ctx.shadowColor = COLORS.mineral; ctx.shadowBlur = 8;
     ctx.fillStyle = COLORS.mineral;
-    ctx.beginPath(); ctx.arc(-8, 0, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-9, -4); ctx.lineTo(-5, -8); ctx.lineTo(-2, -4); ctx.lineTo(-6, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
   }
   if (u.flashT > 0) {
-    ctx.fillStyle = `rgba(255,255,255,${u.flashT * 3})`;
-    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${u.flashT * 2.8})`;
+    ctx.beginPath(); ctx.arc(0, 0, u.r + 2, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 
-  // Кольцо выделения.
-  if (u.selected) {
-    ctx.strokeStyle = '#4dff7a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(rx, ry + 3, 13, 9, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // Полоска здоровья — у выделенных и раненых.
+  // Полоска здоровья — у выделенных и раненых (цвета команды).
   if (u.selected || u.hp < u.maxHp) {
-    const w = u.cfg.vehicle ? 34 : 24, x0 = rx - w / 2, y0 = ry - 19;
+    const w = u.cfg.vehicle ? 34 : 25, x0 = rx - w / 2, y0 = ry - u.r - 12;
     const frac = Math.max(0, u.hp / u.maxHp);
-    ctx.fillStyle = '#1a1012';
-    ctx.fillRect(x0 - 1, y0 - 1, w + 2, 5);
-    ctx.fillStyle = frac > 0.5 ? '#4be36a' : frac > 0.25 ? '#e8c04a' : '#e04b3f';
-    ctx.fillRect(x0, y0, w * frac, 3);
+    ctx.fillStyle = 'rgba(4,15,19,0.88)';
+    ctx.fillRect(x0 - 1, y0 - 1, w + 2, 6);
+    ctx.fillStyle = frac < 0.33 ? '#ff806e' : isP ? '#8cedcc' : '#ffb078';
+    ctx.fillRect(x0, y0, w * frac, 4);
   }
 }

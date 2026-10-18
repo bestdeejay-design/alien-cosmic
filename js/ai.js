@@ -69,7 +69,7 @@ export class AIController {
         wave.push(u);
       }
     }
-    // Поздние волны разнообразятся по профилю: жгуты — каждая вторая, САУ — каждая пятая.
+    // Поздние волны разнообразятся по профилю: кислотники — каждая вторая, мортиры — каждая пятая.
     if (this.defWaveNum % 2 === 0 && this.p.flamers > 0) {
       for (let i = 0; i < 2; i++) {
         wave.push(spawnUnit(st, 'enemy', 'flamer', cc.x + (Math.random() - 0.5) * TILE * 4, cc.y + TILE * 2.5));
@@ -166,7 +166,7 @@ export class AIController {
       }
     }
 
-    // 5c) Казармы производят смешанную пехоту по профилю: жгуты → медики → морпехи.
+    // 5c) Казармы производят смешанную пехоту по профилю: кислотники → наниты → рейнджеры.
     const cnt = (type) => st.units.filter((u) => mine(u) && u.type === type).length;
     const queued = (b, type) => b.queue.filter((q) => q.type === type).length;
     for (const br of barracks) {
@@ -191,7 +191,7 @@ export class AIController {
       }
     }
 
-    // 7) Завод техники и техника — по профилю миссии (САУ приоритетнее танка).
+    // 7) Завод техники и техника — по профилю миссии (мортиры приоритетнее бастионов).
     if (P.factory && barracks.some((b) => b.done)) {
       const factories = st.buildings.filter((b) => mine(b) && b.type === 'factory');
       if (!factories.length && money >= BUILDINGS.factory.cost + 50) {

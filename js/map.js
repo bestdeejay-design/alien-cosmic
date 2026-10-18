@@ -344,6 +344,11 @@ export class GameMap {
       g.fillStyle = t === T_WATER ? B.water : t === T_ROCK ? B.rock[1] : B.ground;
       g.fillRect(x * 2, y * 2, 2, 2);
     }
+    // Осветляем: тёмный биом + туман съедали читаемость мини-карты.
+    g.globalAlpha = 0.17;
+    g.fillStyle = '#bfe8e2';
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalAlpha = 1;
     this.miniCanvas = c;
   }
 }
