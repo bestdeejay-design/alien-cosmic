@@ -204,6 +204,76 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
     errors.length === 0 && drawn === 42, errors.join('; ') || `${drawn}/42, вызовов ctx ${calls}, shadowBlur>0 ×${shadowSets}`);
 }
 
+// ---------- A10. drawBuilding: 8 зданий × 2 фракции × состояния ----------
+// Состояния: готово / повреждено / стройка / призрак / турель в бою /
+// бункер с гарнизоном. Проверяем отсутствие исключений и бюджет свечений.
+{
+  const { BUILDINGS } = await import('../js/config.js');
+  const B = await import('../js/buildings.js');
+  let shadowSets = 0, tooMuch = 0, nanArgs = 0;
+  const COORD_METHODS = new Set(['arc', 'ellipse', 'fillRect', 'strokeRect', 'rect',
+    'moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo', 'fillText']);
+  const mkCtx = () => new Proxy({ canvas: {} }, {
+    get: (t, k) => {
+      if (k in t) return t[k];
+      if (COORD_METHODS.has(k)) {
+        return (...a) => {
+          for (const v of a) if (typeof v === 'number' && !isFinite(v)) nanArgs++;
+        };
+      }
+      return (...a) => undefined;
+    },
+    set: (t, k, v) => {
+      if (k === 'shadowBlur' && v > 0) shadowSets++;
+      if (k === 'shadowBlur' && v > 9) tooMuch++;
+      t[k] = v; return true;
+    },
+  });
+  const types = Object.keys(BUILDINGS);
+  let drawn = 0;
+  const errors = [];
+  const mk = (faction, type, st) => {
+    const cfg = BUILDINGS[type];
+    return {
+      tx: 10, ty: 10, w: cfg.w, h: cfg.h, side: faction === 'human' ? 'player' : 'enemy',
+      type, cfg, faction, id: 1000 + drawn, angle: st === 4 ? 1.2 : -Math.PI / 4,
+      done: st !== 2, progress: st === 2 ? 0.45 : 1,
+      hp: st === 1 ? cfg.hp * 0.3 : cfg.hp, maxHp: cfg.hp,
+      flashT: st === 1 ? 0.1 : 0, selected: st === 0,
+      garrison: st === 5 && cfg.garrisonCap ? [{}, {}, {}] : [],
+      cd: st === 4 && cfg.attack ? cfg.cooldown * 0.6 : 0,
+    };
+  };
+  for (const faction of ['human', 'alien']) {
+    for (const type of types) {
+      for (let st = 0; st < 6; st++) {
+        // ст.3 = призрак (рисуем с ghost=true), ст.5 для не-бункеров пропускаем
+        if (st === 5 && !BUILDINGS[type].garrisonCap) continue;
+        try {
+          B.drawBuilding(mkCtx(), mk(faction, type, st), st === 3, 0, 0);
+          drawn++;
+        } catch (e) { errors.push(`${faction}/${type}s${st}: ${e.message}`); }
+      }
+    }
+  }
+  // Призрак стройки как в game.drawGhost: без id/cd — анимация не должна
+  // дать NaN-координаты (canvas бы молча ронял фигуры).
+  for (const [faction, type] of [['human', 'cc'], ['alien', 'turret'], ['human', 'wall']]) {
+    const cfg = BUILDINGS[type];
+    try {
+      B.drawBuilding(mkCtx(), {
+        tx: 10, ty: 10, w: cfg.w, h: cfg.h, side: 'player', type, cfg, faction,
+        angle: -Math.PI / 4, garrison: [], done: true, progress: 1,
+        hp: 1, maxHp: 1, flashT: 0, selected: false,
+      }, false, 0, 0);
+      drawn++;
+    } catch (e) { errors.push(`ghost-preview/${type}: ${e.message}`); }
+  }
+  ok('A10. drawBuilding: 8×2×состояния — без исключений, blur ≤ 9, координаты конечны',
+    errors.length === 0 && tooMuch === 0 && nanArgs === 0,
+    errors.join('; ') || `${drawn} отрисовок, shadowBlur>0 ×${shadowSets}, NaN-аргументов ${nanArgs}`);
+}
+
 // ---------- A8. Perf ----------
 {
   const m = maps[4];
