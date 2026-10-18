@@ -19,6 +19,7 @@ import { AIController } from './ai.js';
 import { MISSIONS, SKIRMISH, loadProgress, saveProgress } from './missions.js';
 import * as ui from './ui.js';
 import { attachInput, updateCamera } from './input.js';
+import { tr } from './lore.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -398,16 +399,18 @@ export class Game {
 
       train: (b, type) => {
         const r = B.enqueueUnit(st(), b, type);
-        if (r === 'money') { ui.toast('Не хватает минералов', 'error'); this.sound.error(); }
-        else if (r === 'queue') { ui.toast('Очередь заполнена', 'error'); this.sound.error(); }
+        const fac = st().factions.player;
+        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        else if (r === 'queue') { ui.toast(tr(fac, 'queueFull'), 'warn'); this.sound.error(); }
         else this.sound.click();
       },
 
       startResearch: (b, key) => {
         const r = B.startResearch(st(), b, key);
-        if (r === 'money') { ui.toast('Не хватает минералов', 'error'); this.sound.error(); }
-        else if (r === 'busy') { ui.toast('Лаборатория уже занята исследованием', 'error'); this.sound.error(); }
-        else if (r === 'max') { ui.toast('Улучшение изучено до предела', 'error'); }
+        const fac = st().factions.player;
+        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        else if (r === 'busy') { ui.toast(tr(fac, 'labBusy'), 'warn'); this.sound.error(); }
+        else if (r === 'max') { ui.toast(tr(fac, 'maxed'), 'error'); }
         else this.sound.click();
       },
 
@@ -460,7 +463,7 @@ export class Game {
         sel[0].side === 'player') {
       const rc = U.crystalAt(st, wx, wy);
       sel[0].rally = rc ? { x: wx, y: wy, crystal: rc } : { x: wx, y: wy };
-      U.addFloat(st, wx, wy, rc ? 'Сбор у кристалла' : 'Точка сбора', '#9be29e');
+      U.addFloat(st, wx, wy, rc ? tr(st.factions.player, 'rallyCrystal') : tr(st.factions.player, 'rallyPoint'), '#9be29e');
       this.sound.ack();
       return;
     }
@@ -540,22 +543,22 @@ export class Game {
     for (let y = ty; y < ty + cfg.h; y++)
       for (let x = tx; x < tx + cfg.w; x++)
         if (!st.fog.tileExplored(x, y)) {
-          ui.toast('Территория не разведана', 'error'); this.sound.error(); return;
+          ui.toast(tr(fac, 'unexplored'), 'error'); this.sound.error(); return;
         }
     // Требование технологии: у завода нужна казарма/инкубатор.
     if (cfg.requires) {
       const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
         b.type === cfg.requires && b.done);
       if (!ok) {
-        ui.toast('Сначала постройте: ' + fname(BUILDINGS[cfg.requires], fac), 'error');
+        ui.toast(tr(fac, 'requires') + fname(BUILDINGS[cfg.requires], fac), 'error');
         this.sound.error(); return;
       }
     }
     if (!B.canPlace(st.map, tx, ty, cfg.w, cfg.h)) {
-      ui.toast('Здесь строить нельзя', 'error'); this.sound.error(); return;
+      ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return;
     }
     if (st.minerals.player < cfg.cost) {
-      ui.toast('Не хватает минералов', 'error'); this.sound.error(); return;
+      ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); return;
     }
     const builders = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
       e.cfg.canBuild && !e.dead);
@@ -633,14 +636,15 @@ export class Game {
       }
       return;
     }
+    const fac = st.factions.player;
     if (st.bcount.enemy <= 0) {
-      this.win('Противник уничтожен!');
+      this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
       st.gameOver = 'lose';
       this.sound.lose();
-      ui.showEnd(false, st.stats, this.endOpts(false));
+      ui.showEnd(false, st.stats, this.endOpts(false, tr(fac, 'loseBase')));
     } else if (def && st.time >= def.prep + def.total) {
-      this.win('Шаттлы прибыли — оборона выстояла!');
+      this.win(tr(fac, 'winDefense'));
     }
   }
 
@@ -655,7 +659,7 @@ export class Game {
   // Опции экрана финала: следующая миссия, подпись причины.
   endOpts(win, reason) {
     const m = this.mission;
-    const opts = {};
+    const opts = { faction: m.faction };
     if (reason) opts.reason = reason;
     if (win && m.id >= 0 && m.id < MISSIONS.length - 1) {
       opts.next = MISSIONS[m.id + 1];
@@ -856,30 +860,51 @@ export class Game {
   }
 
   drawCrystal(ctx, c, camX, camY) {
+    // Друза из трёх осколков: задний тёмный, главный со свечением,
+    // передний светлый + мерцающая искра. Масштаб — от остатка.
     const s = 0.45 + 0.55 * (c.amount / c.max);
-    const now = performance.now();
-    const glint = Math.sin(now * 0.003 + c.x) * 1.8;
+    const tw = 0.5 + 0.5 * Math.sin(performance.now() * 0.004 + c.x * 0.7 + c.y);
     ctx.save();
     ctx.translate(c.x - camX, c.y - camY);
     ctx.fillStyle = 'rgba(5,19,24,0.45)';
-    ctx.beginPath(); ctx.ellipse(0, 9, 12 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2, 10, 13 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
     ctx.scale(s, s);
-    // Основная грань со свечением (язык «Рубежа 64»).
-    ctx.shadowColor = '#7ed9e7'; ctx.shadowBlur = 13;
+    // Осколки породы у основания.
+    ctx.fillStyle = '#22333a';
+    ctx.beginPath();
+    ctx.moveTo(-11, 10); ctx.lineTo(-6, 4); ctx.lineTo(-2, 10);
+    ctx.moveTo(4, 11); ctx.lineTo(9, 5); ctx.lineTo(12, 11);
+    ctx.fill();
+    // Задний осколок — тёмный.
+    ctx.fillStyle = '#2e6b7a';
+    ctx.beginPath();
+    ctx.moveTo(-9, 8); ctx.lineTo(-7, -10); ctx.lineTo(-3, -13); ctx.lineTo(-1, 9);
+    ctx.closePath(); ctx.fill();
+    // Главный осколок со свечением.
+    ctx.shadowColor = '#7ed9e7'; ctx.shadowBlur = 10;
     ctx.fillStyle = '#61b6c8';
     ctx.beginPath();
-    ctx.moveTo(0, -13 - glint); ctx.lineTo(10, -2); ctx.lineTo(5, 11); ctx.lineTo(-8, 9); ctx.lineTo(-10, -3);
+    ctx.moveTo(-4, 10); ctx.lineTo(-2, -12); ctx.lineTo(3, -16); ctx.lineTo(7, -4); ctx.lineTo(5, 10);
     ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
-    // Светлая и тёмная грани — объём.
+    // Грани главного: светлая и тёмная.
     ctx.fillStyle = '#b9f5ed';
     ctx.beginPath();
-    ctx.moveTo(0, -12 - glint); ctx.lineTo(3, 4); ctx.lineTo(-4, 8);
+    ctx.moveTo(-2, -12); ctx.lineTo(0, -2); ctx.lineTo(-3, 8);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#3b809a';
     ctx.beginPath();
-    ctx.moveTo(3, 4); ctx.lineTo(10, -2); ctx.lineTo(5, 11);
+    ctx.moveTo(0, -2); ctx.lineTo(7, -4); ctx.lineTo(5, 10); ctx.lineTo(1, 9);
     ctx.closePath(); ctx.fill();
+    // Передний малый осколок — светлый.
+    ctx.fillStyle = '#9be4ef';
+    ctx.beginPath();
+    ctx.moveTo(3, 10); ctx.lineTo(7, -3); ctx.lineTo(10, -1); ctx.lineTo(9, 10);
+    ctx.closePath(); ctx.fill();
+    // Искра на вершине.
+    ctx.fillStyle = 'rgba(230,255,252,' + (0.35 + 0.6 * tw).toFixed(2) + ')';
+    ctx.fillRect(-3.5, -17.5, 7, 1.6);
+    ctx.fillRect(-0.8, -20, 1.6, 7);
     ctx.restore();
   }
 
@@ -911,42 +936,83 @@ export class Game {
   }
 
   drawEffects(ctx, st, inView, camX, camY) {
+    // Палитры по фракциям: люди горят оранжевым, кхарид лопаются кислотой.
+    const BOOM = {
+      human: { core: '#fff3b0', fire: '255,140,50', ring: '255,220,140', ember: '#ffd977' },
+      alien: { core: '#eafff0', fire: '110,220,130', ring: '190,140,255', ember: '#9ff5b8' },
+    };
     for (const e of st.effects) {
       if (!inView(e.x, e.y, 60)) continue;
       const k = e.t / e.life;
       const ex = e.x - camX, ey = e.y - camY;
+      const F = BOOM[e.faction] || BOOM.human;
       if (e.kind === 'boom') {
         const R = (e.big ? 46 : 18) * (0.3 + 0.7 * k);
-        ctx.globalAlpha = 1 - k;
-        ctx.fillStyle = 'rgba(255,140,50,0.8)';
+        // Огненный шар.
+        ctx.globalAlpha = (1 - k) * 0.85;
+        ctx.fillStyle = 'rgba(' + F.fire + ',1)';
         ctx.beginPath(); ctx.arc(ex, ey, R, 0, Math.PI * 2); ctx.fill();
-        if (k < 0.4) {
-          ctx.fillStyle = 'rgba(255,235,140,0.9)';
-          ctx.beginPath(); ctx.arc(ex, ey, R * 0.5, 0, Math.PI * 2); ctx.fill();
+        // Белая вспышка ядра в начале.
+        if (k < 0.45) {
+          ctx.globalAlpha = 1 - k * 1.8;
+          ctx.fillStyle = F.core;
+          ctx.beginPath(); ctx.arc(ex, ey, R * (0.55 - 0.3 * k), 0, Math.PI * 2); ctx.fill();
+        }
+        // Расширяющееся кольцо.
+        ctx.globalAlpha = (1 - k) * 0.8;
+        ctx.strokeStyle = 'rgba(' + F.ring + ',1)';
+        ctx.lineWidth = 3 * (1 - k) + 1;
+        ctx.beginPath(); ctx.arc(ex, ey, R * (0.4 + 1.1 * k), 0, Math.PI * 2); ctx.stroke();
+        // Угольки/капли — детерминированы от координат.
+        const seed = ((ex * 13 + ey * 7) | 0) * 0.01;
+        ctx.fillStyle = F.ember;
+        ctx.globalAlpha = 1 - k;
+        for (let i = 0; i < 5; i++) {
+          const a = seed + i * 2.4;
+          const d = R * (0.3 + 0.9 * k);
+          ctx.beginPath();
+          ctx.arc(ex + Math.cos(a) * d, ey + Math.sin(a) * d - k * 10, 2 * (1 - k) + 0.5, 0, Math.PI * 2);
+          ctx.fill();
         }
       } else if (e.kind === 'spark') {
+        // Искра: яркая линия с головкой.
+        const col = e.faction === 'alien' ? '#c8ff9e' : '#ffe9a8';
+        const d = 11 * (1 - k) + 3;
+        const hx = ex + Math.cos(e.ang) * d, hy = ey + Math.sin(e.ang) * d;
         ctx.globalAlpha = 1 - k;
-        ctx.strokeStyle = '#ffe9a8';
-        ctx.lineWidth = 1.5;
-        const d = 6 * (1 - k) + 2;
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex + Math.cos(e.ang) * d, ey + Math.sin(e.ang) * d);
-        ctx.stroke();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(hx, hy, 1.8, 0, Math.PI * 2); ctx.fill();
       } else if (e.kind === 'muzzle') {
+        // Вспышка выстрела: звезда-крест + ядро + ореол.
+        const col = e.faction === 'alien' ? '#d0ffa8' : '#fff3b0';
+        const L = 8 * (1 - k) + 2;
+        ctx.globalAlpha = (1 - k) * 0.3;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(ex, ey, 6.5, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 1 - k;
-        ctx.fillStyle = '#fff3b0';
-        ctx.beginPath(); ctx.arc(ex, ey, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ex - L, ey); ctx.lineTo(ex + L, ey);
+        ctx.moveTo(ex, ey - L * 0.7); ctx.lineTo(ex, ey + L * 0.7);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(ex, ey, 2.2, 0, Math.PI * 2); ctx.fill();
       } else if (e.kind === 'smoke') {
-        // Дым повреждённого здания: поднимающийся серый клуб.
+        // Дым повреждённого здания / споры раненого улья.
+        const c1 = e.faction === 'alien' ? '#5a4a7a' : '#565c64';
+        const c2 = e.faction === 'alien' ? '#3a2a5a' : '#3a3f45';
         const a = (1 - k) * 0.35;
         ctx.globalAlpha = a;
-        ctx.fillStyle = '#565c64';
+        ctx.fillStyle = c1;
         ctx.beginPath();
         ctx.arc(ex, ey - k * 26, 5 + k * 14, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = a * 0.6;
-        ctx.fillStyle = '#3a3f45';
+        ctx.fillStyle = c2;
         ctx.beginPath();
         ctx.arc(ex + 4, ey - k * 34, 3 + k * 10, 0, Math.PI * 2);
         ctx.fill();
@@ -954,18 +1020,21 @@ export class Game {
         // Обломки/шипики: разлёт из точки смерти с затуханием.
         const d = e.dist * (0.3 + 0.7 * k);
         ctx.globalAlpha = 1 - k;
-        ctx.fillStyle = k < 0.4 ? '#ffd977' : '#9aa2ad';
+        ctx.fillStyle = e.faction === 'alien'
+          ? (k < 0.4 ? '#c8ff9e' : '#7a5a9a')
+          : (k < 0.4 ? '#ffd977' : '#9aa2ad');
         const dx = ex + Math.cos(e.ang) * d, dy = ey + Math.sin(e.ang) * d - k * 8;
-        ctx.fillRect(dx - 1.5, dy - 1.5, 3, 3);
+        ctx.fillRect(dx - 2, dy - 2, 4, 4);
       } else if (e.kind === 'heal') {
-        // Зелёный плюсик над леченым юнитом.
+        // Зелёный плюсик над леченым юнитом — всплывает и тает.
+        const hy = ey - k * 10;
         ctx.globalAlpha = 1 - k;
         ctx.strokeStyle = '#7dff9b';
         ctx.lineWidth = 2;
         const r = 4 + k * 2;
         ctx.beginPath();
-        ctx.moveTo(ex, ey - r); ctx.lineTo(ex, ey + r);
-        ctx.moveTo(ex - r, ey); ctx.lineTo(ex + r, ey);
+        ctx.moveTo(ex, hy - r); ctx.lineTo(ex, hy + r);
+        ctx.moveTo(ex - r, hy); ctx.lineTo(ex + r, hy);
         ctx.stroke();
       }
     }

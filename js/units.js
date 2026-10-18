@@ -10,6 +10,7 @@ import {
   REPAIR_HP_PER_MINERAL, COLORS, fname,
 } from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
+import { tr } from './lore.js';
 
 let nextId = 1;
 
@@ -778,7 +779,7 @@ export function shoot(st, u, t) {
   u.angle = Math.atan2(t.y - u.y, t.x - u.x);
   const muzzleX = u.x + Math.cos(u.angle) * (reach + 4);
   const muzzleY = u.y + Math.sin(u.angle) * (reach + 4);
-  addEffect(st, { kind: 'muzzle', x: muzzleX, y: muzzleY, ang: u.angle, t: 0, life: cfg.projectile === 'shell' ? 0.1 : 0.06 });
+  addEffect(st, { kind: 'muzzle', x: muzzleX, y: muzzleY, ang: u.angle, t: 0, life: cfg.projectile === 'shell' ? 0.1 : 0.06, faction: u.faction });
   // Тяжёлая артиллерия отдаёт тряской.
   if (cfg.projectile === 'shell' && cfg.splash && cfg.splash.r >= 50) addShake(st, 5, 0.18);
 
@@ -798,7 +799,7 @@ export function shoot(st, u, t) {
   } else {
     // Удар в упор (рабочий) — урон сразу + искра.
     damageEntity(st, t, dmg, u);
-    addEffect(st, { kind: 'spark', x: t.x, y: t.y, ang: u.angle, t: 0, life: 0.22 });
+    addEffect(st, { kind: 'spark', x: t.x, y: t.y, ang: u.angle, t: 0, life: 0.22, faction: t.faction });
     st.game.sound.mine();
   }
 }
@@ -919,7 +920,7 @@ function updateBuild(st, u, dt) {
       b.progress = 1; b.done = true; b.hp = b.maxHp;
       if (b.side === 'player') {
         st.game.sound.ready();
-        st.game.ui.toast('Постройка завершена: ' + fname(b.cfg, b.faction));
+        st.game.ui.toast(tr(st.factions.player, 'builtDone') + fname(b.cfg, b.faction));
       }
       resumeGather(st, u);
     }
@@ -953,7 +954,7 @@ function updateRepair(st, u, dt) {
       // Нет минералов — простой (игроку подсказка не чаще раза в 6 c).
       if (u.side === 'player' && st.time - (st.lastRepairToast || -99) > 6) {
         st.lastRepairToast = st.time;
-        st.game.ui.toast('Ремонт остановлен: не хватает минералов', 'error');
+        st.game.ui.toast(tr(st.factions.player, 'repairStop') + tr(st.factions.player, 'noMinerals').toLowerCase(), 'error');
       }
       return;
     }
@@ -964,7 +965,7 @@ function updateRepair(st, u, dt) {
     }
     if (Math.random() < dt * 2.5) st.game.sound.repair();
     if (t.hp >= t.maxHp && t.side === 'player') {
-      st.game.ui.toast('Ремонт завершён: ' + fname(t.cfg, t.faction));
+      st.game.ui.toast(tr(st.factions.player, 'repairDone') + fname(t.cfg, t.faction));
     }
     return;
   }
@@ -1298,7 +1299,7 @@ export function updateProjectiles(st, dt) {
     if (d <= step + 6) {
       p.dead = true;
       if (p.target && !p.target.dead) damageEntity(st, p.target, p.dmg, p.src);
-      addEffect(st, { kind: 'spark', x: p.tx, y: p.ty, ang: Math.random() * Math.PI * 2, t: 0, life: 0.18 });
+      addEffect(st, { kind: 'spark', x: p.tx, y: p.ty, ang: Math.random() * Math.PI * 2, t: 0, life: 0.18, faction: p.target ? p.target.faction : undefined });
       // Осколочный урон по площади.
       if (p.splash) {
         const r = p.splash.r, frac = p.splash.frac;
@@ -1314,7 +1315,7 @@ export function updateProjectiles(st, dt) {
             damageEntity(st, b, p.dmg * frac, p.src);
           }
         }
-        addEffect(st, { kind: 'boom', x: p.tx, y: p.ty, t: 0, life: 0.5, big: true });
+        addEffect(st, { kind: 'boom', x: p.tx, y: p.ty, t: 0, life: 0.5, big: true, faction: p.src ? p.src.faction : undefined });
       }
     } else {
       p.x += (dx / d) * step; p.y += (dy / d) * step;
@@ -1339,7 +1340,7 @@ export function damageEntity(st, victim, dmg, attacker) {
   // Тревога для игрока — не чаще раза в 8 секунд.
   if (victim.side === 'player' && !st.gameOver && st.time - st.lastAlertT > 8) {
     st.lastAlertT = st.time;
-    st.game.ui.toast('Мы под атакой!', 'error');
+    st.game.ui.toast(tr(st.factions.player, 'underAttack'), 'error');
     st.pings.push({ x: victim.x, y: victim.y, t: 0 });
     st.game.sound.ping();
   }
@@ -1350,7 +1351,7 @@ function killEntity(st, v, attacker) {
   v.dead = true;
   v.selected = false;
   if (v.kind === 'unit') {
-    addEffect(st, { kind: 'boom', x: v.x, y: v.y, t: 0, life: v.cfg.vehicle ? 0.6 : 0.4, big: !!v.cfg.vehicle });
+    addEffect(st, { kind: 'boom', x: v.x, y: v.y, t: 0, life: v.cfg.vehicle ? 0.6 : 0.4, big: !!v.cfg.vehicle, faction: v.faction });
     // Обломки/шипики разлетаются веером — техника даёт больше мусора.
     const n = v.cfg.vehicle ? 7 : 4;
     for (let i = 0; i < n; i++) {
@@ -1358,7 +1359,7 @@ function killEntity(st, v, attacker) {
         kind: 'debris', x: v.x, y: v.y,
         ang: Math.random() * Math.PI * 2,
         dist: 10 + Math.random() * 22,
-        t: 0, life: 0.4 + Math.random() * 0.3,
+        t: 0, life: 0.4 + Math.random() * 0.3, faction: v.faction,
       });
     }
     if (v.cfg.vehicle) addShake(st, 3, 0.16);
@@ -1367,14 +1368,14 @@ function killEntity(st, v, attacker) {
     if (v.garrison && v.garrison.length) releaseGarrison(st, v); // выжившие выпрыгивают
     st.map.unmarkBuilding(v);
     st.bcount[v.side]--;
-    addEffect(st, { kind: 'boom', x: v.x, y: v.y, t: 0, life: 0.8, big: true });
+    addEffect(st, { kind: 'boom', x: v.x, y: v.y, t: 0, life: 0.8, big: true, faction: v.faction });
     for (let i = 0; i < 10; i++) {
       addEffect(st, {
         kind: 'debris', x: v.x + (Math.random() - 0.5) * v.w * TILE * 0.6,
         y: v.y + (Math.random() - 0.5) * v.h * TILE * 0.6,
         ang: Math.random() * Math.PI * 2,
         dist: 14 + Math.random() * 30,
-        t: 0, life: 0.5 + Math.random() * 0.4,
+        t: 0, life: 0.5 + Math.random() * 0.4, faction: v.faction,
       });
     }
     addShake(st, 6, 0.3);

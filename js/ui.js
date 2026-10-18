@@ -9,6 +9,7 @@ import {
   fname, fdesc,
 } from './config.js';
 import { MISSIONS, loadProgress } from './missions.js';
+import { CODEX, tr } from './lore.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -27,89 +28,144 @@ function icon(type) {
   c.width = 26; c.height = 26;
   const g = c.getContext('2d');
   g.translate(13, 13);
+  // Палитра иконок = токены рас: люди — сталь/бирюза/янтарь,
+  // кхарид — фиолет плоти/зелень слизи/бледная кость.
   const teal = '#57d3c3', green = '#67c98a', amber = '#f3c579', steel = '#8fb5b3';
-  const purple = '#a78bdb';
+  const dark = '#16262b', white = '#d9fff0';
+  const purple = '#a78bdb', flesh = '#2a2140', slime = '#9ff5b8', bone = '#eafff0';
+  const red = '#ff6e5f';
+  // Правило силуэтов: у каждого юнита своя геометрия тела + один яркий
+  // признак; у зданий — своя крыша/проём. Путаться не должны даже мельком.
   switch (type) {
+    // ===== Люди: техника =====
     case 'worker':
-      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = amber; g.fillRect(-9, -2, 4, 8);
-      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(2, 0, 3, 0, Math.PI * 2); g.fill();
+      // Дрон-ромб с янтарным контейнером.
+      g.fillStyle = teal;
+      g.beginPath(); g.moveTo(0, -8); g.lineTo(7, 0); g.lineTo(0, 8); g.lineTo(-7, 0); g.closePath(); g.fill();
+      g.fillStyle = white; g.beginPath(); g.arc(0, -1, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.fillRect(-8, 2, 6, 6);
+      g.strokeStyle = dark; g.lineWidth = 1; g.strokeRect(-8, 2, 6, 6);
       break;
     case 'marine':
-      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#16262b'; g.fillRect(2, -1, 11, 3);
-      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(1, 0, 3, 0, Math.PI * 2); g.fill();
+      // Круглый шлем с визором + длинная винтовка.
+      g.fillStyle = teal; g.beginPath(); g.arc(-2, 1, 6.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = dark; g.fillRect(-8, -1, 11, 3);
+      g.fillStyle = white; g.fillRect(-6, -1, 3, 3);
+      g.fillStyle = dark; g.fillRect(3, 0, 10, 2.6);
+      g.fillStyle = amber; g.fillRect(11, 0, 2.4, 2.6);
       break;
     case 'buggy':
-      g.fillStyle = '#0d2129'; g.fillRect(-9, -7, 5, 5); g.fillRect(4, -7, 5, 5);
+      // Стрела-ховер: 4 катка + кабина-капля.
+      g.fillStyle = dark; g.fillRect(-9, -7, 5, 5); g.fillRect(4, -7, 5, 5);
       g.fillRect(-9, 2, 5, 5); g.fillRect(4, 2, 5, 5);
-      g.fillStyle = teal; g.beginPath();
-      g.moveTo(-7, -4); g.lineTo(8, -2); g.lineTo(8, 2); g.lineTo(-7, 4); g.closePath(); g.fill();
+      g.fillStyle = teal;
+      g.beginPath(); g.moveTo(-7, -4); g.lineTo(9, 0); g.lineTo(-7, 4); g.closePath(); g.fill();
+      g.fillStyle = white; g.beginPath(); g.arc(-1, 0, 2.2, 0, Math.PI * 2); g.fill();
       break;
     case 'tank':
-      g.fillStyle = '#0d2129'; g.fillRect(-10, -8, 20, 5); g.fillRect(-10, 3, 20, 5);
+      // Траки + корпус + горизонтальная пушка с дульным тормозом.
+      g.fillStyle = dark; g.fillRect(-10, -8, 20, 5); g.fillRect(-10, 3, 20, 5);
       g.fillStyle = teal; g.fillRect(-8, -4, 15, 8);
-      g.fillStyle = '#16262b'; g.fillRect(4, -1.5, 12, 3);
+      g.fillStyle = white; g.beginPath(); g.arc(-4, 0, 2, 0, Math.PI * 2); g.fill();
+      g.fillStyle = dark; g.fillRect(4, -1.5, 10, 3);
+      g.fillStyle = amber; g.fillRect(12, -2.5, 3, 5);
       break;
+    case 'medic':
+      // Белый круг с красным крестом в бирюзовом ободе.
+      g.fillStyle = white; g.beginPath(); g.arc(0, 1, 7.5, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = teal; g.lineWidth = 2;
+      g.beginPath(); g.arc(0, 1, 7.5, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = red; g.fillRect(-1.8, -5, 3.6, 12); g.fillRect(-6, -0.8, 12, 3.6);
+      break;
+    case 'flamer':
+      // Круг + баллон слева + сопло и капля пламени справа.
+      g.fillStyle = teal; g.beginPath(); g.arc(-2, 1, 6.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = dark; g.fillRect(-11, -3, 5, 8);
+      g.fillStyle = amber; g.fillRect(3, 0, 8, 3.4);
+      g.fillStyle = amber;
+      g.beginPath(); g.moveTo(12, -3); g.quadraticCurveTo(16, 1, 12, 5); g.quadraticCurveTo(13.5, 1, 12, -3); g.fill();
+      break;
+    case 'arty':
+      // Траки + задранный вверх ствол + снаряд на конце.
+      g.fillStyle = dark; g.fillRect(-9, 2, 18, 6);
+      g.fillStyle = teal; g.fillRect(-7, -3, 13, 6);
+      g.strokeStyle = dark; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(0, -3); g.lineTo(9, -11); g.stroke();
+      g.fillStyle = amber; g.beginPath(); g.arc(9, -11, 2.6, 0, Math.PI * 2); g.fill();
+      break;
+    // ===== Люди: здания (своя крыша/проём у каждого) =====
     case 'cc':
-      g.fillStyle = steel; g.fillRect(-10, -8, 20, 15);
+      g.fillStyle = steel; g.fillRect(-10, -6, 20, 13);
+      g.fillStyle = dark; g.fillRect(-10, 5, 20, 2);
       g.strokeStyle = teal; g.lineWidth = 2;
       g.beginPath(); g.ellipse(0, 0, 6, 4.5, 0, 0, Math.PI * 2); g.stroke();
-      break;
-    case 'barracks':
-      g.fillStyle = steel; g.fillRect(-10, -7, 20, 14);
-      g.fillStyle = '#0b1b24'; g.fillRect(-4, 0, 8, 7);
-      g.fillStyle = teal; g.fillRect(-10, -7, 20, 3);
+      g.fillStyle = red; g.beginPath(); g.arc(0, -9, 2.2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = dark; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(0, -7); g.lineTo(0, -6); g.stroke();
       break;
     case 'depot':
-      g.fillStyle = steel; g.fillRect(-10, -5, 20, 11);
-      g.fillStyle = teal; g.fillRect(-10, -5, 20, 3);
-      g.fillStyle = '#0b1b24';
-      g.beginPath(); g.moveTo(-4, 0); g.lineTo(1, 3); g.lineTo(-4, 6); g.closePath(); g.fill();
+      // Домик со скатной крышей и тёплым окном.
+      g.fillStyle = steel;
+      g.beginPath(); g.moveTo(-10, 0); g.lineTo(0, -9); g.lineTo(10, 0); g.closePath(); g.fill();
+      g.fillStyle = '#6e7f7d'; g.fillRect(-8, 0, 16, 7);
+      g.fillStyle = amber; g.fillRect(2, 1.5, 5, 4);
+      g.fillStyle = dark; g.fillRect(-6, 1, 4, 6);
+      break;
+    case 'barracks':
+      // Высокий корпус: ворота + шеврон + янтарная полоса.
+      g.fillStyle = steel; g.fillRect(-9, -8, 18, 15);
+      g.fillStyle = dark; g.fillRect(-4, 0, 8, 7);
+      g.strokeStyle = amber; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(-5, -3); g.lineTo(0, -6); g.lineTo(5, -3); g.stroke();
+      g.fillStyle = teal; g.fillRect(-9, -8, 18, 2.4);
       break;
     case 'turret':
-      g.fillStyle = steel; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#16262b'; g.lineWidth = 3;
-      g.beginPath(); g.moveTo(0, 0); g.lineTo(9, -6); g.stroke();
+      // Шестигранник + СПАРЕННАЯ пушка-клыки (как «Гадюка» в игре).
+      g.fillStyle = steel;
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 + Math.PI / 6;
+        const px2 = Math.cos(a) * 7.5, py2 = 2 + Math.sin(a) * 7.5;
+        if (i === 0) g.moveTo(px2, py2); else g.lineTo(px2, py2);
+      }
+      g.closePath(); g.fill();
+      g.strokeStyle = dark; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, -1); g.lineTo(10, -7); g.moveTo(0, 3); g.lineTo(10, -3); g.stroke();
       break;
     case 'wall':
       g.fillStyle = steel; g.fillRect(-10, -5, 20, 11);
+      g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillRect(-10, -5, 20, 2);
       g.strokeStyle = '#2c4a52'; g.lineWidth = 1.5;
-      g.beginPath(); g.moveTo(-10, 0); g.lineTo(10, 0); g.stroke();
-      g.beginPath(); g.moveTo(-3, -5); g.lineTo(-3, 5); g.moveTo(4, -5); g.lineTo(4, 5); g.stroke();
+      g.beginPath(); g.moveTo(-10, 1); g.lineTo(10, 1); g.stroke();
+      g.beginPath(); g.moveTo(-3, -5); g.lineTo(-3, 6); g.moveTo(4, -5); g.lineTo(4, 6); g.stroke();
+      g.strokeStyle = amber; g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(-4, 4.5); g.lineTo(0, 1.5); g.lineTo(4, 4.5); g.stroke();
       break;
     case 'bunker':
-      g.fillStyle = steel; g.fillRect(-10, -7, 20, 14);
-      g.fillStyle = '#0b1b24'; g.fillRect(-7, -2, 14, 4);
-      g.fillStyle = teal; g.fillRect(-10, -7, 20, 3);
+      // Низкий дот: длинная бойница + ряд мешков сверху.
+      g.fillStyle = steel; g.fillRect(-10, -3, 20, 10);
+      g.fillStyle = dark; g.fillRect(-8, 1, 16, 3.4);
+      g.fillStyle = '#a08c62';
+      g.beginPath(); g.arc(-6, -4, 2.4, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(0, -4, 2.4, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(6, -4, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'factory':
-      g.fillStyle = steel; g.fillRect(-10, -4, 20, 12);
-      g.fillStyle = '#0b1b24'; g.fillRect(-4, 0, 8, 8);
-      g.fillStyle = '#2c4a52'; g.fillRect(-8, -10, 4, 7);
-      break;
-    case 'medic':
-      g.fillStyle = '#d9fff0'; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#ff806e'; g.fillRect(-1.5, -4, 3, 12); g.fillRect(-6, 0.5, 12, 3);
-      g.fillStyle = '#16262b'; g.fillRect(6, 0, 8, 3);
-      break;
-    case 'flamer':
-      g.fillStyle = teal; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#ff806e'; g.fillRect(-9, -4, 5, 8);
-      g.fillStyle = '#f3c579'; g.fillRect(4, 0, 11, 4);
-      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(15, 2, 2.4, 0, Math.PI * 2); g.fill();
-      break;
-    case 'arty':
-      g.fillStyle = '#0d2129'; g.fillRect(-9, -8, 18, 4); g.fillRect(-9, 4, 18, 4);
-      g.fillStyle = teal; g.fillRect(-7, -4, 14, 8);
-      g.fillStyle = '#16262b'; g.fillRect(0, -1.5, 15, 3);
+      // Цех + высокая труба + горн.
+      g.fillStyle = steel; g.fillRect(-10, -1, 20, 9);
+      g.fillStyle = teal; g.fillRect(-10, -1, 20, 2.4);
+      g.fillStyle = '#2c4a52'; g.fillRect(3, -11, 5, 11);
+      g.fillStyle = amber; g.fillRect(-7, 2.5, 7, 4);
       break;
     case 'lab':
-      g.fillStyle = steel; g.fillRect(-10, -2, 20, 12);
-      g.fillStyle = '#2c4a52'; g.beginPath(); g.arc(-3, -2, 7, Math.PI, 0); g.fill();
-      g.strokeStyle = teal; g.lineWidth = 2;
-      g.beginPath(); g.arc(6, -6, 4, Math.PI * 0.2, Math.PI); g.stroke();
+      // Светлый корпус + купол + тарелка + чан.
+      g.fillStyle = '#cfd6dc'; g.fillRect(-10, 0, 20, 8);
+      g.fillStyle = teal; g.beginPath(); g.arc(-4, 0, 6, Math.PI, 0); g.fill();
+      g.strokeStyle = dark; g.lineWidth = 1.6;
+      g.beginPath(); g.arc(6, -4, 4.6, Math.PI * 0.9, Math.PI * 1.9); g.stroke();
+      g.fillStyle = green; g.fillRect(-9, 2, 3, 4);
       break;
+    // ===== Улучшения и приказы (были хороши — не трогаем) =====
     case 'u_infAtk':
       g.strokeStyle = '#ff806e'; g.lineWidth = 2.5;
       g.beginPath(); g.moveTo(-6, 6); g.lineTo(6, -6); g.stroke();
@@ -124,25 +180,25 @@ function icon(type) {
       g.fillStyle = teal; g.fillRect(-1.5, -4, 3, 8); g.fillRect(-4, -1.5, 8, 3);
       break;
     case 'u_vehAtk':
-      g.fillStyle = '#16262b'; g.fillRect(-3, -9, 6, 13);
+      g.fillStyle = dark; g.fillRect(-3, -9, 6, 13);
       g.fillStyle = amber; g.fillRect(-5, 2, 10, 6);
-      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(0, -9, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.beginPath(); g.arc(0, -9, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'u_vehArm':
       g.strokeStyle = steel; g.lineWidth = 2;
       g.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = i * Math.PI / 3 - Math.PI / 2;
-        const px2 = Math.cos(a) * 8, py2 = Math.sin(a) * 8;
-        if (i === 0) g.moveTo(px2, py2); else g.lineTo(px2, py2);
+      for (let i2 = 0; i2 < 6; i2++) {
+        const a = i2 * Math.PI / 3 - Math.PI / 2;
+        const px3 = Math.cos(a) * 8, py3 = Math.sin(a) * 8;
+        if (i2 === 0) g.moveTo(px3, py3); else g.lineTo(px3, py3);
       }
       g.closePath(); g.stroke();
       g.fillStyle = steel; g.fillRect(-1.5, -5, 3, 10); g.fillRect(-5, -1.5, 10, 3);
       break;
     case 'build':
-      g.fillStyle = steel; g.fillRect(-9, -8, 10, 8);           // боёк молота
-      g.fillStyle = amber; g.fillRect(-2, -4, 12, 4);          // ручка
-      g.fillStyle = teal; g.fillRect(-11, 4, 22, 4);            // «фундамент»
+      g.fillStyle = steel; g.fillRect(-9, -8, 10, 8);
+      g.fillStyle = amber; g.fillRect(-2, -4, 12, 4);
+      g.fillStyle = teal; g.fillRect(-11, 4, 22, 4);
       break;
     case 'stop':
       g.strokeStyle = '#ff806e'; g.lineWidth = 3;
@@ -155,98 +211,134 @@ function icon(type) {
       g.beginPath(); g.moveTo(5, -4); g.lineTo(9, 0); g.lineTo(5, 4); g.stroke();
       break;
     case 'repair':
-      g.strokeStyle = '#67c98a'; g.lineWidth = 3;
+      g.strokeStyle = green; g.lineWidth = 3;
       g.beginPath(); g.moveTo(-7, 7); g.lineTo(2, -2); g.stroke();
-      g.fillStyle = '#67c98a';
+      g.fillStyle = green;
       g.fillRect(2, -8, 8, 8);
       break;
-    // ===== Иконки кхарид (органика) =====
+    // ===== Кхарид: органика (своя геометрия у каждого) =====
     case 'a_worker':
+      // Маленький жук на ножках — самый мелкий силуэт.
       g.strokeStyle = purple; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(-6, 2); g.lineTo(-9, 8); g.moveTo(0, 3); g.lineTo(0, 9); g.moveTo(6, 2); g.lineTo(9, 8); g.stroke();
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, -2, 7, 6, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8'; g.beginPath(); g.arc(4, -2, 2.5, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(-4, 2); g.lineTo(-7, 8); g.moveTo(0, 3); g.lineTo(0, 9); g.moveTo(4, 2); g.lineTo(7, 8); g.stroke();
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, -2, 5.5, 5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = slime; g.beginPath(); g.arc(3, -2, 2.2, 0, Math.PI * 2); g.fill();
       break;
     case 'a_marine':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 8, 6, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#9ff5b8';
-      g.beginPath(); g.moveTo(-5, -2); g.lineTo(-3, -9); g.lineTo(-1, -2); g.closePath(); g.fill();
-      g.beginPath(); g.moveTo(0, -2); g.lineTo(2, -9); g.lineTo(4, -2); g.closePath(); g.fill();
-      g.fillStyle = '#eafff0'; g.beginPath(); g.arc(7, 2, 2.2, 0, Math.PI * 2); g.fill();
+      // Шипастый боец: 3 шипа + глаз.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 3, 7.5, 5.5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = slime;
+      g.beginPath(); g.moveTo(-6, 0); g.lineTo(-4, -8); g.lineTo(-2, 0); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(-1, -1); g.lineTo(1, -10); g.lineTo(3, -1); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(4, 0); g.lineTo(6, -7); g.lineTo(8, 0); g.closePath(); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(5, 3, 2.2, 0, Math.PI * 2); g.fill();
       break;
     case 'a_buggy':
+      // Гончая: низкая, 4 ноги, глаз спереди.
       g.strokeStyle = purple; g.lineWidth = 2.5;
-      g.beginPath(); g.moveTo(-4, -3); g.lineTo(-9, -8); g.moveTo(-4, 3); g.lineTo(-9, 8);
-      g.moveTo(4, -3); g.lineTo(9, -8); g.moveTo(4, 3); g.lineTo(9, 8); g.stroke();
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#9ff5b8'; g.beginPath(); g.arc(7, 0, 2.4, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.moveTo(-4, -1); g.lineTo(-9, -7); g.moveTo(-4, 3); g.lineTo(-9, 8);
+      g.moveTo(4, -1); g.lineTo(9, -6); g.moveTo(4, 3); g.lineTo(9, 7); g.stroke();
+      g.fillStyle = purple; g.beginPath(); g.ellipse(-1, 1, 7, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = slime; g.beginPath(); g.arc(6, 0, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'a_tank':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 0, 10, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8';
-      g.beginPath(); g.moveTo(-2, -6); g.lineTo(2, -11); g.lineTo(6, -5); g.closePath(); g.fill();
-      g.fillStyle = '#eafff0'; g.beginPath(); g.arc(8, 0, 3, 0, Math.PI * 2); g.fill();
+      // Громила: самый крупный + рог + челюсть.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 1, 10, 7.5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = bone;
+      g.beginPath(); g.moveTo(-3, -5); g.lineTo(1, -12); g.lineTo(5, -5); g.closePath(); g.fill();
+      g.strokeStyle = flesh; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(2, 5); g.lineTo(9, 3); g.stroke();
+      g.fillStyle = bone; g.beginPath(); g.arc(7, 0, 2.6, 0, Math.PI * 2); g.fill();
+      break;
+    case 'a_medic':
+      // Цветень: тело + высокий стебель с большим бутоном.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 4, 6.5, 5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = slime; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -7); g.stroke();
+      g.fillStyle = slime; g.beginPath(); g.arc(0, -9.5, 3.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(0, -9.5, 1.3, 0, Math.PI * 2); g.fill();
+      break;
+    case 'a_flamer':
+      // Кислотник: тело + янтарное сопло + капля.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(-2, 2, 8, 6.5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.fillRect(4, 0, 7, 4);
+      g.fillStyle = amber;
+      g.beginPath(); g.moveTo(12, -2); g.quadraticCurveTo(15.5, 2, 12, 6); g.quadraticCurveTo(13, 2, 12, -2); g.fill();
+      break;
+    case 'a_arty':
+      // Спогром: тело + мортира вверх + спора на конце.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 3, 9, 6.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = flesh; g.lineWidth = 4;
+      g.beginPath(); g.moveTo(-2, -2); g.lineTo(-8, -9); g.stroke();
+      g.fillStyle = slime; g.beginPath(); g.arc(-8, -10, 3, 0, Math.PI * 2); g.fill();
       break;
     case 'a_cc':
+      // Улей: курган + КРАСНОЕ сердце (уникальный признак штаба).
       g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#9ff5b8'; g.lineWidth = 2;
-      g.beginPath(); g.ellipse(0, 1, 5, 3.4, 0, 0, Math.PI * 2); g.stroke();
-      break;
-    case 'a_barracks':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 3, 9, 6, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8';
-      g.beginPath(); g.arc(-4, 0, 2.4, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.arc(2, -2, 2.4, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.arc(5, 2, 2.4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = red; g.beginPath(); g.arc(0, 2, 3.2, 0, Math.PI * 2); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(-1, 1, 1.1, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = slime; g.lineWidth = 1.6;
+      g.beginPath(); g.ellipse(0, 2, 7.5, 5, 0, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
       break;
     case 'a_depot':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 8, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8'; g.beginPath(); g.arc(3, 0, 3, 0, Math.PI * 2); g.fill();
+      // Мешок с ядром + сателлит.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(-1, 2, 7, 6.5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = slime; g.beginPath(); g.arc(0, 1, 2.8, 0, Math.PI * 2); g.fill();
+      g.fillStyle = purple; g.beginPath(); g.arc(8, -3, 3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(8, -3, 1.1, 0, Math.PI * 2); g.fill();
+      break;
+    case 'a_barracks':
+      // Яма с тремя яйцами + зубцы венца.
+      g.fillStyle = flesh; g.beginPath(); g.ellipse(0, 3, 9.5, 6, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = purple; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(0, 3, 9.5, 6, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = slime;
+      g.beginPath(); g.arc(-4, 1, 2.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(2, -1, 2.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(5, 3, 2.2, 0, Math.PI * 2); g.fill();
       break;
     case 'a_turret':
-      g.fillStyle = purple; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#3a4a40'; g.lineWidth = 2.5;
-      g.beginPath(); g.moveTo(1, 0); g.lineTo(9, -5); g.moveTo(1, 2); g.lineTo(9, 5); g.stroke();
+      // Жвала: клешня-V + светящаяся глотка.
+      g.fillStyle = purple; g.beginPath(); g.arc(0, 3, 7, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = flesh; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(0, 1); g.lineTo(9, -6); g.moveTo(0, 4); g.lineTo(9, 8); g.stroke();
+      g.fillStyle = slime; g.beginPath(); g.arc(2, 2.5, 2.4, 0, Math.PI * 2); g.fill();
       break;
     case 'a_wall':
-      g.fillStyle = purple; g.fillRect(-9, -6, 18, 12);
-      g.strokeStyle = '#9ff5b8'; g.lineWidth = 1.5;
-      g.beginPath(); g.moveTo(-6, 5); g.lineTo(0, -5); g.lineTo(6, 5); g.stroke();
+      // Хитин: шеврон + шипики сверху.
+      g.fillStyle = purple; g.fillRect(-9, -4, 18, 11);
+      g.strokeStyle = slime; g.lineWidth = 1.8;
+      g.beginPath(); g.moveTo(-6, 5); g.lineTo(0, -3); g.lineTo(6, 5); g.stroke();
+      g.fillStyle = bone;
+      g.beginPath(); g.moveTo(-6, -4); g.lineTo(-4.5, -8); g.lineTo(-3, -4); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(3, -4); g.lineTo(4.5, -8); g.lineTo(6, -4); g.closePath(); g.fill();
       break;
     case 'a_bunker':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 0, 9, 8, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#9ff5b8'; g.lineWidth = 1.5;
-      g.beginPath(); g.ellipse(0, 0, 5, 3.6, 0.5, 0, Math.PI * 2); g.stroke();
+      // Кокон: плетение + два глаза гарнизона.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 1, 9, 7.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = bone; g.lineWidth = 1.4;
+      g.beginPath(); g.ellipse(0, 1, 6, 4.5, 0.5, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = slime;
+      g.beginPath(); g.arc(-2.5, 1, 1.8, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(2.5, 1, 1.8, 0, Math.PI * 2); g.fill();
       break;
     case 'a_factory':
-      g.fillStyle = '#2a2140'; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8';
+      // Яма выводка: тёмный провал + кладка + светящийся обод.
+      g.fillStyle = flesh; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = slime; g.lineWidth = 1.6;
+      g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = bone;
       g.beginPath(); g.arc(-4, 0, 2, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.arc(3, -1, 2, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.arc(0, 4, 2, 0, Math.PI * 2); g.fill();
       break;
-    case 'a_medic':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 8, 6.5, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#9ff5b8'; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(0, -3); g.lineTo(0, -10); g.stroke();
-      g.fillStyle = '#b7f0c8'; g.beginPath(); g.arc(0, -11, 2.8, 0, Math.PI * 2); g.fill();
-      break;
-    case 'a_flamer':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(-1, 2, 9, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#f3c579'; g.fillRect(6, 0, 9, 4);
-      g.fillStyle = '#f3c579'; g.beginPath(); g.arc(15, 2, 2.2, 0, Math.PI * 2); g.fill();
-      break;
-    case 'a_arty':
-      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 10, 7.5, 0, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#2a2140'; g.lineWidth = 3;
-      g.beginPath(); g.moveTo(-3, -4); g.lineTo(-11, -11); g.stroke();
-      g.fillStyle = '#b7f0c8'; g.beginPath(); g.arc(-11, -12, 2.8, 0, Math.PI * 2); g.fill();
-      break;
     case 'a_lab':
-      g.fillStyle = '#2a2140'; g.beginPath(); g.ellipse(0, 4, 10, 7, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#b7f0c8';
-      g.beginPath(); g.moveTo(-5, 2); g.lineTo(-2, -6); g.lineTo(1, 2); g.closePath(); g.fill();
-      g.beginPath(); g.moveTo(2, 2); g.lineTo(5, -4); g.lineTo(8, 2); g.closePath(); g.fill();
+      // Узел: курган + шпили + спора наверху.
+      g.fillStyle = flesh; g.beginPath(); g.ellipse(0, 5, 10, 6, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = purple;
+      g.beginPath(); g.moveTo(-6, 3); g.lineTo(-2, -7); g.lineTo(2, 3); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(2, 3); g.lineTo(5, -4); g.lineTo(8, 3); g.closePath(); g.fill();
+      g.fillStyle = slime; g.beginPath(); g.arc(-2, -8.5, 2.2, 0, Math.PI * 2); g.fill();
       break;
   }
   iconCache[type] = c;
@@ -273,6 +365,7 @@ export function initUI(game) {
     minimap: $('minimap'),
     minerals: $('res-minerals'),
     supply: $('res-supply'),
+    supplyDot: $('res-supply-dot'),
     time: $('res-time'),
     objective: $('res-objective'),
     sound: $('btn-sound'),
@@ -295,6 +388,9 @@ export function initUI(game) {
     endTitle: $('end-title'),
     endReason: $('end-reason'),
     endStats: $('end-stats'),
+    codexOverlay: $('codex-overlay'),
+    codexTabs: $('codex-tabs'),
+    codexBody: $('codex-body'),
     pauseOverlay: $('pause-overlay'),
     startBtn: $('btn-start'),
     againBtn: $('btn-again'),
@@ -312,6 +408,16 @@ export function initUI(game) {
   });
   $('btn-skirmish-back').addEventListener('click', () => {
     els.skirmishOverlay.classList.add('hidden');
+    els.overlay.classList.remove('hidden');
+  });
+  // Кодекс «Легенда».
+  $('btn-codex').addEventListener('click', () => {
+    els.overlay.classList.add('hidden');
+    showCodex();
+    els.codexOverlay.classList.remove('hidden');
+  });
+  $('btn-codex-back').addEventListener('click', () => {
+    els.codexOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
   // Выбор фракции в быстром бою.
@@ -387,12 +493,12 @@ export function showMissions(game) {
     card.innerHTML =
       `<div class="mc-top"><span class="badge ${fac.cls}">${fac.title}</span>` +
       `<span class="mc-num">Миссия ${m.id + 1}</span>` +
-      (m.id > unlocked ? '<span class="mc-lock">🔒 закрыто</span>' : '') + '</div>' +
+      (m.id > unlocked ? '<span class="mc-lock">■ закрыто</span>' : '') + '</div>' +
       `<div class="mc-name">${m.name}</div>` +
       `<div class="mc-place">${m.place}</div>` +
       `<div class="mc-obj">${m.objective}</div>` +
       (m.intro ? `<div class="mc-intro">${m.intro}</div>` : '') +
-      (m.defense ? '<div class="mc-def">🛡 режим обороны: волны врага</div>' : '');
+      (m.defense ? '<div class="mc-def">◆ режим обороны: волны врага</div>' : '');
     if (m.id <= unlocked) {
       card.addEventListener('click', () => {
         els.missionOverlay.classList.add('hidden');
@@ -419,6 +525,27 @@ export function showBrief(game, m) {
   els.briefOverlay.classList.remove('hidden');
 }
 
+// Кодекс: вкладки из CODEX (lore.js), тело — абзацы вкладки.
+export function showCodex() {
+  els.codexTabs.innerHTML = '';
+  const render = (entry) => {
+    els.codexBody.innerHTML = `<h2>${entry.title}</h2>` +
+      entry.body.map((p) => `<p>${p}</p>`).join('');
+    for (const b of els.codexTabs.children) {
+      b.classList.toggle('active', b.dataset.id === entry.id);
+    }
+  };
+  for (const entry of CODEX) {
+    const b = document.createElement('button');
+    b.className = 'codex-tab';
+    b.dataset.id = entry.id;
+    b.textContent = entry.tab;
+    b.addEventListener('click', () => render(entry));
+    els.codexTabs.appendChild(b);
+  }
+  render(CODEX[0]);
+}
+
 export function hideStart() { els.overlay.classList.add('hidden'); }
 export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
 export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
@@ -430,10 +557,11 @@ export function toast(msg, kind = 'info') {
   if (toast.last && toast.last.msg === msg && now - toast.last.t < 1600) return; // анти-спам
   toast.last = { msg, t: now };
   const div = document.createElement('div');
-  div.className = 'toast' + (kind === 'error' ? ' err' : '');
+  div.className = 'toast' + (kind === 'error' ? ' err' : kind === 'warn' ? ' warn' : '');
   div.textContent = msg;
   els.toasts.appendChild(div);
   while (els.toasts.children.length > 3) els.toasts.firstChild.remove();
+  setTimeout(() => div.classList.add('hide'), 2250);
   setTimeout(() => div.remove(), 2600);
 }
 
@@ -452,7 +580,7 @@ export function showEnd(win, stats, opts = {}) {
     `<div class="row"><span>Время боя</span><b>${mm}:${ss}</b></div>` +
     `<div class="row"><span>Уничтожено врагов</span><b>${stats.kills}</b></div>` +
     `<div class="row"><span>Потери</span><b>${stats.losses}</b></div>` +
-    `<div class="row"><span>Добыто минералов</span><b>${stats.mined}</b></div>`;
+    `<div class="row"><span>${tr(opts.faction, 'mined')}</span><b>${stats.mined}</b></div>`;
   pendingNext = opts.next || null;
   els.againBtn.textContent = opts.next ? 'Следующая миссия →' : 'Играть снова';
   els.endOverlay.classList.remove('hidden');
@@ -487,6 +615,9 @@ export function update(game) {
   const sup = st.supply.player;
   els.supply.textContent = `${sup.used}/${sup.cap}`;
   els.supply.classList.toggle('blocked', sup.used >= sup.cap);
+  const supRatio = sup.cap ? sup.used / sup.cap : 0;
+  els.supplyDot.classList.toggle('warn', supRatio >= 0.85 && sup.used < sup.cap);
+  els.supplyDot.classList.toggle('crit', sup.used >= sup.cap);
   const mm = String(Math.floor(st.time / 60)).padStart(2, '0');
   const ss = String(Math.floor(st.time % 60)).padStart(2, '0');
   els.time.textContent = `${mm}:${ss}`;
@@ -498,7 +629,8 @@ export function update(game) {
   const firstB = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
   const newSig = sel.map((e) => e.id + (e.done === false ? 'c' : '')).join(',') +
     '|' + (st.buildMenu ? 'B' : '') + (st.placing ? 'P' + st.placing.type : '') +
-    '|' + (firstB ? 'Q' + firstB.queue.length + (firstB.res ? 'R' + firstB.res.key : '') : '');
+    '|' + (firstB ? 'Q' + firstB.queue.length + (firstB.res ? 'R' + firstB.res.key : '') +
+      'H' + Math.ceil((firstB.hp / firstB.maxHp) * 12) : '');
   if (newSig !== sig) {
     sig = newSig;
     rebuildPanel(game, sel);
@@ -533,8 +665,11 @@ function rebuildPanel(game, sel) {
     name.className = 'sel-name';
     name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : ' — строится');
     box.appendChild(name);
+    const bst = buildingStatus(b);
+    box.appendChild(statusLine(bst.led, bst.text).el);
     const hp = bar(b.hp / b.maxHp);
     box.appendChild(hp.el);
+    dyn.hpFill = hp.fill;
     if (!b.done) {
       const p = bar(b.progress);
       p.fill.classList.add('amber');
@@ -635,6 +770,9 @@ function rebuildPanel(game, sel) {
     const hp = bar(first.hp / first.maxHp);
     box.appendChild(hp.el);
     dyn.hpFill = hp.fill;
+    const usl = statusLine('idle', '');
+    box.appendChild(usl.el);
+    dyn.unitLed = usl.led; dyn.unitText = usl.text;
     const sub = document.createElement('div');
     sub.className = 'small';
     sub.textContent = `${fdesc(first.cfg, first.faction)} · урон ${first.cfg.dmg} · перезарядка ${first.cfg.cooldown}с`;
@@ -708,12 +846,40 @@ function refreshDynamic(game, sel) {
   // Полоски HP / прогресса / таймер очереди / прогресс исследования.
   const first = sel[0];
   if (first) {
-    if (dyn.hpFill) dyn.hpFill.style.width = Math.max(0, (first.hp / first.maxHp) * 100) + '%';
+    if (dyn.hpFill) {
+      const f = Math.max(0, first.hp / first.maxHp);
+      dyn.hpFill.style.width = (f * 100) + '%';
+      dyn.hpFill.classList.toggle('warn', f <= 0.55 && f > 0.28);
+      dyn.hpFill.classList.toggle('crit', f <= 0.28);
+    }
+    // Статус приказа юнита — живой, каждый кадр (приказы меняются часто).
+    if (dyn.unitText && first.kind === 'unit') {
+      const ORDL = {
+        idle: ['idle', 'Ожидает'], move: ['work', 'Марш'],
+        attack: ['err', 'Атака'], attackMove: ['err', 'Зачистка'],
+        gather: ['warn', 'Добыча'], build: ['warn', 'Стройка'],
+        repair: ['ok', 'Ремонт'], garrison: ['work', 'В гарнизон'],
+        heal: ['ok', 'Лечение'],
+      };
+      let led, text;
+      if (first.idleReason === 'unreachable') {
+        led = 'err blink'; text = 'Путь закрыт!';
+      } else {
+        const o = (first.order && ORDL[first.order.kind]) || ORDL.idle;
+        led = o[0]; text = o[1];
+        if (sel.length > 1) text += ' · отряд ' + sel.length;
+      }
+      dyn.unitLed.className = 'led ' + led;
+      if (dyn.unitText.textContent !== text) dyn.unitText.textContent = text;
+    }
     if (dyn.progFill) dyn.progFill.style.width = Math.min(100, first.progress * 100) + '%';
     if (dyn.chipFill && first.kind === 'building' && first.queue.length) {
       const q = first.queue[0];
       dyn.chipFill.style.width = ((1 - q.t / q.total) * 100) + '%';
-      if (dyn.timerEl) dyn.timerEl.textContent = q.hold ? 'ждёт' : Math.ceil(q.t) + 'с';
+      if (dyn.timerEl) {
+        dyn.timerEl.textContent = q.hold ? 'ждёт' : Math.ceil(q.t) + 'с';
+        dyn.timerEl.classList.toggle('hold', !!q.hold);
+      }
     }
     if (dyn.resFill && first.kind === 'building' && first.res) {
       dyn.resFill.style.width = ((1 - first.res.t / first.res.total) * 100) + '%';
@@ -729,6 +895,40 @@ function bar(frac) {
   fill.style.width = Math.max(0, Math.min(100, frac * 100)) + '%';
   el.appendChild(fill);
   return { el, fill };
+}
+
+// Строка статуса со светодиодом (язык состояний ДС).
+function statusLine(led, text) {
+  const d = document.createElement('div');
+  d.className = 'status-line';
+  const l = document.createElement('span');
+  l.className = 'led ' + led;
+  d.appendChild(l);
+  const t = document.createElement('span');
+  t.textContent = text;
+  d.appendChild(t);
+  return { el: d, led: l, text: t };
+}
+
+// Статус здания на момент перестройки панели (очередь/исследование/
+// ранение входят в подпись — панель пересоберётся при их смене).
+function buildingStatus(b) {
+  if (!b.done) return { led: 'warn blink', text: 'Строится — ' + Math.round((b.progress || 0) * 100) + '%' };
+  if (b.flashT > 0) return { led: 'err blink', text: 'Под огнём!' };
+  if (b.res) return { led: 'work', text: 'Исследование: ' + fname(UPGRADES[b.res.key], b.faction) };
+  if (b.queue && b.queue.length) {
+    if (b.queue[0].hold) return { led: 'warn', text: 'Производство ждёт (нет снабжения)' };
+    return { led: 'ok', text: 'Производство: ' + fname(UNITS[b.queue[0].type], b.faction) };
+  }
+  if (b.cfg.produces) return { led: 'warn', text: 'Ожидает приказа — очередь пуста' };
+  if (b.cfg.garrisonCap) {
+    return {
+      led: b.garrison.length ? 'ok' : 'work',
+      text: 'Гарнизон: ' + b.garrison.length + '/' + b.cfg.garrisonCap,
+    };
+  }
+  if (b.cfg.attack) return { led: 'ok', text: 'На позиции' };
+  return { led: 'work', text: 'Активно' };
 }
 
 function infoStats(box, b) {

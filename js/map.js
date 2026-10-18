@@ -22,6 +22,12 @@ function mulberry32(seed) {
   };
 }
 
+// hex-цвет + альфа → строка rgba (для градиентов террейна).
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
 // Озёра по умолчанию: зеркальные пары эллипсов [cx, cy, rx, ry].
 const DEFAULT_LAKES = [
   [21, 21, 4.8, 3.6], [42, 42, 4.8, 3.6],
@@ -295,92 +301,243 @@ export class GameMap {
     const c = document.createElement('canvas');
     c.width = WORLD_W; c.height = WORLD_H;
     const g = c.getContext('2d');
+    const terr = (x, y) => (this.inBounds(x, y) ? this.terrain[this.idx(x, y)] : T_ROCK);
+    const isW = (x, y) => terr(x, y) === T_WATER;
+    const polyG = (pts) => {
+      g.beginPath();
+      g.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+      g.closePath(); g.fill();
+    };
 
-    // Земля: базовый тон биома + пятна рельефа.
+    // 0) База биома.
     g.fillStyle = B.ground;
     g.fillRect(0, 0, WORLD_W, WORLD_H);
-    for (let i = 0; i < 1400; i++) {
-      g.fillStyle = B.tones[(R() * B.tones.length) | 0];
-      g.globalAlpha = 0.25 + R() * 0.2;
-      g.fillRect(R() * WORLD_W, R() * WORLD_H, 6 + R() * 26, 4 + R() * 14);
+
+    // 1) Мягкие пятна — объём грунта большими радиальными градиентами.
+    for (let i = 0; i < 60; i++) {
+      const x = R() * WORLD_W, y = R() * WORLD_H, r = 90 + R() * 260;
+      const col = B.blotch[(R() * B.blotch.length) | 0];
+      g.save();
+      g.translate(x, y); g.scale(1, 0.55 + R() * 0.3); g.translate(-x, -y);
+      const gr = g.createRadialGradient(x, y, r * 0.08, x, y, r);
+      gr.addColorStop(0, hexA(col, 0.5));
+      gr.addColorStop(0.6, hexA(col, 0.28));
+      gr.addColorStop(1, hexA(col, 0));
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      g.restore();
     }
-    g.globalAlpha = 1;
-    // Мелкая крошка/наросты.
+
+    // 2) Потайловый шум значения: ±5% яркости по хешу координат.
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      const hh = ((x * 73856093) ^ (y * 19349663) ^ this.seed) >>> 0;
+      const v = (hh % 100) / 100;
+      g.fillStyle = v < 0.5
+        ? 'rgba(0,0,0,' + (0.042 * (1 - v * 2)).toFixed(3) + ')'
+        : 'rgba(255,255,255,' + (0.034 * (v * 2 - 1)).toFixed(3) + ')';
+      g.fillRect(x * TILE, y * TILE, TILE, TILE);
+    }
+
+    // 3) Крошка и галька с бликом.
     for (let i = 0; i < 500; i++) {
-      const x = R() * WORLD_W, y = R() * WORLD_H;
       g.fillStyle = R() < 0.5 ? B.speck1 : B.speck2;
-      g.fillRect(x, y, 2 + R() * 2, 2 + R() * 2);
+      g.fillRect(R() * WORLD_W, R() * WORLD_H, 2 + R() * 2, 2 + R() * 2);
     }
-    // Кратеры (Марс/Луна) или кристальные наросты (пустоши улья).
+    for (let i = 0; i < 240; i++) {
+      const x = R() * WORLD_W, y = R() * WORLD_H, r = 1.5 + R() * 2.5;
+      g.fillStyle = B.pebble;
+      g.beginPath(); g.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.22)';
+      g.beginPath(); g.arc(x - r * 0.3, y - r * 0.25, Math.max(0.7, r * 0.3), 0, Math.PI * 2); g.fill();
+    }
+
+    // 4) Рельеф биома.
     if (this.preset.biome === 'nest') {
-      for (let i = 0; i < 120; i++) {
-        const x = R() * WORLD_W, y = R() * WORLD_H;
-        const s = 3 + R() * 6;
-        g.fillStyle = 'rgba(190,120,255,0.2)';
-        g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.5, y); g.lineTo(x, y + s); g.lineTo(x - s * 0.5, y); g.closePath(); g.fill();
-        g.fillStyle = 'rgba(240,200,255,0.25)';
-        g.fillRect(x - 1, y - s * 0.4, 2, s * 0.5);
+      // Светящиеся жилы улья — волнистые полилинии.
+      for (let i = 0; i < 12; i++) {
+        let x = R() * WORLD_W, y = R() * WORLD_H;
+        g.strokeStyle = B.floraGlow; g.globalAlpha = 0.3; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 6; k++) { x += (R() - 0.5) * 130; y += (R() - 0.5) * 130; g.lineTo(x, y); }
+        g.stroke(); g.globalAlpha = 1;
+      }
+      // Кусты кристаллов: 3 ромба + точки спор.
+      for (let i = 0; i < 130; i++) {
+        const x = R() * WORLD_W, y = R() * WORLD_H, st = 2 + R() * 4;
+        for (let k = 0; k < 3; k++) {
+          const ox = (R() - 0.5) * 14, oy = (R() - 0.5) * 10, s2 = st * (0.6 + R() * 0.7);
+          g.fillStyle = B.flora;
+          g.fillRect(x + ox - 1, y + oy, 2, 4);
+          g.fillStyle = B.floraGlow;
+          g.beginPath();
+          g.moveTo(x + ox, y + oy - s2); g.lineTo(x + ox + s2 * 0.55, y + oy);
+          g.lineTo(x + ox, y + oy + s2 * 0.7); g.lineTo(x + ox - s2 * 0.55, y + oy);
+          g.closePath(); g.fill();
+        }
+        g.fillStyle = B.floraGlow;
+        for (let k = 0; k < 3; k++) g.fillRect(x + (R() - 0.5) * 22, y + (R() - 0.5) * 16, 1.5, 1.5);
       }
     } else {
-      for (let i = 0; i < 70; i++) {
-        const x = R() * WORLD_W, y = R() * WORLD_H;
-        const r = 8 + R() * 22;
-        g.fillStyle = 'rgba(0,0,0,0.14)';
-        g.beginPath(); g.ellipse(x, y, r, r * 0.75, R() * Math.PI, 0, Math.PI * 2); g.fill();
-        g.fillStyle = 'rgba(255,255,255,0.06)';
-        g.beginPath(); g.ellipse(x - r * 0.15, y - r * 0.18, r * 0.7, r * 0.5, 0, 0, Math.PI * 2); g.fill();
+      // Кратеры с валом: тёмная чаша + светлая дуга сверху-слева.
+      for (let i = 0; i < 30; i++) {
+        const x = R() * WORLD_W, y = R() * WORLD_H, r = 10 + R() * 26;
+        g.fillStyle = 'rgba(0,0,0,0.2)';
+        g.beginPath(); g.ellipse(x, y, r, r * 0.72, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = 'rgba(0,0,0,0.16)';
+        g.beginPath(); g.ellipse(x + r * 0.12, y + r * 0.16, r * 0.62, r * 0.42, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = B.craterRim; g.lineWidth = 2.5;
+        g.beginPath(); g.ellipse(x, y, r, r * 0.72, 0, Math.PI * 0.95, Math.PI * 1.85); g.stroke();
+        g.fillStyle = B.pebble;
+        for (let k = 0; k < 5; k++) {
+          g.beginPath();
+          g.arc(x + (R() - 0.5) * r * 2.6, y + (R() - 0.5) * r * 2, 1 + R() * 1.6, 0, Math.PI * 2);
+          g.fill();
+        }
       }
       // Трещины сухого грунта.
-      g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1;
+      g.strokeStyle = 'rgba(0,0,0,0.16)'; g.lineWidth = 1;
       for (let i = 0; i < 90; i++) {
         let x = R() * WORLD_W, y = R() * WORLD_H;
         g.beginPath(); g.moveTo(x, y);
-        for (let s = 0; s < 4; s++) { x += (R() - 0.5) * 40; y += (R() - 0.5) * 40; g.lineTo(x, y); }
+        for (let k = 0; k < 4; k++) { x += (R() - 0.5) * 40; y += (R() - 0.5) * 40; g.lineTo(x, y); }
         g.stroke();
       }
+      // Сухие кусты (марс) / стеклянные осколки (луна).
+      const nBush = this.preset.biome === 'moon' ? 45 : 95;
+      for (let i = 0; i < nBush; i++) {
+        const x = R() * WORLD_W, y = R() * WORLD_H;
+        g.strokeStyle = B.flora; g.lineWidth = 1.4;
+        for (let k = 0; k < 5; k++) {
+          const a = -Math.PI / 2 + (k - 2) * 0.5 + (R() - 0.5) * 0.3;
+          g.beginPath(); g.moveTo(x, y);
+          g.lineTo(x + Math.cos(a) * (5 + R() * 6), y + Math.sin(a) * (5 + R() * 6));
+          g.stroke();
+        }
+      }
     }
-    // Пыльные пятна у баз.
+
+    // 5) Пыль у баз — мягкий радиальный градиент без колец.
     for (const side of ['player', 'enemy']) {
       const b = this.bases[side];
-      g.fillStyle = B.dust;
+      const bx = (b.center.x + 0.5) * TILE, by = (b.center.y + 0.5) * TILE;
+      g.save();
+      g.translate(bx, by); g.scale(1, 0.8); g.translate(-bx, -by);
+      const dg = g.createRadialGradient(bx, by, 10, bx, by, 5 * TILE);
+      dg.addColorStop(0, hexA(B.dustHex, 0.2));
+      dg.addColorStop(0.7, hexA(B.dustHex, 0.12));
+      dg.addColorStop(1, hexA(B.dustHex, 0));
+      g.fillStyle = dg;
+      g.beginPath(); g.arc(bx, by, 5 * TILE, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+
+    // 6) Вода со скруглённой береговой линией: каждый водный тайл
+    // строится с учётом 4 соседей — общие рёбра flush, внешние
+    // углы круглые. Проходы: берег-расширение → гладь → глубина.
+    const waterPath = (x, y, pad, r) => {
+      const x0 = x * TILE - pad, y0 = y * TILE - pad;
+      const x1 = (x + 1) * TILE + pad, y1 = (y + 1) * TILE + pad;
+      const n = isW(x, y - 1), s2 = isW(x, y + 1), w2 = isW(x - 1, y), e2 = isW(x + 1, y);
       g.beginPath();
-      g.ellipse((b.center.x + 0.5) * TILE, (b.center.y + 0.5) * TILE, 5 * TILE, 4 * TILE, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-
-    // Вода/кислотные озёра: тёмная заливка + блики.
+      g.moveTo(x0, w2 ? y0 : y0 + r);
+      if (!w2 && !n) g.quadraticCurveTo(x0, y0, n ? x0 : x0 + r, y0);
+      else g.lineTo(n ? x0 : x0 + r, y0);
+      g.lineTo(e2 ? x1 : x1 - r, y0);
+      if (!e2 && !n) g.quadraticCurveTo(x1, y0, x1, n ? y0 : y0 + r);
+      else g.lineTo(x1, n ? y0 : y0 + r);
+      g.lineTo(x1, e2 ? y1 : y1 - r);
+      if (!e2 && !s2) g.quadraticCurveTo(x1, y1, s2 ? x1 : x1 - r, y1);
+      else g.lineTo(s2 ? x1 : x1 - r, y1);
+      g.lineTo(w2 ? x0 : x0 + r, y1);
+      if (!w2 && !s2) g.quadraticCurveTo(x0, y1, x0, s2 ? y1 : y1 - r);
+      else g.lineTo(x0, s2 ? y1 : y1 - r);
+      g.closePath();
+    };
     for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-      if (this.terrain[this.idx(x, y)] !== T_WATER) continue;
-      g.fillStyle = B.water;
-      g.fillRect(x * TILE, y * TILE, TILE, TILE);
-      if (R() < 0.55) {
+      if (!isW(x, y)) continue;
+      waterPath(x, y, 3, 10);
+      g.fillStyle = B.shore; g.fill();
+    }
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      if (!isW(x, y)) continue;
+      waterPath(x, y, 0, 9);
+      g.fillStyle = B.water; g.fill();
+    }
+    // Глубина в середине больших озёр.
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      if (!isW(x, y)) continue;
+      let all = true;
+      for (let oy = -1; oy <= 1 && all; oy++)
+        for (let ox = -1; ox <= 1 && all; ox++)
+          if (!isW(x + ox, y + oy)) all = false;
+      if (!all) continue;
+      waterPath(x, y, 0, 9);
+      g.globalAlpha = 0.55; g.fillStyle = B.deep; g.fill(); g.globalAlpha = 1;
+    }
+    // Пена вдоль открытых сторон + блики.
+    g.strokeStyle = B.foam; g.lineWidth = 2.5; g.lineCap = 'round';
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      if (!isW(x, y)) continue;
+      const x0 = x * TILE, y0 = y * TILE, x1 = x0 + TILE, y1 = y0 + TILE;
+      g.beginPath();
+      if (!isW(x, y - 1)) { g.moveTo(x0 + 7, y0 + 3); g.lineTo(x1 - 7, y0 + 3); }
+      if (!isW(x, y + 1)) { g.moveTo(x0 + 7, y1 - 3); g.lineTo(x1 - 7, y1 - 3); }
+      if (!isW(x - 1, y)) { g.moveTo(x0 + 3, y0 + 7); g.lineTo(x0 + 3, y1 - 7); }
+      if (!isW(x + 1, y)) { g.moveTo(x1 - 3, y0 + 7); g.lineTo(x1 - 3, y1 - 7); }
+      g.stroke();
+      if (R() < 0.5) {
         g.fillStyle = B.waterGlint;
-        g.fillRect(x * TILE + 4 + R() * 10, y * TILE + 6 + R() * 16, 8 + R() * 10, 2);
+        g.fillRect(x0 + 5 + R() * 10, y0 + 7 + R() * 16, 8 + R() * 10, 2);
       }
     }
-    // Кромка берега.
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-      if (this.terrain[this.idx(x, y)] !== T_GROUND) continue;
-      const nearWater = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) =>
-        this.inBounds(x + dx, y + dy) && this.terrain[this.idx(x + dx, y + dy)] === T_WATER);
-      if (nearWater) {
-        g.fillStyle = B.shore;
-        g.fillRect(x * TILE, y * TILE, TILE, TILE);
-      }
-    }
+    g.lineCap = 'butt';
 
-    // Скалы: каменные «клубы» из кругов с бликом и тенью.
+    // 7) Скалы: гранёные осколки — тёмное основание, средняя грань,
+    // светлый скол, верхнее ребро, трещины.
     for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-      if (this.terrain[this.idx(x, y)] !== T_ROCK) continue;
-      const cx = x * TILE + TILE / 2 + (R() - 0.5) * 6;
-      const cy = y * TILE + TILE / 2 + (R() - 0.5) * 6;
-      const r = 15 + R() * 7;
-      g.fillStyle = B.rock[0];
-      g.beginPath(); g.arc(cx + 2, cy + 3, r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = B.rock[1];
-      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+      if (terr(x, y) !== T_ROCK) continue;
+      const cx = x * TILE + TILE / 2 + (R() - 0.5) * 8;
+      const cy = y * TILE + TILE / 2 + (R() - 0.5) * 8;
+      const r = 13 + R() * 5;
+      g.fillStyle = 'rgba(0,0,0,0.32)';
+      g.beginPath(); g.ellipse(cx + 3, cy + r * 0.62, r * 0.95, r * 0.4, 0, 0, Math.PI * 2); g.fill();
+      // Основание — тёмный шестигранник со сдвигом.
+      const base = [];
+      for (let k = 0; k < 6; k++) {
+        const a = k * Math.PI / 3 + R() * 0.5;
+        const rr2 = r * (0.82 + R() * 0.25);
+        base.push(cx + Math.cos(a) * rr2, cy + Math.sin(a) * rr2 * 0.9);
+      }
+      g.fillStyle = B.rock[0]; polyG(base);
+      // Средняя грань — пятигранник вверх-влево.
+      const mid = [];
+      for (let k = 0; k < 5; k++) {
+        const a = k * Math.PI * 2 / 5 - 0.6 + R() * 0.4;
+        const rr2 = r * 0.68 * (0.85 + R() * 0.3);
+        mid.push(cx - 2 + Math.cos(a) * rr2, cy - 3 + Math.sin(a) * rr2 * 0.85);
+      }
+      g.fillStyle = B.rock[1]; polyG(mid);
+      // Светлый скол — треугольник.
+      const sa = R() * Math.PI * 2;
       g.fillStyle = B.rock[2];
-      g.beginPath(); g.arc(cx - r * 0.25, cy - r * 0.3, r * 0.55, 0, Math.PI * 2); g.fill();
+      polyG([cx + Math.cos(sa) * r * 0.55, cy + Math.sin(sa) * r * 0.45,
+             cx + Math.cos(sa + 2.2) * r * 0.5, cy + Math.sin(sa + 2.2) * r * 0.42,
+             cx - 3, cy - r * 0.42]);
+      // Верхнее ребро бликует.
+      g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.6;
+      g.beginPath();
+      g.moveTo(cx - r * 0.5, cy - r * 0.34); g.lineTo(cx + r * 0.1, cy - r * 0.52);
+      g.stroke();
+      // Трещины.
+      g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 1;
+      for (let k = 0; k < 2; k++) {
+        const a = Math.PI * (0.3 + R() * 0.7);
+        g.beginPath();
+        g.moveTo(cx + (R() - 0.5) * r, cy + (R() - 0.5) * r * 0.6);
+        g.lineTo(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.45);
+        g.stroke();
+      }
     }
 
     this.terrainCanvas = c;
