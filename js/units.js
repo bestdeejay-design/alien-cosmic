@@ -252,9 +252,11 @@ export function orderBuild(st, u, building) {
 }
 
 // Ремонт: рабочий «сваривает» здание или технику до полного HP.
-export function orderRepair(st, u, target) {
+// auto:true — приказ найден самим рабочим в простое (не игроком):
+// логика та же, маркер — для отладки и будущих приоритетов.
+export function orderRepair(st, u, target, auto = false) {
   if (u.garrison) return;
-  u.order = { kind: 'repair', target, resume: currentCrystal(u) };
+  u.order = { kind: 'repair', target, resume: currentCrystal(u), auto };
   u.path = null; u.pathI = 0;
   resetStuck(u);
 }
@@ -396,6 +398,18 @@ function updateOrderByKind(st, u, dt, grid) {
           if (hurt) { u.order = { kind: 'heal', target: hurt }; break; }
         }
       }
+      // Рабочий в простое сам латает повреждённую технику рядом —
+      // зеркально медику: после рейда ремонт никто не заказал, а
+      // покалеченные машины копятся на базе. Здания не трогаем: они
+      // стоят на виду, и их ремонт — решение игрока (минералы).
+      if (u.cfg.canRepair) {
+        u.scanT -= dt;
+        if (u.scanT <= 0) {
+          u.scanT = 0.5;
+          const veh = findRepairTarget(st, u);
+          if (veh) { orderRepair(st, u, veh, true); break; }
+        }
+      }
       // Бойцы без приказа сами ищут цель в радиусе обзора.
       if (!u.cfg.canMine && !u.cfg.canHeal) {
         u.scanT -= dt;
@@ -534,6 +548,19 @@ function findHealTarget(st, u) {
   for (const a of st.units) {
     if (a.dead || a.garrison || a === u || a.side !== u.side) continue;
     if (a.cfg.vehicle || a.hp >= a.maxHp) continue;
+    const d = Math.hypot(a.x - u.x, a.y - u.y);
+    if (d < bd && d <= u.cfg.sightTiles * TILE) { bd = d; best = a; }
+  }
+  return best;
+}
+
+// Ближайшая повреждённая техника своих (зеркало findHealTarget; здания —
+// только по приказу игрока: их повреждение видно, и траты решает он).
+function findRepairTarget(st, u) {
+  let best = null, bd = Infinity;
+  for (const a of st.units) {
+    if (a.dead || a.garrison || a === u || a.side !== u.side) continue;
+    if (!a.cfg.vehicle || a.hp >= a.maxHp) continue;
     const d = Math.hypot(a.x - u.x, a.y - u.y);
     if (d < bd && d <= u.cfg.sightTiles * TILE) { bd = d; best = a; }
   }
