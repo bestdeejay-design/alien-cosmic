@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Alien Cosmic — спрайт-кит v1 (предложение Z.ai)</title>
+<style>
+  html,body{margin:0;background:#101318;color:#cfe8e2;font:13px/1.4 system-ui,sans-serif}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="cv" width="1560" height="1080"></canvas>
+<script>
+// ============================================================
+// Спрайт-кит v1 — предложение редизайна юнитов Alien Cosmic.
+// Ключевая идея: не 14 разовых рисунков, а СИСТЕМА:
+//   1) плотный силуэт (корпус ≥80% радиуса) + тёмная обводка;
+//   2) одна «подпись»-деталь на юнита, остальное — масса;
+//   3) ровно один источник свечения на юнита (ядро/сопло/фонарь);
+//   4) анимация фазой ph (=u.id*1.7 + время), амплитуда от mv (движется);
+//   5) нос по +X, рисуем вокруг (0,0) — контракт drawUnit сохранён.
+// Гелиос — грани и панели (шестигранники, клинья) + янтарь приборов;
+// кхарид — сегменты и шипы + био-свечение. Сторону видно по цвету
+// панели И по форме (грани против органики) — дальтоник-безопасно.
+// ============================================================
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const C = {
+  pMain:'#76e3d7', pDark:'#245e68', pBright:'#c5fff1',
+  eMain:'#ff806e', eDark:'#713943', eBright:'#ffd0b5',
+  bio:'#9ff5b8', amber:'#f3c579', hull:'#14333e', hullD:'#0b1f27',
+  acid:'#d7ff8a', muzzle:'#ffb36b', ground:'#3d281e',
+};
+const PAL = { // цвет — от СТОРОНЫ, форма — от фракции
+  player: [C.pMain, C.pDark, C.pBright],
+  enemy: [C.eMain, C.eDark, C.eBright],
+};
+
+function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); }
+function glow(x, y, r, color, blur = 7) { ctx.shadowColor = color; ctx.shadowBlur = blur; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; }
+function outline(fill, lw = 2) { ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = 'rgba(4,14,18,0.9)'; ctx.lineWidth = lw; ctx.stroke(); }
+// Ховер-подсветка снизу (Гелиос): мерцает фазой.
+function thrusters(pts, color, ph, mv) {
+  for (const [x, y] of pts) {
+    const k = 0.55 + 0.45 * Math.sin(ph * 9 + x) * (mv ? 1 : 0.5);
+    ctx.globalAlpha = 0.35 + 0.3 * k;
+    glow(x, y, 2.6, color, 6);
+    ctx.globalAlpha = 1;
+  }
+}
+// Лапы кхарида: шагают фазой (mv — амплитуда больше).
+function legs(n, x0, dx, yTop, yBot, len, ph, mv, color, w = 2.4) {
+  ctx.strokeStyle = color; ctx.lineWidth = w;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + i * dx;
+    const sw = Math.sin(ph * 7 + i * 2.1) * (mv ? 3.4 : 1.2);
+    ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x + sw * 0.5, yBot - len * 0.4); ctx.lineTo(x + sw, yBot); ctx.stroke();
+  }
+}
+// Кристальный шип: две грани (светлая/тёмная).
+function spike(x, y, len, ang, base, tip) {
+  const px = Math.cos(ang), py = Math.sin(ang), nx = -py, ny = px, w = len * 0.3;
+  poly([[x + nx * w, y + ny * w], [x + px * len, y + py * len], [x - nx * w, y - ny * w]]);
+  outline(base, 1.4);
+  poly([[x + nx * w, y + ny * w], [x + px * len, y + py * len], [x, y]]);
+  ctx.fillStyle = tip; ctx.fill();
+}
+
+// ================= ГЕЛИОС (грани, панели, янтарь) =================
+function hWorker(m, d, b, ph, mv) {
+  thrusters([[-8, -5], [-8, 5]], m, ph, mv);
+  poly([[10, 0], [4, -7], [-7, -7], [-10, 0], [-7, 7], [4, 7]]); outline(C.hull);
+  poly([[8, 0], [3, -4.5], [-6, -4.5], [-8, 0], [-6, 4.5], [3, 4.5]]); outline(m, 1.6);
+  glow(4, 0, 2.8, b, 6);
+  ctx.fillStyle = C.amber;
+  ctx.fillRect(9, -5.5, 4.5, 2.4); ctx.fillRect(9, 3.1, 4.5, 2.4);
+}
+function hMarine(m, d, b, ph, mv) {
+  thrusters([[-7, -4], [-7, 4]], m, ph, mv);
+  poly([[8, 0], [2, -9], [-6, -9], [-9, -3], [-9, 3], [-6, 9], [2, 9]]); outline(C.hull);
+  poly([[5, 0], [1, -6], [-5, -6], [-7, 0], [-5, 6], [1, 6]]); outline(m, 1.6);
+  ctx.fillStyle = C.hullD; ctx.fillRect(6, -1.6, 12, 3.2);
+  glow(18.5, 0, 1.8, b, 5);
+  ctx.fillStyle = b; ctx.fillRect(-1, -2.6, 4, 5.2);
+  ctx.fillStyle = C.amber; ctx.fillRect(-8, -8.4, 3, 3); ctx.fillRect(-8, 5.4, 3, 3);
+}
+function hBuggy(m, d, b, ph, mv) {
+  thrusters([[-9, -7], [-9, 7], [-11, 0]], b, ph, mv);
+  poly([[14, 0], [-4, -9], [-10, -5], [-10, 5], [-4, 9]]); outline(C.hull);
+  poly([[11, 0], [-3, -6], [-8, -3], [-8, 3], [-3, 6]]); outline(m, 1.6);
+  poly([[14, 0], [6, -2.4], [6, 2.4]]); ctx.fillStyle = b; ctx.fill();
+  ctx.fillStyle = C.hullD; ctx.fillRect(2, -1.2, 8, 2.4); ctx.fillRect(2, 0.4, 8, 2.4);
+  glow(0, 0, 2.6, b, 6);
+}
+function hTank(m, d, b, ph, mv) {
+  thrusters([[-15, -9], [-15, 0], [-15, 9]], b, ph, mv);
+  poly([[16, 0], [10, -12], [-10, -14], [-16, -8], [-16, 8], [-10, 14], [10, 12]]); outline(C.hull);
+  poly([[13, 0], [8, -9], [-8, -10], [-13, -6], [-13, 6], [-8, 10], [8, 9]]); outline(m, 1.8);
+  poly([[6, 0], [2, -6.5], [-5, -6.5], [-7, 0], [-5, 6.5], [2, 6.5]]); outline(d);
+  ctx.fillStyle = C.hullD; ctx.fillRect(6, -5.4, 14, 2.6); ctx.fillRect(6, 2.8, 14, 2.6);
+  glow(21, -4.1, 1.6, b, 4); glow(21, 4.1, 1.6, b, 4);
+  ctx.fillStyle = b; ctx.fillRect(-3, -3.4, 5, 6.8);
+  ctx.fillStyle = C.amber; ctx.fillRect(-15, -12.5, 5, 2.2); ctx.fillRect(-15, 10.3, 5, 2.2);
+}
+function hMedic(m, d, b, ph, mv) {
+  thrusters([[-9, -3], [-9, 3]], m, ph, mv);
+  ctx.beginPath(); ctx.arc(0, 0, 9.5, 0, Math.PI * 2); outline(C.hull);
+  ctx.beginPath(); ctx.arc(0, 0, 7.4, 0, Math.PI * 2); outline(m, 1.8);
+  const k = 0.85 + 0.15 * Math.sin(ph * 5);
+  ctx.fillStyle = b;
+  ctx.fillRect(-1.6 * k, -6.4 * k, 3.2 * k, 12.8 * k); ctx.fillRect(-6.4 * k, -1.6 * k, 12.8 * k, 3.2 * k);
+  ctx.fillStyle = d; ctx.fillRect(-13.5, -2.4, 4, 4.8); ctx.fillRect(9.5, -2.4, 4, 4.8);
+}
+function hFlamer(m, d, b, ph, mv) {
+  thrusters([[-9, -6], [-9, 6]], C.muzzle, ph, mv);
+  poly([[9, 0], [5, -8], [-6, -9], [-10, -4], [-10, 4], [-6, 9], [5, 8]]); outline(C.hull);
+  poly([[6, 0], [3, -5], [-5, -5.5], [-7, 0], [-5, 5.5], [3, 5]]); outline(m, 1.6);
+  poly([[9, -3.4], [15, -2.2], [15, 2.2], [9, 3.4]]); outline(C.hullD, 1.4);
+  const k = 0.8 + 0.25 * Math.sin(ph * 11);
+  glow(15.5, 0, 2.2 * k, C.muzzle, 8); glow(14.5, 0, 1 * k, '#fff3d0', 4);
+  ctx.fillStyle = C.amber; ctx.fillRect(-9.5, -8.2, 4, 2); ctx.fillRect(-9.5, 6.2, 4, 2);
+}
+function hArty(m, d, b, ph, mv) {
+  thrusters([[-13, -10], [-13, 10]], b, ph, mv);
+  poly([[17, 0], [12, -8], [-11, -11], [-16, -6], [-16, 6], [-11, 11], [12, 8]]); outline(C.hull);
+  ctx.fillStyle = C.hullD; ctx.fillRect(-14, -11, 6, 22);
+  poly([[12, 0], [8, -6], [-6, -7], [-9, 0], [-6, 7], [8, 6]]); outline(m, 1.8);
+  ctx.save(); ctx.rotate(-0.6);
+  ctx.fillStyle = C.hullD; ctx.fillRect(2, -3.4, 15, 6.8);
+  ctx.fillStyle = d; ctx.fillRect(14, -4.1, 3.4, 8.2);
+  ctx.restore();
+  glow(0, 0, 2.6, b, 6);
+  ctx.fillStyle = C.amber; ctx.fillRect(-16, -3, 3.4, 6);
+}
+
+// ================= КХАРИД (сегменты, шипы, био) =================
+function aWorker(m, d, b, ph, mv) {
+  legs(3, -6, 5.5, -3, 8, 8, ph, mv, d);
+  ctx.beginPath(); ctx.ellipse(-5, 0, 6.5, 7.5, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(2, 0, 7, 6.4, 0, 0, Math.PI * 2); outline(m, 1.6);
+  const k = 0.85 + 0.2 * Math.sin(ph * 4);
+  glow(3, 0, 3 * k, C.bio, 8);
+  ctx.strokeStyle = d; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(8, -1.5); ctx.lineTo(12.5, -4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 1.5); ctx.lineTo(12.5, 4); ctx.stroke();
+}
+function aMarine(m, d, b, ph, mv) {
+  legs(3, -5, 5, -2.5, 7, 7, ph, mv, d, 2.2);
+  ctx.beginPath(); ctx.ellipse(-4, 0, 6.5, 6, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(3, 0, 7.5, 5.6, 0, 0, Math.PI * 2); outline(m, 1.6);
+  for (let i = 0; i < 3; i++) spike(-8 + i * 5, -3.5, 8.5, -1.35, d, C.bio);
+  poly([[10.5, 0], [5.5, -3.4], [5.5, 3.4]]); ctx.fillStyle = b; ctx.fill();
+  ctx.strokeStyle = C.hullD; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(10, -1.6); ctx.lineTo(14.5, -2.8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, 1.6); ctx.lineTo(14.5, 2.8); ctx.stroke();
+}
+function aBuggy(m, d, b, ph, mv) {
+  legs(2, 4, 7, -4, 12, 12, ph, mv, d, 3);
+  legs(2, -10, 6, -3, 11, 10, ph + 1.5, mv, d, 2.6);
+  ctx.beginPath(); ctx.ellipse(-6, 0, 8.5, 6.4, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(3, 0, 8.6, 5.2, 0, 0, Math.PI * 2); outline(m, 1.6);
+  for (let i = 0; i < 2; i++) spike(-2 + i * 6, -4, 7, -1.15, d, C.bio);
+  const k = 0.75 + 0.35 * Math.sin(ph * 6);
+  glow(9, -2.2, 1.7 * k, C.bio, 6); glow(9, 2.2, 1.7 * k, C.bio, 6);
+  poly([[11.5, 0], [7.5, -2.6], [7.5, 2.6]]); ctx.fillStyle = b; ctx.fill();
+}
+function aTank(m, d, b, ph, mv) {
+  legs(2, -2, 11, -7, 15, 13, ph, mv, d, 4.2);
+  ctx.beginPath(); ctx.ellipse(-3, 0, 15.5, 12, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(3, 0, 12.5, 9.2, 0, 0, Math.PI * 2); outline(m, 1.8);
+  for (let i = 0; i < 4; i++) spike(-10 + i * 6.5, -8 + (i % 2) * 16, 9, i % 2 ? 1.25 : -1.25, d, C.bio);
+  spike(6, -9, 14, -0.85, d, b); spike(6, 9, 14, 0.85, d, b);
+  const k = 0.85 + 0.2 * Math.sin(ph * 3.2);
+  glow(10.5, 0, 4 * k, b, 10);
+}
+function aMedic(m, d, b, ph, mv) {
+  legs(2, -3, 6, -2.5, 7, 7, ph, mv, d, 2.2);
+  ctx.beginPath(); ctx.ellipse(-2, 0, 8, 7.4, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(1.5, 0, 6.4, 5.8, 0, 0, Math.PI * 2); outline(m, 1.6);
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i - 2) * 0.55 + Math.sin(ph * 2.5) * 0.08;
+    spike(-2 + Math.cos(a) * 5, Math.sin(a) * 5 - 1, 8, a, d, C.bio);
+  }
+  glow(-2, -2, 2.4, b, 6);
+  for (let i = 0; i < 3; i++) {
+    const a = ph * 2 + i * 2.1;
+    ctx.globalAlpha = 0.5 + 0.4 * Math.sin(ph * 4 + i);
+    glow(-2 + Math.cos(a) * 11, Math.sin(a) * 9 - 4, 1.2, C.bio, 4);
+    ctx.globalAlpha = 1;
+  }
+}
+function aFlamer(m, d, b, ph, mv) {
+  legs(3, -6, 5.5, -4, 8.5, 8, ph, mv, d, 2.6);
+  ctx.beginPath(); ctx.ellipse(-3, 0, 9.5, 8.6, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(4, 0, 7.6, 6.6, 0, 0, Math.PI * 2); outline(m, 1.6);
+  ctx.strokeStyle = C.hullD; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-7 + i * 3.4, 0, 8.6 - i, -1.1, 1.1); ctx.stroke(); }
+  const k = 0.8 + 0.25 * Math.sin(ph * 9);
+  poly([[11, -3.4], [15.5, -2.2], [15.5, 2.2], [11, 3.4]]); outline(C.hullD, 1.4);
+  glow(16, 0, 2.4 * k, C.acid, 8);
+  glow(6.5, -4.6, 1.5 * k, C.bio, 5); glow(6.5, 4.6, 1.5 * k, C.bio, 5);
+}
+function aArty(m, d, b, ph, mv) {
+  legs(3, -13, 8, -5, 13, 11, ph, mv, d, 3.4);
+  ctx.beginPath(); ctx.ellipse(-10, 0, 8, 9.6, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(-2, 0, 10, 11, 0, 0, Math.PI * 2); outline(d);
+  ctx.beginPath(); ctx.ellipse(7, 0, 8.6, 8.4, 0, 0, Math.PI * 2); outline(m, 1.8);
+  ctx.save(); ctx.rotate(-0.5);
+  ctx.beginPath(); ctx.ellipse(-2, -11, 4.6, 7.2, 0, 0, Math.PI * 2); outline(C.hullD, 1.6);
+  glow(-2, -17, 2.2, C.bio, 7);
+  ctx.restore();
+  glow(11.5, 0, 3 * (0.85 + 0.2 * Math.sin(ph * 3)), b, 9);
+  ctx.strokeStyle = C.hullD; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-2 - i * 4.5, 0, 10.4 - i, 1.35, 1.85); ctx.stroke(); ctx.beginPath(); ctx.arc(-2 - i * 4.5, 0, 10.4 - i, -1.85, -1.35); ctx.stroke(); }
+}
+
+const DRAW = {
+  human: { worker: hWorker, marine: hMarine, buggy: hBuggy, tank: hTank, medic: hMedic, flamer: hFlamer, arty: hArty },
+  alien: { worker: aWorker, marine: aMarine, buggy: aBuggy, tank: aTank, medic: aMedic, flamer: aFlamer, arty: aArty },
+};
+const NAMES = {
+  human: { worker: 'Дрон-техник', marine: 'Рейнджер', buggy: 'Скиф', tank: 'Бастион', medic: 'Нанит', flamer: 'Плазмер', arty: 'Мортира «Нова»' },
+  alien: { worker: 'Собиратель', marine: 'Кристожал', buggy: 'Скользень', tank: 'Громила', medic: 'Цветень', flamer: 'Кислотник', arty: 'Спогром' },
+};
+const HINTS = {
+  human: { worker: 'клешни-манипуляторы, кабина-ядро', marine: 'визор + ствол, плечи-блоки', buggy: 'носовой клин + спарка', tank: 'башня-шестигранник, спарка, плиты', medic: 'крупный крест, пульс кольца', flamer: 'раскалённое устье, баллоны', arty: 'поднятая мортира, кормовая плита' },
+  alien: { worker: 'фонарь-желудок, 6 лап, усики', marine: 'гребень шипов, жвалы, хвост', buggy: '4 лапы, 4 глаза, прыжковая стойка', tank: 'рога вперёд, ядро во лбу, шипастая спина', medic: 'раскрытый цветок, пыльца', flamer: 'кислотное устье, сегменты пуза', arty: 'спорная мортира, сегментный хвост' },
+};
+const R = { worker: 10, marine: 10, buggy: 11, tank: 14, medic: 9, flamer: 10, arty: 13 };
+const ORDER = ['worker', 'marine', 'medic', 'flamer', 'buggy', 'tank', 'arty'];
+
+// ---- фон: тёмный биом «Актан-4» ----
+ctx.fillStyle = C.ground; ctx.fillRect(0, 0, 1560, 1080);
+for (let i = 0; i < 500; i++) {
+  ctx.fillStyle = Math.random() < 0.5 ? 'rgba(18,8,4,0.3)' : 'rgba(226,150,96,0.12)';
+  ctx.fillRect(Math.random() * 1560, Math.random() * 1080, 2 + Math.random() * 5, 2 + Math.random() * 3);
+}
+ctx.fillStyle = '#0d1117'; ctx.fillRect(14, 12, 1532, 40);
+ctx.fillStyle = '#cfe8e2'; ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'left';
+ctx.fillText('ALIEN COSMIC — спрайт-кит v1 (предложение Z.ai): силуэт ≥80% r · обводка · одна деталь · одно свечение · анимация фазой', 28, 39);
+
+function drawUnitAt(fn, pal, x, y, scale, ph, mv, r) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  ctx.fillStyle = 'rgba(0,8,13,0.45)';
+  ctx.beginPath(); ctx.ellipse(0, 7, r + 3, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  fn(...pal, ph, mv);
+  ctx.restore();
+}
+
+let y = 78;
+for (const side of ['human', 'alien']) {
+  const x0 = side === 'human' ? 24 : 800;
+  y = 78; // каждая фракция — своя колонка с независимым рядом
+  ctx.fillStyle = side === 'human' ? C.pMain : C.eMain;
+  ctx.font = 'bold 16px system-ui';
+  ctx.fillText(side === 'human' ? 'ГЕЛИОС — грани и панели, янтарь приборов' : 'КХАРИД — сегменты, шипы, био-свечение', x0 + 4, y - 8);
+  for (const type of ORDER) {
+    const r = R[type], fn = DRAW[side][type];
+    drawUnitAt(fn, PAL.player, x0 + 90, y + 42, 2.2, 1.7, true, r);
+    ctx.fillStyle = '#e8f6f1'; ctx.font = 'bold 14px system-ui';
+    ctx.fillText(NAMES[side][type] + '  ·  r=' + r, x0 + 180, y + 26);
+    ctx.fillStyle = '#9fb8b0'; ctx.font = '12px system-ui';
+    ctx.fillText(HINTS[side][type], x0 + 180, y + 44);
+    ctx.fillStyle = '#7a938c'; ctx.font = '11px system-ui';
+    ctx.fillText('игровой масштаб: свой · свой · враг →', x0 + 180, y + 66);
+    drawUnitAt(fn, PAL.player, x0 + 380, y + 56, 1, 0, false, r);
+    drawUnitAt(fn, PAL.player, x0 + 442, y + 56, 1, 0.45, true, r);
+    drawUnitAt(fn, PAL.enemy, x0 + 504, y + 56, 1, 0.9, true, r);
+    ctx.strokeStyle = 'rgba(120,200,190,0.12)'; ctx.lineWidth = 1;
+    ctx.strokeRect(x0, y + 2, 752, 100);
+    y += 112;
+  }
+}
+ctx.fillStyle = 'rgba(8,18,23,0.75)'; rr(24, y + 6, 1528, 96, 10); ctx.fill();
+ctx.fillStyle = '#cfe8e2'; ctx.font = '12.5px system-ui';
+ctx.fillText('Правила: (1) корпус ≥80% радиуса + обводка rgba(4,14,18,.9); (2) одна «подпись»-деталь; (3) одно свечение (blur 5–10); (4) сторона = цвет панели И форма (грани vs органика); (5) анимация фазой u.id*1.7+время.', 40, y + 30);
+ctx.fillText('(6) тень и кольцо выделения — снаружи спрайта (контракт drawUnit не тронут); (7) груз кристалла и вспышка урона — существующие надстройки. Функции готовы к переносу в units.js как замена веток drawUnit.', 40, y + 52);
+ctx.fillStyle = '#7a938c';
+ctx.fillText('Сравнение с текущими спрайтами: скриншоты download/alien-cosmic-visual/ (текущая сборка) — тонкие тела в круге радиуса, слабая читаемость детали, статичность.', 40, y + 76);
+</script>
+</body>
+</html>
