@@ -17,6 +17,9 @@ function ctxStub() {
   return new Proxy({}, {
     get: (t, k) => {
       if (k in t) return t[k];
+      if (k === 'createRadialGradient' || k === 'createLinearGradient' || k === 'createPattern') {
+        return (...a) => ({ addColorStop() {} });
+      }
       return (...a) => undefined;
     },
     set: (t, k, v) => { t[k] = v; return true; },
@@ -216,6 +219,12 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
   const mkCtx = () => new Proxy({ canvas: {} }, {
     get: (t, k) => {
       if (k in t) return t[k];
+      if (k === 'createRadialGradient' || k === 'createLinearGradient' || k === 'createPattern') {
+        return (...a) => {
+          for (const v of a) if (typeof v === 'number' && !isFinite(v)) nanArgs++;
+          return { addColorStop() {} };
+        };
+      }
       if (COORD_METHODS.has(k)) {
         return (...a) => {
           for (const v of a) if (typeof v === 'number' && !isFinite(v)) nanArgs++;

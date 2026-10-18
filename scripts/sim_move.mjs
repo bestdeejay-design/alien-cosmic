@@ -11,7 +11,13 @@
 
 function ctxStub() {
   return new Proxy({}, {
-    get: (t, k) => (k in t ? t[k] : (...a) => undefined),
+    get: (t, k) => {
+      if (k in t) return t[k];
+      if (k === 'createRadialGradient' || k === 'createLinearGradient' || k === 'createPattern') {
+        return (...a) => ({ addColorStop() {} });
+      }
+      return (...a) => undefined;
+    },
     set: (t, k, v) => { t[k] = v; return true; },
   });
 }

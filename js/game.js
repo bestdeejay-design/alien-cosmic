@@ -856,30 +856,51 @@ export class Game {
   }
 
   drawCrystal(ctx, c, camX, camY) {
+    // Друза из трёх осколков: задний тёмный, главный со свечением,
+    // передний светлый + мерцающая искра. Масштаб — от остатка.
     const s = 0.45 + 0.55 * (c.amount / c.max);
-    const now = performance.now();
-    const glint = Math.sin(now * 0.003 + c.x) * 1.8;
+    const tw = 0.5 + 0.5 * Math.sin(performance.now() * 0.004 + c.x * 0.7 + c.y);
     ctx.save();
     ctx.translate(c.x - camX, c.y - camY);
     ctx.fillStyle = 'rgba(5,19,24,0.45)';
-    ctx.beginPath(); ctx.ellipse(0, 9, 12 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2, 10, 13 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
     ctx.scale(s, s);
-    // Основная грань со свечением (язык «Рубежа 64»).
-    ctx.shadowColor = '#7ed9e7'; ctx.shadowBlur = 13;
+    // Осколки породы у основания.
+    ctx.fillStyle = '#22333a';
+    ctx.beginPath();
+    ctx.moveTo(-11, 10); ctx.lineTo(-6, 4); ctx.lineTo(-2, 10);
+    ctx.moveTo(4, 11); ctx.lineTo(9, 5); ctx.lineTo(12, 11);
+    ctx.fill();
+    // Задний осколок — тёмный.
+    ctx.fillStyle = '#2e6b7a';
+    ctx.beginPath();
+    ctx.moveTo(-9, 8); ctx.lineTo(-7, -10); ctx.lineTo(-3, -13); ctx.lineTo(-1, 9);
+    ctx.closePath(); ctx.fill();
+    // Главный осколок со свечением.
+    ctx.shadowColor = '#7ed9e7'; ctx.shadowBlur = 10;
     ctx.fillStyle = '#61b6c8';
     ctx.beginPath();
-    ctx.moveTo(0, -13 - glint); ctx.lineTo(10, -2); ctx.lineTo(5, 11); ctx.lineTo(-8, 9); ctx.lineTo(-10, -3);
+    ctx.moveTo(-4, 10); ctx.lineTo(-2, -12); ctx.lineTo(3, -16); ctx.lineTo(7, -4); ctx.lineTo(5, 10);
     ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
-    // Светлая и тёмная грани — объём.
+    // Грани главного: светлая и тёмная.
     ctx.fillStyle = '#b9f5ed';
     ctx.beginPath();
-    ctx.moveTo(0, -12 - glint); ctx.lineTo(3, 4); ctx.lineTo(-4, 8);
+    ctx.moveTo(-2, -12); ctx.lineTo(0, -2); ctx.lineTo(-3, 8);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#3b809a';
     ctx.beginPath();
-    ctx.moveTo(3, 4); ctx.lineTo(10, -2); ctx.lineTo(5, 11);
+    ctx.moveTo(0, -2); ctx.lineTo(7, -4); ctx.lineTo(5, 10); ctx.lineTo(1, 9);
     ctx.closePath(); ctx.fill();
+    // Передний малый осколок — светлый.
+    ctx.fillStyle = '#9be4ef';
+    ctx.beginPath();
+    ctx.moveTo(3, 10); ctx.lineTo(7, -3); ctx.lineTo(10, -1); ctx.lineTo(9, 10);
+    ctx.closePath(); ctx.fill();
+    // Искра на вершине.
+    ctx.fillStyle = 'rgba(230,255,252,' + (0.35 + 0.6 * tw).toFixed(2) + ')';
+    ctx.fillRect(-3.5, -17.5, 7, 1.6);
+    ctx.fillRect(-0.8, -20, 1.6, 7);
     ctx.restore();
   }
 
