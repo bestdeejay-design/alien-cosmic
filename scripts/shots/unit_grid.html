@@ -19,7 +19,7 @@ import { drawUnit } from '../../js/units.js';
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const types = Object.keys(UNITS);
-const factions = ['terran', 'alien'];
+const factions = ['human', 'alien'];
 const cell = 150;
 
 ctx.fillStyle = '#0a1a21';
@@ -44,7 +44,7 @@ factions.forEach((f, fi) => {
     drawUnit(ctx, u, x, y);
     ctx.fillStyle = '#9fd8d0';
     ctx.textAlign = 'center';
-    ctx.fillText(`${f === 'terran' ? 'ГЕЛИОС' : 'КХАРИД'} ${t}`, x, y + 34);
+    ctx.fillText(`${f === 'human' ? 'ГЕЛИОС' : 'КХАРИД'} ${t}`, x, y + 34);
   });
 });
 window.__GRID_DONE__ = true;

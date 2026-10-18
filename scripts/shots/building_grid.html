@@ -41,7 +41,7 @@ types.forEach((t, ti) => {
     const bx = 30 + col * 310 + (row === 1 ? 60 : 0);
     const by = 30 + row * 320 + si * (s * TILE + 40);
     const b = {
-      type: t, faction: side === 'player' ? 'terran' : 'alien', side,
+      type: t, faction: side === 'player' ? 'human' : 'alien', side,
       tx: 0, ty: 0, w: s, h: s, id: ti * 2 + si + 1,
       hp: 500, maxHp: 500, cd: 0, angle: -0.6,
       dead: false, done: true, progress: 1,
