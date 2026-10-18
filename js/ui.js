@@ -438,6 +438,7 @@ export function initUI(game) {
   });
 
   // Стартовая кнопка на фоне меню (старое поведение): запускаем первую миссию.
+  els.startBtn.textContent = 'Быстрый старт — миссия ' + (loadProgress() + 1);
   els.startBtn.addEventListener('click', () => game.startMission(MISSIONS[loadProgress()]));
   els.againBtn.addEventListener('click', () => {
     els.endOverlay.classList.add('hidden');
@@ -569,15 +570,20 @@ export function setObjective(text) {
   if (els && els.objective) els.objective.textContent = text;
 }
 
+// Прошедшее время боя — округление вниз (в отличие от fmtTime обратных
+// отсчётов в game.js, где округление вверх, чтобы «03:00» держалось до конца).
+function fmtElapsed(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
 export function showEnd(win, stats, opts = {}) {
   els.endTitle.textContent = win ? 'Победа!' : 'Поражение';
   els.endTitle.className = win ? 'win' : 'lose';
   els.endReason.textContent = opts.reason || '';
   if (opts.campaignDone) els.endReason.textContent = 'Кампания пройдена — поля кхарид свободны!';
-  const mm = String(Math.floor(stats.time / 60)).padStart(2, '0');
-  const ss = String(Math.floor(stats.time % 60)).padStart(2, '0');
   els.endStats.innerHTML =
-    `<div class="row"><span>Время боя</span><b>${mm}:${ss}</b></div>` +
+    `<div class="row"><span>Время боя</span><b>${fmtElapsed(stats.time)}</b></div>` +
     `<div class="row"><span>Уничтожено врагов</span><b>${stats.kills}</b></div>` +
     `<div class="row"><span>Потери</span><b>${stats.losses}</b></div>` +
     `<div class="row"><span>${tr(opts.faction, 'mined')}</span><b>${stats.mined}</b></div>`;
@@ -618,9 +624,7 @@ export function update(game) {
   const supRatio = sup.cap ? sup.used / sup.cap : 0;
   els.supplyDot.classList.toggle('warn', supRatio >= 0.85 && sup.used < sup.cap);
   els.supplyDot.classList.toggle('crit', sup.used >= sup.cap);
-  const mm = String(Math.floor(st.time / 60)).padStart(2, '0');
-  const ss = String(Math.floor(st.time % 60)).padStart(2, '0');
-  els.time.textContent = `${mm}:${ss}`;
+  els.time.textContent = fmtElapsed(st.time);
   els.canvas.style.cursor = st.placing ? 'crosshair' : 'default';
 
   // Подпись панели: состав выделения + очередь/исследование выбранного здания —

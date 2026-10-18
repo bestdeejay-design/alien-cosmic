@@ -5,8 +5,9 @@
 // ============================================================
 import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BULLET_SPEED, COLORS, UPGRADES, fname } from './config.js';
 import { nearestFreeTileAround } from './pathfinding.js';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison } from './units.js';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
 import { distToRectPx } from './pathfinding.js';
+import { tr } from './lore.js';
 
 let nextBId = 1;
 
@@ -157,7 +158,7 @@ export function updateBuildings(st, dt, grid) {
         b.res = null;
         if (b.side === 'player') {
           const u = UPGRADES[key];
-          st.game.ui.toast('Улучшение завершено: ' + fname(u, b.faction) + ' ур. ' + st.tech.player[key]);
+          st.game.ui.toast(tr(b.faction, 'resDone') + fname(u, b.faction) + ' ур. ' + st.tech.player[key]);
           st.game.sound.ready();
         }
       }
@@ -166,23 +167,23 @@ export function updateBuildings(st, dt, grid) {
     // --- Производство ---
     if (b.queue.length) {
       const q = b.queue[0];
-      // Юнит «готов», но ждёт свободного населения.
-      if (q.hold) {
-        if (st.supply[b.side].used + UNITS[q.type].supply > st.supply[b.side].cap) {
-          if (b.side === 'player' && st.time - st.lastSupplyToast > 6) {
-            st.lastSupplyToast = st.time;
-            st.game.ui.toast('Нужен дом — постройте ещё Дом', 'error');
-          }
-          continue;
-        }
-        q.hold = false;
-      }
       q.t -= dt;
       if (q.t <= 0) {
-        // Нет свободной точки выхода — юнит ждёт у ворот, но не
-        // появляется внутри корпуса здания (анти-застревание).
-        if (trySpawnTrained(st, b, q.type)) b.queue.shift();
-        else q.t = 0;
+        // Юнит «готов», но ждёт свободного населения.
+        if (st.supply[b.side].used + UNITS[q.type].supply > st.supply[b.side].cap) {
+          q.hold = true;
+          q.t = 0;
+          if (b.side === 'player' && st.time - st.lastSupplyToast > 6) {
+            st.lastSupplyToast = st.time;
+            st.game.ui.toast(tr(b.faction, 'needSupply'), 'error');
+          }
+        } else {
+          q.hold = false;
+          // Нет свободной точки выхода — юнит ждёт у ворот, но не
+          // появляется внутри корпуса здания (анти-застревание).
+          if (trySpawnTrained(st, b, q.type)) b.queue.shift();
+          else q.t = 0;
+        }
       }
     }
 
@@ -219,7 +220,7 @@ export function updateBuildings(st, dt, grid) {
             m.cd = m.cfg.cooldown;
             st.projectiles.push({
               x: b.x, y: b.y, tx: t.x, ty: t.y,
-              target: t, speed: BULLET_SPEED, dmg: m.cfg.dmg, src: b, dead: false,
+              target: t, speed: BULLET_SPEED, dmg: m.cfg.dmg + atkBonus(st, m), src: b, dead: false,
             });
             addEffect(st, { kind: 'muzzle', x: b.x + Math.cos(b.angle) * 16, y: b.y + Math.sin(b.angle) * 16, ang: b.angle, t: 0, life: 0.06, faction: b.faction });
             st.game.sound.shot();
@@ -256,7 +257,7 @@ function findSpawnSpot(st, b) {
       }
     }
   }
-  if (best) b.lastSpawn = { x: best.x, y: best.y };
+  if (best) b.lastSpawn = { x: (best.x + 0.5) * TILE, y: (best.y + 0.5) * TILE };
   return best;
 }
 
@@ -1072,7 +1073,6 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   // --- Стройплощадка / прогресс / HP / flash (без изменений) ---
   ctx.save();
   if (b.done === false) {
-    const under = 0.35 + 0.65 * (b.progress || 0);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = 'rgba(243,197,121,0.85)';
     ctx.lineWidth = 2;
@@ -1091,7 +1091,6 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
       ctx.fillText(Math.round((b.progress || 0) * 100) + '%', px + w / 2, py + h - 7);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
-    void under;
   }
 
   // Трещины урона: тёмные рваные линии по корпусу.

@@ -120,7 +120,7 @@ export class Game {
       selection: [], groups: {}, placing: null, buildMenu: false,
       camera: { x: 0, y: 0 }, mouseWorld: { x: 0, y: 0 },
       gameOver: null,
-      stats: { kills: 0, losses: 0, mined: 0 },
+      stats: { kills: 0, losses: 0, mined: 0, time: 0 },
       bcount: { player: 0, enemy: 0 },
       defenseWave: 0,
       // Уровни улучшений обеих сторон (растут исследованиями лаборатории).
@@ -131,6 +131,7 @@ export class Game {
       noBase: !!m.noBase,           // стелс-миссия: отряд без базы
       shakeT: 0, shakeMag: 0,       // тряска экрана от взрывов
       lastAlertT: -99, lastSupplyToast: -99, lastRepairToast: -99,
+      lastAlertPos: null, // точка последней тревоги — прыжок по H
     };
     st.map = new GameMap(seed, m.map);
     st.fog = new Fog();
@@ -439,13 +440,64 @@ export class Game {
       },
 
       assignGroup: (n) => {
-        const g = st().selection.filter((e) => e.kind === 'unit' && !e.dead);
+        // Только свои: осмотренный враг (inspect) в отряд не пишется.
+        const g = st().selection.filter((e) => e.kind === 'unit' && e.side === 'player' && !e.dead);
         if (g.length) { st().groups[n] = g; this.sound.click(); }
       },
 
       selectGroup: (n) => {
         const g = (st().groups[n] || []).filter((u) => !u.dead);
         if (g.length) { st().selection = g; st().buildMenu = false; this.sound.click(); }
+      },
+
+      // Двойной тап цифры: прыжок камеры к центру отряда.
+      centerOnGroup: (n) => {
+        const g = (st().groups[n] || []).filter((u) => !u.dead);
+        if (!g.length) return;
+        const cx = g.reduce((a, u) => a + u.x, 0) / g.length;
+        const cy = g.reduce((a, u) => a + u.y, 0) / g.length;
+        this.centerCamera(cx, cy);
+      },
+
+      // Точка: следующий свободный рабочий + камера на него.
+      cycleIdleWorker: () => {
+        const list = st().units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
+          !u.dead && !u.garrison && u.cfg.canBuild && u.order.kind === 'idle');
+        if (!list.length) return;
+        const cur = st().selection.length === 1 ? list.indexOf(st().selection[0]) : -1;
+        const u = list[(cur + 1) % list.length];
+        st().selection = [u];
+        st().buildMenu = false;
+        this.centerCamera(u.x, u.y);
+        this.sound.click();
+      },
+
+      // Запятая: выделить всю армию (всех своих бойцов).
+      selectArmy: () => {
+        const army = st().units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
+          !u.dead && !u.garrison && !u.cfg.canBuild);
+        if (army.length) { st().selection = army; st().buildMenu = false; this.sound.click(); }
+      },
+
+      // Tab: перебор бойцов по одному + камера следом.
+      cycleCombat: () => {
+        const list = st().units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
+          !u.dead && !u.garrison && !u.cfg.canBuild);
+        if (!list.length) return;
+        const cur = st().selection.length === 1 ? list.indexOf(st().selection[0]) : -1;
+        const u = list[(cur + 1) % list.length];
+        st().selection = [u];
+        st().buildMenu = false;
+        this.centerCamera(u.x, u.y);
+        this.sound.click();
+      },
+
+      // H: прыжок камеры к последней тревоге («нас атакуют»).
+      jumpToAlert: () => {
+        const p = st().lastAlertPos;
+        if (!p) return;
+        this.centerCamera(p.x, p.y);
+        this.sound.ping();
       },
     };
   }
@@ -630,9 +682,7 @@ export class Game {
       if (st.bcount.enemy <= 0) {
         this.win('Гнездо разорено — отряд выполнил задачу!');
       } else if (!alive) {
-        st.gameOver = 'lose';
-        this.sound.lose();
-        ui.showEnd(false, st.stats, this.endOpts(false, 'Отряд погиб — миссия провалена'));
+        this.lose('Отряд погиб — миссия провалена');
       }
       return;
     }
@@ -640,9 +690,7 @@ export class Game {
     if (st.bcount.enemy <= 0) {
       this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
-      st.gameOver = 'lose';
-      this.sound.lose();
-      ui.showEnd(false, st.stats, this.endOpts(false, tr(fac, 'loseBase')));
+      this.lose(tr(fac, 'loseBase'));
     } else if (def && st.time >= def.prep + def.total) {
       this.win(tr(fac, 'winDefense'));
     }
@@ -651,9 +699,18 @@ export class Game {
   win(reason) {
     const st = this.state;
     st.gameOver = 'win';
+    st.stats.time = st.time;
     this.sound.win();
     if (this.mission.id >= 0) saveProgress(this.mission.id + 1);
     ui.showEnd(true, st.stats, this.endOpts(true, reason));
+  }
+
+  lose(reason) {
+    const st = this.state;
+    st.gameOver = 'lose';
+    st.stats.time = st.time;
+    this.sound.lose();
+    ui.showEnd(false, st.stats, this.endOpts(false, reason));
   }
 
   // Опции экрана финала: следующая миссия, подпись причины.

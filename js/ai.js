@@ -2,8 +2,9 @@
 // ai.js — ИИ противника. Работает по профилю миссии:
 //   обычный бой — экономика (рабочие → дома → казармы → пехота →
 //   техника) и нарастающие волны атак;
-//   миссия-оборона — волны спавнятся из гнёзд противника с
-//   нарастающим размером, без собственной экономики.
+//   миссия-оборона — волны спавнятся у командного центра противника
+//   с нарастающим размером, без собственной экономики (гнёзда-бараки —
+//   дополнительные цели для сноса).
 // ИИ не симулирует туман войны — видит всю карту (классическое
 // «читерство» простых RTS-ИИ, допустимо для аркады).
 // ============================================================
@@ -11,6 +12,7 @@ import { AI, BUILDINGS, UNITS, UPGRADES, SUPPLY_MAX, TILE } from './config.js';
 import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit, srand } from './units.js';
 import { canPlace, placeBuildingCmd, enqueueUnit, startResearch } from './buildings.js';
 import { pathToRect } from './pathfinding.js';
+import { tr } from './lore.js';
 
 export class AIController {
   constructor(profile = {}) {
@@ -85,7 +87,7 @@ export class AIController {
     this.defNextWaveAt = st.time + D.every;
     st.defenseWave = this.defWaveNum;
     st.pings.push({ x: cc.x, y: cc.y, t: 0 });
-    st.game.ui.toast('Волна ' + this.defWaveNum + ' из улья идёт к базе!', 'error');
+    st.game.ui.toast(tr(st.factions.enemy, 'wave').replace('{n}', this.defWaveNum), 'error');
     st.game.sound.ping();
   }
 
@@ -129,7 +131,7 @@ export class AIController {
     // 4) Рабочие до целевого количества.
     if (workers.length < P.workerTarget) {
       for (const cc of ccs) {
-        if (cc.done && cc.queue.length < 2 && money >= 50 && cap - used >= 1) {
+        if (cc.done && cc.queue.length < 2 && money >= UNITS.worker.cost && cap - used >= 1) {
           enqueueUnit(st, cc, 'worker');
         }
       }

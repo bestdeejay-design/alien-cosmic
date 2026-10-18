@@ -901,7 +901,6 @@ function updateGather(st, u, dt) {
       if (d < bd) { bd = d; drop = b; }
     }
     if (!drop) { u.moving = false; return; } // базы нет — стоим с грузом
-    o.drop = drop;
     const rx = drop.tx * TILE, ry = drop.ty * TILE, rw = drop.w * TILE, rh = drop.h * TILE;
     if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 0.9) {
       st.minerals[u.side] += u.carrying;
@@ -1367,6 +1366,7 @@ export function damageEntity(st, victim, dmg, attacker) {
   // Тревога для игрока — не чаще раза в 8 секунд.
   if (victim.side === 'player' && !st.gameOver && st.time - st.lastAlertT > 8) {
     st.lastAlertT = st.time;
+    st.lastAlertPos = { x: victim.x, y: victim.y };
     st.game.ui.toast(tr(st.factions.player, 'underAttack'), 'error');
     st.pings.push({ x: victim.x, y: victim.y, t: 0 });
     st.game.sound.ping();

@@ -1,8 +1,9 @@
 // ============================================================
 // input.js — управление: выделение кликом и рамкой (ЛКМ), приказы
 // (ПКМ: идти/добывать/атаковать/точка сбора), группы
-// Ctrl/Shift+1…9, размещение зданий, камера (края экрана, стрелки),
-// горячие клавиши панели команд.
+// Ctrl/Shift/Alt+1…9 (двойной тап цифры — прыжок камеры), размещение
+// зданий, камера (края экрана, стрелки, колесо / два пальца),
+// горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
 import { TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, BUILDINGS } from './config.js';
 import { unitAt } from './units.js';
@@ -12,6 +13,24 @@ export function attachInput(game) {
   const cv = game.canvas;
   const held = new Set();
   game.inputHeld = held;
+  let lastGroupTap = { n: -1, t: 0 };
+
+  // Колесо мыши / два пальца на трекпаде — панорама камеры.
+  // Прокрутку оверлеев (списки, брифинги, кодекс) и нижней панели
+  // не перехватываем: там колесо скроллит контент.
+  window.addEventListener('wheel', (e) => {
+    if (!game.started) return;
+    const st = game.state;
+    if (!st || st.gameOver || game.paused) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('.overlay:not(.hidden), #bottom-panel, #topbar, #cmd-tip')) return;
+    e.preventDefault();
+    if (e.ctrlKey) return; // щипок на трекпаде: только гасим зум страницы
+    const k = e.deltaMode === 1 ? 16 : 1;
+    st.camera.x += e.deltaX * k;
+    st.camera.y += e.deltaY * k;
+    game.clampCam();
+  }, { passive: false });
 
   const screenToWorld = (e) => {
     const r = cv.getBoundingClientRect();
@@ -102,16 +121,29 @@ export function attachInput(game) {
     if (e.code.startsWith('Arrow')) { held.add(e.code); e.preventDefault(); return; }
     if (!game.started || st.gameOver || e.repeat) return;
 
-    // 1…9: выбор группы; Ctrl/Shift+1…9: назначить группу.
+    // Cmd+… целиком отдаём браузеру/macOS (вкладки, перезагрузка и т.п.).
+    if (e.metaKey) return;
+    // 1…9: выбор группы; Ctrl/Shift/Alt+1…9: назначить группу.
+    // На macOS Ctrl+цифру перехватывают Spaces, а Cmd+цифру — вкладки
+    // браузера, поэтому рабочим вариантом остаётся Alt+цифра. Двойной
+    // тап цифры прыгает камерой к отряду, как в StarCraft.
     const m = e.code.match(/^(?:Digit|Numpad)([1-9])$/);
     if (m) {
       e.preventDefault();
       const n = +m[1];
-      if (e.ctrlKey || e.shiftKey) game.hooks.assignGroup(n);
-      else game.hooks.selectGroup(n);
+      if (e.ctrlKey || e.shiftKey || e.altKey) game.hooks.assignGroup(n);
+      else {
+        game.hooks.selectGroup(n);
+        const now = performance.now();
+        if (lastGroupTap.n === n && now - lastGroupTap.t < 350) {
+          game.hooks.centerOnGroup(n);
+        }
+        lastGroupTap = { n, t: now };
+      }
       return;
     }
     if (e.code === 'Escape') {
+      if (game.paused) { game.togglePause(); return; }
       if (st.placing) st.placing = null;
       else if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; }
       else if (st.buildMenu) st.buildMenu = false;
@@ -119,7 +151,7 @@ export function attachInput(game) {
       return;
     }
     // A — атака-движение: следующий ЛКМ шлёт отряд в бой по пути.
-    if (e.code === 'KeyA' && !st.placing) {
+    if (e.code === 'KeyA' && !st.placing && !e.ctrlKey && !e.altKey) {
       const combat = st.selection.some((s) => s.kind === 'unit' && s.side === 'player' &&
         !s.dead && !s.garrison && s.cfg.dmg > 0);
       if (combat) {
@@ -129,8 +161,19 @@ export function attachInput(game) {
       }
       return;
     }
-    if (e.code === 'KeyP') { game.togglePause(); return; }
-    if (e.code === 'Space') {
+    if (e.code === 'KeyP' && !e.ctrlKey && !e.altKey) { game.togglePause(); return; }
+    // Трекпад-набор: . — свободный рабочий, , — вся армия,
+    // Tab — перебор бойцов, H — к последней тревоге. Tab не трогаем
+    // на паузе, чтобы не ломать фокус кнопок оверлея.
+    if (e.code === 'Period' && !e.ctrlKey && !e.altKey) { game.hooks.cycleIdleWorker(); return; }
+    if (e.code === 'Comma' && !e.ctrlKey && !e.altKey) { game.hooks.selectArmy(); return; }
+    if (e.code === 'KeyH' && !e.ctrlKey && !e.altKey) { game.hooks.jumpToAlert(); return; }
+    if (e.code === 'Tab' && !e.ctrlKey && !e.altKey && !game.paused) {
+      e.preventDefault();
+      game.hooks.cycleCombat();
+      return;
+    }
+    if (e.code === 'Space' && !e.ctrlKey && !e.altKey) {
       // Пробел — мгновенный прыжок камерой к своей базе.
       e.preventDefault();
       const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc' && !b.dead);
@@ -138,7 +181,7 @@ export function attachInput(game) {
       return;
     }
     // Хоткеи панели команд (Q/W/E — стройка и производство, B, S).
-    if (!e.ctrlKey && !e.altKey) game.ui.handleHotkey(e.code);
+    if (!e.ctrlKey && !e.altKey && !e.metaKey) game.ui.handleHotkey(e.code);
   });
 
   window.addEventListener('keyup', (e) => held.delete(e.code));
