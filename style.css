@@ -15,6 +15,8 @@
   --cyan-light: #c5fff1;
   --amber: #f3c579;
   --red: #ff806e;
+  --green: #7dff9b;
+  --idle: #5a6a6e;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -65,6 +67,8 @@ html, body {
 .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .dot.mineral { background: #7ed9e7; box-shadow: 0 0 8px #7ed9e7; }
 .dot.supply { background: var(--amber); }
+.dot.supply.warn { background: #ffae5e; box-shadow: 0 0 8px #ffae5e; animation: led-blink 1.2s infinite; }
+.dot.supply.crit { background: var(--red); box-shadow: 0 0 8px var(--red); animation: led-blink .7s infinite; }
 #res-supply.blocked { color: var(--red); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
 .spacer { flex: 1; }
@@ -124,6 +128,26 @@ html, body {
 }
 .bar-fill { height: 100%; background: linear-gradient(90deg, #4cae9e, #9cf3ce); width: 100%; }
 .bar-fill.amber { background: linear-gradient(90deg, #bd9357, #f3c579); }
+.bar-fill.warn { background: linear-gradient(90deg, #bd9357, #f3c579); }
+.bar-fill.crit { background: linear-gradient(90deg, #b3402f, #ff806e); }
+
+/* ---------- Светодиоды статусов (язык состояний ДС) ---------- */
+.led {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; margin-right: 7px; flex: 0 0 8px;
+  background: var(--idle);
+}
+.led.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.led.work { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.led.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.led.err { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.led.blink { animation: led-blink 1s infinite; }
+@keyframes led-blink { 50% { opacity: .3; } }
+.status-line {
+  display: flex; align-items: center;
+  font-size: 12.5px; font-weight: 700; color: var(--text);
+  margin: 7px 0 3px;
+}
 
 .queue { display: flex; gap: 5px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
 .queue-empty { color: var(--muted); font-size: 12px; font-style: italic; }
@@ -147,6 +171,7 @@ html, body {
   font-size: 9px; color: var(--cyan-light); font-weight: 800;
   text-shadow: 0 1px 2px #000;
 }
+.chip-time.hold { color: var(--amber); }
 .res-line { margin-top: 8px; font-size: 12.5px; color: var(--amber); }
 .res-line b { color: var(--amber); }
 
@@ -256,6 +281,9 @@ html, body {
   animation: toast-in .18s ease-out;
 }
 .toast.err { border-color: rgba(255,128,110,.55); color: #ffc0b6; }
+.toast.warn { border-color: rgba(243,197,121,.6); color: #ffe1a8; }
+.toast { transition: opacity .3s ease-out, transform .3s ease-out; }
+.toast.hide { opacity: 0; transform: translateY(6px); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---------- Оверлеи ---------- */

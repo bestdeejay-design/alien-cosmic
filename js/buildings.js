@@ -140,7 +140,7 @@ export function updateBuildings(st, dt, grid) {
     // Дым из повреждённого здания (арт): редкие клубы над корпусом.
     if (b.done && b.hp < b.maxHp * 0.5 && Math.random() < dt * 2.2) {
       addEffect(st, {
-        kind: 'smoke',
+        kind: 'smoke', faction: b.faction,
         x: b.x + (Math.random() - 0.5) * b.w * TILE * 0.6,
         y: b.y + (Math.random() - 0.5) * b.h * TILE * 0.5,
         t: 0, life: 1.3,
@@ -221,7 +221,7 @@ export function updateBuildings(st, dt, grid) {
               x: b.x, y: b.y, tx: t.x, ty: t.y,
               target: t, speed: BULLET_SPEED, dmg: m.cfg.dmg, src: b, dead: false,
             });
-            addEffect(st, { kind: 'muzzle', x: b.x + Math.cos(b.angle) * 16, y: b.y + Math.sin(b.angle) * 16, ang: b.angle, t: 0, life: 0.06 });
+            addEffect(st, { kind: 'muzzle', x: b.x + Math.cos(b.angle) * 16, y: b.y + Math.sin(b.angle) * 16, ang: b.angle, t: 0, life: 0.06, faction: b.faction });
             st.game.sound.shot();
           }
         }
