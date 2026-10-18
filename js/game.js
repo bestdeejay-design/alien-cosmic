@@ -19,6 +19,7 @@ import { AIController } from './ai.js';
 import { MISSIONS, SKIRMISH, loadProgress, saveProgress } from './missions.js';
 import * as ui from './ui.js';
 import { attachInput, updateCamera } from './input.js';
+import { tr } from './lore.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -398,16 +399,18 @@ export class Game {
 
       train: (b, type) => {
         const r = B.enqueueUnit(st(), b, type);
-        if (r === 'money') { ui.toast('Не хватает минералов', 'error'); this.sound.error(); }
-        else if (r === 'queue') { ui.toast('Очередь заполнена', 'warn'); this.sound.error(); }
+        const fac = st().factions.player;
+        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        else if (r === 'queue') { ui.toast(tr(fac, 'queueFull'), 'warn'); this.sound.error(); }
         else this.sound.click();
       },
 
       startResearch: (b, key) => {
         const r = B.startResearch(st(), b, key);
-        if (r === 'money') { ui.toast('Не хватает минералов', 'error'); this.sound.error(); }
-        else if (r === 'busy') { ui.toast('Лаборатория уже занята исследованием', 'warn'); this.sound.error(); }
-        else if (r === 'max') { ui.toast('Улучшение изучено до предела', 'error'); }
+        const fac = st().factions.player;
+        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        else if (r === 'busy') { ui.toast(tr(fac, 'labBusy'), 'warn'); this.sound.error(); }
+        else if (r === 'max') { ui.toast(tr(fac, 'maxed'), 'error'); }
         else this.sound.click();
       },
 
@@ -460,7 +463,7 @@ export class Game {
         sel[0].side === 'player') {
       const rc = U.crystalAt(st, wx, wy);
       sel[0].rally = rc ? { x: wx, y: wy, crystal: rc } : { x: wx, y: wy };
-      U.addFloat(st, wx, wy, rc ? 'Сбор у кристалла' : 'Точка сбора', '#9be29e');
+      U.addFloat(st, wx, wy, rc ? tr(st.factions.player, 'rallyCrystal') : tr(st.factions.player, 'rallyPoint'), '#9be29e');
       this.sound.ack();
       return;
     }
@@ -540,22 +543,22 @@ export class Game {
     for (let y = ty; y < ty + cfg.h; y++)
       for (let x = tx; x < tx + cfg.w; x++)
         if (!st.fog.tileExplored(x, y)) {
-          ui.toast('Территория не разведана', 'error'); this.sound.error(); return;
+          ui.toast(tr(fac, 'unexplored'), 'error'); this.sound.error(); return;
         }
     // Требование технологии: у завода нужна казарма/инкубатор.
     if (cfg.requires) {
       const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
         b.type === cfg.requires && b.done);
       if (!ok) {
-        ui.toast('Сначала постройте: ' + fname(BUILDINGS[cfg.requires], fac), 'error');
+        ui.toast(tr(fac, 'requires') + fname(BUILDINGS[cfg.requires], fac), 'error');
         this.sound.error(); return;
       }
     }
     if (!B.canPlace(st.map, tx, ty, cfg.w, cfg.h)) {
-      ui.toast('Здесь строить нельзя', 'error'); this.sound.error(); return;
+      ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return;
     }
     if (st.minerals.player < cfg.cost) {
-      ui.toast('Не хватает минералов', 'error'); this.sound.error(); return;
+      ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); return;
     }
     const builders = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
       e.cfg.canBuild && !e.dead);
@@ -633,14 +636,15 @@ export class Game {
       }
       return;
     }
+    const fac = st.factions.player;
     if (st.bcount.enemy <= 0) {
-      this.win('Противник уничтожен!');
+      this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
       st.gameOver = 'lose';
       this.sound.lose();
-      ui.showEnd(false, st.stats, this.endOpts(false));
+      ui.showEnd(false, st.stats, this.endOpts(false, tr(fac, 'loseBase')));
     } else if (def && st.time >= def.prep + def.total) {
-      this.win('Шаттлы прибыли — оборона выстояла!');
+      this.win(tr(fac, 'winDefense'));
     }
   }
 
@@ -655,7 +659,7 @@ export class Game {
   // Опции экрана финала: следующая миссия, подпись причины.
   endOpts(win, reason) {
     const m = this.mission;
-    const opts = {};
+    const opts = { faction: m.faction };
     if (reason) opts.reason = reason;
     if (win && m.id >= 0 && m.id < MISSIONS.length - 1) {
       opts.next = MISSIONS[m.id + 1];

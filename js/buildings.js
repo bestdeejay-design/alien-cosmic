@@ -614,7 +614,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
       ctx.fillStyle = 'rgba(255,243,196,0.18)';
       poly(ctx, [R.rx + 4, R.fy - 15, R.rx - 12, R.fy + 12, R.rx + 18, R.fy + 12]);
     } else if (b.type === 'turret') {
-      // «Скорпион» 1×1: бетонный шестигранник + спаренная пушка.
+      // «Гадюка» 1×1: бетонный шестигранник + спаренная пушка-клыки.
       const bx = cx, by = cy + 3;
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.ellipse(bx + 3, by + 9, 14, 6, 0, 0, Math.PI * 2); ctx.fill();

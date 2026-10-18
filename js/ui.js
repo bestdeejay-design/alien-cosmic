@@ -9,6 +9,7 @@ import {
   fname, fdesc,
 } from './config.js';
 import { MISSIONS, loadProgress } from './missions.js';
+import { CODEX, tr } from './lore.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -119,7 +120,7 @@ function icon(type) {
       g.fillStyle = teal; g.fillRect(-9, -8, 18, 2.4);
       break;
     case 'turret':
-      // Шестигранник + СПАРЕННАЯ пушка (как «Скорпион» в игре).
+      // Шестигранник + СПАРЕННАЯ пушка-клыки (как «Гадюка» в игре).
       g.fillStyle = steel;
       g.beginPath();
       for (let i = 0; i < 6; i++) {
@@ -387,6 +388,9 @@ export function initUI(game) {
     endTitle: $('end-title'),
     endReason: $('end-reason'),
     endStats: $('end-stats'),
+    codexOverlay: $('codex-overlay'),
+    codexTabs: $('codex-tabs'),
+    codexBody: $('codex-body'),
     pauseOverlay: $('pause-overlay'),
     startBtn: $('btn-start'),
     againBtn: $('btn-again'),
@@ -404,6 +408,16 @@ export function initUI(game) {
   });
   $('btn-skirmish-back').addEventListener('click', () => {
     els.skirmishOverlay.classList.add('hidden');
+    els.overlay.classList.remove('hidden');
+  });
+  // Кодекс «Легенда».
+  $('btn-codex').addEventListener('click', () => {
+    els.overlay.classList.add('hidden');
+    showCodex();
+    els.codexOverlay.classList.remove('hidden');
+  });
+  $('btn-codex-back').addEventListener('click', () => {
+    els.codexOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
   // Выбор фракции в быстром бою.
@@ -511,6 +525,27 @@ export function showBrief(game, m) {
   els.briefOverlay.classList.remove('hidden');
 }
 
+// Кодекс: вкладки из CODEX (lore.js), тело — абзацы вкладки.
+export function showCodex() {
+  els.codexTabs.innerHTML = '';
+  const render = (entry) => {
+    els.codexBody.innerHTML = `<h2>${entry.title}</h2>` +
+      entry.body.map((p) => `<p>${p}</p>`).join('');
+    for (const b of els.codexTabs.children) {
+      b.classList.toggle('active', b.dataset.id === entry.id);
+    }
+  };
+  for (const entry of CODEX) {
+    const b = document.createElement('button');
+    b.className = 'codex-tab';
+    b.dataset.id = entry.id;
+    b.textContent = entry.tab;
+    b.addEventListener('click', () => render(entry));
+    els.codexTabs.appendChild(b);
+  }
+  render(CODEX[0]);
+}
+
 export function hideStart() { els.overlay.classList.add('hidden'); }
 export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
 export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
@@ -545,7 +580,7 @@ export function showEnd(win, stats, opts = {}) {
     `<div class="row"><span>Время боя</span><b>${mm}:${ss}</b></div>` +
     `<div class="row"><span>Уничтожено врагов</span><b>${stats.kills}</b></div>` +
     `<div class="row"><span>Потери</span><b>${stats.losses}</b></div>` +
-    `<div class="row"><span>Добыто минералов</span><b>${stats.mined}</b></div>`;
+    `<div class="row"><span>${tr(opts.faction, 'mined')}</span><b>${stats.mined}</b></div>`;
   pendingNext = opts.next || null;
   els.againBtn.textContent = opts.next ? 'Следующая миссия →' : 'Играть снова';
   els.endOverlay.classList.remove('hidden');
