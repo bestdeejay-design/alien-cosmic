@@ -186,8 +186,44 @@ export class GameMap {
     // 6) Восстанавливаем стартовые зоны и подходы к кристаллам.
     clearZone(this.bases.player.zone); clearZone(this.bases.enemy.zone);
     for (const c of this.crystals) {
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]])
         if (get(c.tx + dx, c.ty + dy) === T_ROCK) set(c.tx + dx, c.ty + dy, T_GROUND);
+    }
+
+    // 6b) Чистка «карманов»: скальные блуждания иногда строят вогнутые
+    // углы и диагональные калитки, в которых вязнет движение (вопрос
+    // владельца «может, причина в карте?» — частично да: карта такие
+    // ловушки создавать умеет). Правила дешёвые и симметрию не ломают,
+    // т.к. применяются к обеим половинам одинаково:
+    //  а) земля с 3+ стенами по ортогонали (тупик-карман 1×1) —
+    //     вскрываем одну соседнюю СКАЛУ обратно в землю;
+    //  б) диагональная калитка: два земляных тайла по диагонали, а оба
+    //     ортогональных соседа между ними — скалы (A* без среза углов
+    //     там не пройдёт, хотя BFS-4 это одобрял) — вскрываем одну скалу.
+    const isRock = (x, y) => this.inBounds(x, y) && get(x, y) === T_ROCK;
+    const isGroundFree = (x, y) =>
+      this.inBounds(x, y) && get(x, y) === T_GROUND && !this.mineralGrid[this.idx(x, y)];
+    for (let y = 1; y < MAP_H - 1; y++) {
+      for (let x = 1; x < MAP_W - 1; x++) {
+        if (!isGroundFree(x, y)) continue;
+        // а) карман-тупик?
+        const walls = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+          .filter(([dx, dy]) => !isGroundFree(x + dx, y + dy)).length;
+        if (walls >= 3) {
+          const cand = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => isRock(x + dx, y + dy));
+          if (cand) {
+            set(x + cand[0], y + cand[1], T_GROUND);
+            const [mx, my] = this.mirror(x + cand[0], y + cand[1]);
+            if (isRock(mx, my)) set(mx, my, T_GROUND);
+          }
+        }
+        // б) диагональная калитка вправо-вниз?
+        if (isGroundFree(x + 1, y + 1) && isRock(x + 1, y) && isRock(x, y + 1)) {
+          set(x + 1, y, T_GROUND);
+          const [mx, my] = this.mirror(x + 1, y);
+          if (isRock(mx, my)) set(mx, my, T_GROUND);
+        }
+      }
     }
 
     // 7) Гарантия связности: BFS от базы игрока к базе врага; если пути нет —
@@ -212,24 +248,41 @@ export class GameMap {
   }
 
   // BFS по заблокированной сетке — проверка достижимости базы врага.
+  // Важно: те же правила, что у боевого A* (8 направлений без среза
+  // углов), иначе генерация одобряет проходы, в которые A* не войдёт.
   reachable(sx, sy, gx, gy) {
     const seen = new Uint8Array(MAP_W * MAP_H);
     const q = [this.idx(sx, sy)];
     seen[q[0]] = 1;
     const goal = this.idx(gx, gy);
+    const D = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
     while (q.length) {
       const cur = q.pop();
       if (cur === goal) return true;
       const cx = cur % MAP_W, cy = (cur / MAP_W) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [dx, dy] of D) {
         const nx = cx + dx, ny = cy + dy;
         if (!this.inBounds(nx, ny)) continue;
         const ni = this.idx(nx, ny);
         if (seen[ni] || this.blockedAt(nx, ny)) continue;
+        if (dx && dy && (this.blockedAt(cx + dx, cy) || this.blockedAt(cx, cy + dy))) continue;
         seen[ni] = 1; q.push(ni);
       }
     }
     return false;
+  }
+
+  // Сколько из 8 соседей тайла свободны (0..8). Нужно движению:
+  // тесные щели ( openness <= 2 ) — повод не срезать угол и держать
+  // строй подальше от стен.
+  opennessAt(tx, ty) {
+    let n = 0;
+    for (let oy = -1; oy <= 1; oy++)
+      for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        if (!this.blockedAt(tx + ox, ty + oy)) n++;
+      }
+    return n;
   }
 
   // ----------------------------------------------------------
