@@ -54,7 +54,7 @@ export class Fog {
     this.visible.fill(0);
     for (const u of st.units) {
       if (u.dead || u.side !== 'player') continue;
-      this.mark((u.x / 32) | 0, (u.y / 32) | 0, u.cfg.sightTiles);
+      this.mark((u.x / TILE) | 0, (u.y / TILE) | 0, u.cfg.sightTiles);
     }
     for (const b of st.buildings) {
       if (b.dead || b.side !== 'player') continue;

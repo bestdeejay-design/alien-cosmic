@@ -8,10 +8,12 @@
 const PROGRESS_KEY = 'terranrts.progress';
 
 // Загружаем максимум открытой миссии (0 = открыта только первая).
+// Верхняя граница — от длины кампании, а не magic number: при расширении
+// мира на новые миссии кламп подхватит их сам.
 export function loadProgress() {
   try {
     const v = parseInt(localStorage.getItem(PROGRESS_KEY) || '0', 10);
-    return Number.isFinite(v) ? Math.max(0, Math.min(14, v)) : 0;
+    return Number.isFinite(v) ? Math.max(0, Math.min(MISSIONS.length - 1, v)) : 0;
   } catch (e) { return 0; }
 }
 

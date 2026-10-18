@@ -120,7 +120,7 @@ export class Game {
       selection: [], groups: {}, placing: null, buildMenu: false,
       camera: { x: 0, y: 0 }, mouseWorld: { x: 0, y: 0 },
       gameOver: null,
-      stats: { kills: 0, losses: 0, mined: 0 },
+      stats: { kills: 0, losses: 0, mined: 0, time: 0 },
       bcount: { player: 0, enemy: 0 },
       defenseWave: 0,
       // Уровни улучшений обеих сторон (растут исследованиями лаборатории).
@@ -440,7 +440,8 @@ export class Game {
       },
 
       assignGroup: (n) => {
-        const g = st().selection.filter((e) => e.kind === 'unit' && !e.dead);
+        // Только свои: осмотренный враг (inspect) в отряд не пишется.
+        const g = st().selection.filter((e) => e.kind === 'unit' && e.side === 'player' && !e.dead);
         if (g.length) { st().groups[n] = g; this.sound.click(); }
       },
 
@@ -681,9 +682,7 @@ export class Game {
       if (st.bcount.enemy <= 0) {
         this.win('Гнездо разорено — отряд выполнил задачу!');
       } else if (!alive) {
-        st.gameOver = 'lose';
-        this.sound.lose();
-        ui.showEnd(false, st.stats, this.endOpts(false, 'Отряд погиб — миссия провалена'));
+        this.lose('Отряд погиб — миссия провалена');
       }
       return;
     }
@@ -691,9 +690,7 @@ export class Game {
     if (st.bcount.enemy <= 0) {
       this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
-      st.gameOver = 'lose';
-      this.sound.lose();
-      ui.showEnd(false, st.stats, this.endOpts(false, tr(fac, 'loseBase')));
+      this.lose(tr(fac, 'loseBase'));
     } else if (def && st.time >= def.prep + def.total) {
       this.win(tr(fac, 'winDefense'));
     }
@@ -702,9 +699,18 @@ export class Game {
   win(reason) {
     const st = this.state;
     st.gameOver = 'win';
+    st.stats.time = st.time;
     this.sound.win();
     if (this.mission.id >= 0) saveProgress(this.mission.id + 1);
     ui.showEnd(true, st.stats, this.endOpts(true, reason));
+  }
+
+  lose(reason) {
+    const st = this.state;
+    st.gameOver = 'lose';
+    st.stats.time = st.time;
+    this.sound.lose();
+    ui.showEnd(false, st.stats, this.endOpts(false, reason));
   }
 
   // Опции экрана финала: следующая миссия, подпись причины.

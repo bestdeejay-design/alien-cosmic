@@ -24,7 +24,6 @@ export const START_MINERALS = 150;    // минералы у каждой сто
 export const MINERAL_PER_TRIP = 8;    // сколько рабочий приносит за рейс
 export const MINE_TIME = 1.8;         // время добычи одного кристалла, сек
 export const SUPPLY_MAX = 200;        // жёсткий потолок населения
-export const WORKER_START = 4;        // рабочих у каждой стороны на старте
 
 // --- Бой ---
 export const BULLET_SPEED = 540;      // скорость пули/шипа, px/с

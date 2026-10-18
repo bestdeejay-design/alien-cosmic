@@ -874,7 +874,6 @@ function updateGather(st, u, dt) {
       if (d < bd) { bd = d; drop = b; }
     }
     if (!drop) { u.moving = false; return; } // базы нет — стоим с грузом
-    o.drop = drop;
     const rx = drop.tx * TILE, ry = drop.ty * TILE, rw = drop.w * TILE, rh = drop.h * TILE;
     if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 0.9) {
       st.minerals[u.side] += u.carrying;

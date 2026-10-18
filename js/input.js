@@ -143,6 +143,7 @@ export function attachInput(game) {
       return;
     }
     if (e.code === 'Escape') {
+      if (game.paused) { game.togglePause(); return; }
       if (st.placing) st.placing = null;
       else if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; }
       else if (st.buildMenu) st.buildMenu = false;
