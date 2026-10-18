@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<!-- Харнесс листа юнитов: 7 типов x 2 фракции x 5 состояний, спрайты x4.
+     Запуск: поднять сервер в корне репо, открыть /scripts/shots/unit_sheet.html,
+     дождаться window.__U_DONE__ === true, снять скриншот (см. unit_sheet.mjs). -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #07141a; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1500" height="2020"></canvas>
+<script type="module">
+import { UNITS } from '../../js/config.js';
+import { drawUnit } from '../../js/units.js';
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const Z = 4;                      // зум спрайта (векторный — чётко)
+const CW = 195, CH = 185;         // ячейка
+const X0 = 165, Y0 = 56;
+ctx.fillStyle = '#0a1a21';
+ctx.fillRect(0, 0, cv.width, cv.height);
+for (let i = 0; i < 900; i++) {
+  ctx.fillStyle = Math.random() < 0.5 ? 'rgba(30,60,70,0.25)' : 'rgba(12,30,38,0.5)';
+  ctx.fillRect(Math.random() * cv.width, Math.random() * cv.height, 2, 2);
+}
+
+const types = Object.keys(UNITS);
+const states = [
+  { key: 'idle',  label: 'покой' },
+  { key: 'move',  label: 'на ходу' },
+  { key: 'fire',  label: 'выстрел' },
+  { key: 'carry', label: 'груз / жар' },
+  { key: 'sel',   label: 'ранен' },
+];
+const factions = [
+  { f: 'terran', side: 'player', name: 'ГЕЛИОС', col: '#8cedcc', y0: Y0 },
+  { f: 'alien',  side: 'enemy',  name: 'КХАРИД', col: '#ffb078', y0: Y0 + 990 },
+];
+
+for (const F of factions) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = F.col;
+  ctx.font = 'bold 20px monospace';
+  ctx.fillText(F.name, X0 + (types.length * CW) / 2, F.y0 - 34);
+  ctx.font = '12px monospace';
+  types.forEach((t, ti) => {
+    ctx.fillStyle = '#9fd8d0';
+    ctx.fillText(t.toUpperCase(), X0 + ti * CW + CW / 2, F.y0 - 8);
+  });
+  states.forEach((s, si) => {
+    ctx.fillStyle = '#6fa8a0';
+    ctx.textAlign = 'right';
+    ctx.fillText(s.label, X0 - 14, F.y0 + si * CH + CH / 2 + 5);
+    ctx.textAlign = 'center';
+  });
+
+  types.forEach((t, ti) => {
+    states.forEach((s, si) => {
+      const x = X0 + ti * CW + CW / 2;
+      const y = F.y0 + si * CH + CH / 2;
+      const u = {
+        type: t, faction: F.f, side: F.side,
+        x, y, r: UNITS[t].r, angle: 0, id: ti * 5 + si + 1,
+        hp: UNITS[t].hp, maxHp: UNITS[t].hp,
+        cd: 0, moving: false, selected: false, dead: false, flashT: 0,
+        carrying: 0, cfg: UNITS[t],
+      };
+      if (s.key === 'move') u.moving = true;
+      if (s.key === 'fire') u.cd = (u.cfg.cooldown || 1) * 0.45;
+      if (s.key === 'carry' && t === 'worker') u.carrying = 8;
+      if (s.key === 'carry' && t !== 'worker') u.cd = (u.cfg.cooldown || 1) * 0.92;
+      if (s.key === 'sel') {
+        u.selected = true; u.hp = Math.round(u.maxHp * 0.34);
+        u.flashT = 0.09;
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(Z, Z);
+      drawUnit(ctx, u, 0, 0);
+      ctx.restore();
+    });
+  });
+}
+window.__U_DONE__ = true;
+</script>
+</body>
+</html>

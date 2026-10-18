@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- Харнесс сетки зданий: 8 типов x 2 фракции в масштабе игры x2.
+     Запуск: сервер в корне репо, /scripts/shots/building_grid.html,
+     дождаться window.__B_DONE__ === true (см. buildings_shot.mjs). -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #07141a; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="640"></canvas>
+<script type="module">
+import { TILE } from '../../js/config.js';
+import { drawBuilding } from '../../js/buildings.js';
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+ctx.fillStyle = '#0a1a21';
+ctx.fillRect(0, 0, cv.width, cv.height);
+for (let i = 0; i < 500; i++) {
+  ctx.fillStyle = Math.random() < 0.5 ? 'rgba(30,60,70,0.25)' : 'rgba(12,30,38,0.5)';
+  ctx.fillRect(Math.random() * cv.width, Math.random() * cv.height, 2, 2);
+}
+ctx.strokeStyle = 'rgba(40,70,80,0.25)';
+for (let x = 0; x < cv.width; x += TILE) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke(); }
+for (let y = 0; y < cv.height; y += TILE) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke(); }
+
+const types = ['cc', 'depot', 'barracks', 'turret', 'wall', 'bunker', 'factory', 'lab'];
+const sizes = { cc: 3, depot: 2, barracks: 3, turret: 2, wall: 1, bunker: 2, factory: 3, lab: 3 };
+ctx.font = '11px monospace';
+ctx.textAlign = 'center';
+
+types.forEach((t, ti) => {
+  const s = sizes[t] || 2;
+  const row = ti < 4 ? 0 : 1;
+  const col = ti % 4;
+  ['player', 'enemy'].forEach((side, si) => {
+    const bx = 30 + col * 310 + (row === 1 ? 60 : 0);
+    const by = 30 + row * 320 + si * (s * TILE + 40);
+    const b = {
+      type: t, faction: side === 'player' ? 'terran' : 'alien', side,
+      tx: 0, ty: 0, w: s, h: s, id: ti * 2 + si + 1,
+      hp: 500, maxHp: 500, cd: 0, angle: -0.6,
+      dead: false, done: true, progress: 1,
+      garrison: t === 'bunker' ? [ {}, {}, {} ] : [],
+    };
+    drawBuilding(ctx, b, false, -bx, -by);
+    ctx.fillStyle = '#9fd8d0';
+    ctx.fillText(`${side === 'player' ? 'ГЕЛИОС' : 'КХАРИД'} ${t}`, bx + (s * TILE) / 2, by + s * TILE + 14);
+  });
+});
+window.__B_DONE__ = true;
+</script>
+</body>
+</html>

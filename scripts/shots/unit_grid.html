@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- Харнесс сетки юнитов в ИГРОВОМ масштабе: 7 типов x 2 фракции.
+     Запуск: сервер в корне репо, /scripts/shots/unit_grid.html,
+     дождаться window.__GRID_DONE__ === true (см. grids_and_gameplay.mjs). -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #07141a; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1260" height="560"></canvas>
+<script type="module">
+import { UNITS, COLORS } from '../../js/config.js';
+import { drawUnit } from '../../js/units.js';
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const types = Object.keys(UNITS);
+const factions = ['terran', 'alien'];
+const cell = 150;
+
+ctx.fillStyle = '#0a1a21';
+ctx.fillRect(0, 0, cv.width, cv.height);
+for (let i = 0; i < 400; i++) {
+  ctx.fillStyle = Math.random() < 0.5 ? 'rgba(30,60,70,0.25)' : 'rgba(12,30,38,0.5)';
+  ctx.fillRect(Math.random() * cv.width, Math.random() * cv.height, 2, 2);
+}
+
+ctx.font = '11px monospace';
+factions.forEach((f, fi) => {
+  types.forEach((t, ti) => {
+    const x = 40 + ti * cell + cell / 2;
+    const y = 60 + fi * 260;
+    const u = {
+      type: t, faction: f, side: fi === 0 ? 'player' : 'enemy',
+      x: x, y: y, r: UNITS[t].r, angle: 0, id: ti + fi * 7,
+      hp: UNITS[t].hp, maxHp: UNITS[t].hp,
+      cd: 0, moving: ti % 2 === 0, selected: false, dead: false, flashT: 0,
+      carrying: 0, cfg: UNITS[t],
+    };
+    drawUnit(ctx, u, x, y);
+    ctx.fillStyle = '#9fd8d0';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${f === 'terran' ? 'ГЕЛИОС' : 'КХАРИД'} ${t}`, x, y + 34);
+  });
+});
+window.__GRID_DONE__ = true;
+</script>
+</body>
+</html>
