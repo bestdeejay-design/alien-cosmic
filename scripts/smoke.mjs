@@ -151,11 +151,17 @@ for (const m of MISSIONS) {
     frames(30);
     if (m.defense) {
       // Победа обороной: мотаем время за предел и ждём триггер.
+      // П5: двухфазная оборона (def + evac) вместо победы уходит в фазу 2.
       game.state.time = m.defense.prep + m.defense.total + 1;
       for (let i = 0; i < 10 && !game.state.gameOver; i++) game.tick();
-      if (game.state.gameOver !== 'win') throw new Error('оборона не выиграна по таймауту');
-      const html = document.getElementById('end-stats').innerHTML;
-      if (/NaN|undefined/.test(html)) throw new Error('битый финал обороны');
+      if (m.objective && m.objective.kind === 'evac') {
+        if (game.state.gameOver) throw new Error('таймер двухфазной обороны завершил игру');
+        if (!game.state.phase2) throw new Error('фаза 2 не началась по таймауту');
+      } else {
+        if (game.state.gameOver !== 'win') throw new Error('оборона не выиграна по таймауту');
+        const html = document.getElementById('end-stats').innerHTML;
+        if (/NaN|undefined/.test(html)) throw new Error('битый финал обороны');
+      }
     }
     game.restart();
     frames(30);

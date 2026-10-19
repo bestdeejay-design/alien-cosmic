@@ -136,6 +136,7 @@ export class Game {
       buildZone: m.buildZone || null,       // [{ x,y,w,h }] в тайлах — стройка игрока
       evacuated: 0,                         // погружено в зону эвакуации
       keyTotal: 0,                          // ключевых целей встречено (защита от мгновенной победы)
+      phase2: false,                        // П5: фаза 2 двухфазной миссии началась (тост показан)
       shakeT: 0, shakeMag: 0,       // тряска экрана от взрывов
       lastAlertT: -99, lastSupplyToast: -99, lastRepairToast: -99,
       lastAlertPos: null, // точка последней тревоги — прыжок по H
@@ -818,7 +819,15 @@ export class Game {
     const w = st.win;
     // Эвакуация: свой юнит стоит в зоне hold секунд подряд — погружается
     // (исчезает, в потери не пишется). Выход из зоны сбрасывает таймер.
-    if (w && w.kind === 'evac') {
+    // П5: в двухфазной обороне (def + evac) погрузка идёт только во 2-й фазе,
+    // а её начало объявляется тостом с новой целью.
+    const def = this.mission && this.mission.defense;
+    if (def && w && w.kind === 'evac' && !st.phase2 && st.time >= def.prep + def.total) {
+      st.phase2 = true;
+      ui.toast(this.mission.phaseToast || ('Новая цель: ' + objectiveLabel({ objective: w })), 'info');
+      this.sound.ready();
+    }
+    if (w && w.kind === 'evac' && (!def || st.time >= def.prep + def.total)) {
       const cx = (w.x + 0.5) * TILE, cy = (w.y + 0.5) * TILE, r = w.r * TILE;
       for (const u of st.units) {
         if (u.dead || u.evacuated || u.side !== 'player' || u.kind !== 'unit') continue;
@@ -861,14 +870,17 @@ export class Game {
     if (!st) return '';
     const m = this.mission;
     const def = m && m.defense;
-    if (def) {
+    const w = st.win;
+    // П5: в двухфазной обороне (def + evac) таймер — только фаза 1;
+    // в фазе 2 HUD показывает счётчик эвакуации (ветки ниже).
+    const phase2 = def && w && w.kind === 'evac' && st.time >= def.prep + def.total;
+    if (def && !phase2) {
       if (st.time < def.prep) {
         return 'Подготовка: ' + fmtTime(def.prep - st.time) + ' — стройте оборону';
       }
       const left = Math.max(0, def.prep + def.total - st.time);
       return 'Оборона: ' + fmtTime(left) + ' · волн отбито: ' + st.defenseWave;
     }
-    const w = st.win;
     const dl = st.loseDeadline && !st.deadlineFired
       ? ' · ' + st.loseDeadline.label + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
       : '';
@@ -902,6 +914,16 @@ export class Game {
       }
       if (alive > 0) st.keyTotal = Math.max(st.keyTotal, alive);
       if (st.keyTotal > 0 && alive === 0) {
+        // П5: последовательная цель (key → evac): переключаемся на следующую
+        // цель вместо победы и объявляем её тостом.
+        if (w.then) {
+          st.win = w.then;
+          st.keyTotal = 0;
+          st.phase2 = true;
+          ui.toast(this.mission.phaseToast || ('Новая цель: ' + objectiveLabel({ objective: st.win })), 'info');
+          this.sound.ready();
+          return;
+        }
         this.win(tr(fac, 'winKey'));
         return;
       }
@@ -910,9 +932,31 @@ export class Game {
       this.win(tr(fac, 'winStock'));
       return;
     }
-    if (w && w.kind === 'evac' && st.evacuated >= w.need) {
-      this.win(tr(fac, 'winEvac'));
-      return;
+    if (w && w.kind === 'evac') {
+      if (st.evacuated >= w.need) {
+        this.win(tr(fac, 'winEvac'));
+        return;
+      }
+      // П5: «некого грузить» — погружено + живо + в очереди меньше need,
+      // а восстановить поголовье нечем: нет жилого прод-здания, у которого
+      // были бы рабочие, очередь или минералы на рабочего. Поражение вместо
+      // софтлока (фаза 2 №1, фаза 2 №13; №4 проигрывает раньше, но тоже честно).
+      let aliveU = 0, workers = 0, queued = 0, prod = false;
+      for (const u of st.units) {
+        if (u.dead || u.side !== 'player' || u.kind !== 'unit') continue;
+        aliveU++;
+        if (u.cfg.canMine) workers++;
+      }
+      for (const b of st.buildings) {
+        if (b.dead || b.side !== 'player' || !b.done || !b.cfg.produces) continue;
+        prod = true;
+        queued += b.queue.length;
+      }
+      const canRecover = prod && (workers > 0 || queued > 0 || st.minerals.player >= UNITS.worker.cost);
+      if (st.evacuated + aliveU + queued < w.need && !canRecover) {
+        this.lose(tr(fac, 'loseEmbark'));
+        return;
+      }
     }
     // Стелс-миссия: база отсутствует — проигрыш по гибели всего отряда.
     // Снос всей базы врага остаётся запасным путём победы и в новых типах:
@@ -920,7 +964,11 @@ export class Game {
     if (st.noBase) {
       const alive = st.units.some((u) => u.side === 'player' && !u.dead);
       if (st.bcount.enemy <= 0) {
-        this.win('Гнездо разорено — отряд выполнил задачу!');
+        // П5: запасной путь победы — формулировка по фракции врага
+        // (№8 — гнездо, №13 — форт людей); текст №8 не меняется.
+        this.win(st.factions.enemy === 'human'
+          ? tr(fac, 'winNoBaseFort')
+          : 'Гнездо разорено — отряд выполнил задачу!');
       } else if (!alive) {
         this.lose('Отряд погиб — миссия провалена');
       }
@@ -930,7 +978,8 @@ export class Game {
       this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
       this.lose(tr(fac, 'loseBase'));
-    } else if (def && st.time >= def.prep + def.total) {
+    } else if (def && st.time >= def.prep + def.total && !(w && w.kind === 'evac')) {
+      // П5: в двухфазной обороне истекший таймер — не победа, а фаза эвакуации.
       this.win(tr(fac, 'winDefense'));
     }
   }
