@@ -5,7 +5,7 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, BUILDINGS } from './config.js';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, BUILDINGS } from './config.js';
 import { unitAt } from './units.js';
 import { buildingAt } from './buildings.js';
 
@@ -52,8 +52,8 @@ export function attachInput(game) {
     st.mouseWorld = w;
     if (st.placing) updatePlacing(st, w);
     if (st.wallDrag) {
-      st.wallDrag.x1 = Math.max(0, Math.min(MAP_W - 1, Math.floor(w.x / TILE)));
-      st.wallDrag.y1 = Math.max(0, Math.min(MAP_H - 1, Math.floor(w.y / TILE)));
+      st.wallDrag.x1 = Math.max(0, Math.min(st.map.w - 1, Math.floor(w.x / TILE)));
+      st.wallDrag.y1 = Math.max(0, Math.min(st.map.h - 1, Math.floor(w.y / TILE)));
     }
     if (game.box) { game.box.x1 = w.x; game.box.y1 = w.y; }
   });
@@ -249,15 +249,15 @@ export function attachInput(game) {
 // П3: шаг призрака по сетке с клампом (клавиатурная постановка).
 export function stepPlacing(st, dx, dy) {
   const cfg = BUILDINGS[st.placing.type];
-  st.placing.tx = Math.max(0, Math.min(MAP_W - cfg.w, st.placing.tx + dx));
-  st.placing.ty = Math.max(0, Math.min(MAP_H - cfg.h, st.placing.ty + dy));
+  st.placing.tx = Math.max(0, Math.min(st.map.w - cfg.w, st.placing.tx + dx));
+  st.placing.ty = Math.max(0, Math.min(st.map.h - cfg.h, st.placing.ty + dy));
 }
 
 // Призрак здания следует за курсором, привязан к сетке тайлов.
 function updatePlacing(st, w) {
   const cfg = BUILDINGS[st.placing.type];
-  st.placing.tx = Math.max(0, Math.min(MAP_W - cfg.w, Math.round(w.x / TILE - cfg.w / 2)));
-  st.placing.ty = Math.max(0, Math.min(MAP_H - cfg.h, Math.round(w.y / TILE - cfg.h / 2)));
+  st.placing.tx = Math.max(0, Math.min(st.map.w - cfg.w, Math.round(w.x / TILE - cfg.w / 2)));
+  st.placing.ty = Math.max(0, Math.min(st.map.h - cfg.h, Math.round(w.y / TILE - cfg.h / 2)));
 }
 
 export function clickSelect(game, st, w, shift) {

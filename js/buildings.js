@@ -527,7 +527,10 @@ function teethRing(ctx, x, y, ringR, toothL, ang, spread, n, color) {
 // Пакет E.2: бейджи над зданием (иконка 20px + полоса прогресса 44px),
 // гарнизон — бейдж «N/M» в правом верхнем углу корпуса. Слоты идут вверх
 // от HP-полосы, друг друга не перекрывают.
-function drawStatusBadges(ctx, b, px, py, w) {
+// С3/П7: лаборатория врага показывает ЗАКРЫТЫЕ уровни (st.tech) — финал
+// чувствуется с первой минуты. Идёт через drawStatusBadges, слоты те же.
+const ENEMY_TECH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm'];
+function drawStatusBadges(ctx, b, px, py, w, st = null) {
   let sy = py - 16;
   const slot = (iconType, frac, accent) => {
     ctx.drawImage(icon(iconType), px, sy - 20, 20, 20);
@@ -537,7 +540,7 @@ function drawStatusBadges(ctx, b, px, py, w) {
     ctx.fillRect(px + 24, sy - 12, 42 * Math.max(0, Math.min(1, frac)), 4);
     sy -= 24;
   };
-  if (b.queue && b.queue.length) {
+  if (b.side === 'player' && b.queue && b.queue.length) {
     const item = b.queue[0];
     slot(b.faction === 'alien' ? 'a_' + item.type : item.type,
       item.total ? 1 - item.t / item.total : 0, '#8ff5e2');
@@ -548,10 +551,16 @@ function drawStatusBadges(ctx, b, px, py, w) {
       ctx.fillText('\u00d7' + b.queue.length, px + 70, sy + 12);
     }
   }
-  if (b.res) {
+  if (b.side === 'player' && b.res) {
     slot('u_' + b.res.key, b.res.total ? 1 - b.res.t / b.res.total : 0, '#f3c579');
   }
-  if (b.cfg.garrisonCap && Array.isArray(b.garrison)) {
+  // С3/П7: закрытые исследования врага — полные слоты (прогресс скрыт).
+  if (st && b.side === 'enemy' && b.cfg && b.cfg.research && st.tech && st.tech[b.side]) {
+    for (const key of ENEMY_TECH_ORDER) {
+      if ((st.tech[b.side][key] || 0) > 0) slot('u_' + key, 1, '#b9a7e6');
+    }
+  }
+  if (b.side === 'player' && b.cfg.garrisonCap && Array.isArray(b.garrison)) {
     const t = b.garrison.length + '/' + b.cfg.garrisonCap;
     const bx = px + w - 38, by = py + 4;
     ctx.fillStyle = 'rgba(8,10,12,0.75)';
@@ -567,7 +576,7 @@ function drawStatusBadges(ctx, b, px, py, w) {
   }
 }
 
-export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
+export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = null) {
   const TILE_W = TILE;
   const px = b.tx * TILE_W - camX, py = b.ty * TILE_W - camY;
   const w = b.w * TILE_W, h = b.h * TILE_W;
@@ -1202,8 +1211,11 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
   // Пакет E.2: мировые статусы своих настоящих зданий — производство,
   // исследование, гарнизон числом. Только свои достроенные: чужие заказы —
   // разведданные, им в мире не место. У превью/фейков нет id — молчим.
-  if (!ghost && b.side === 'player' && b.done !== false && typeof b.id === 'number') {
-    drawStatusBadges(ctx, b, px, py, w);
+  // С3/П7: исключение — лаборатория врага показывает закрытые tech (тоже
+  // только достроенная настоящая; прогресс текущих скрыт).
+  if (!ghost && b.done !== false && typeof b.id === 'number' &&
+      (b.side === 'player' || (b.side === 'enemy' && b.cfg && b.cfg.research))) {
+    drawStatusBadges(ctx, b, px, py, w, st);
   }
 
   // Красная вспышка попадания.

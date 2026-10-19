@@ -43,7 +43,9 @@ export function objectiveLabel(m) {
 //   prep — сек подготовки до первой волны; every — пауза между волнами;
 //   start/grow/max — размер волны; total — сколько секунд обороняться;
 //   nests — сколько дополнительных гнёзд у противника.
-// map — параметры генератора: seed, biome, lakes, rocks, rich, base.
+// map — параметры генератора: seed, biome, lakes, rocks, rich, base,
+//   w/h — размер в тайлах (48–96, дефолт 64; пакет C).
+// startTech в профиле ИИ — стартовые уровни улучшений врага (С3, финал).
 // noBase + squad — стелс-миссия: базы нет, стартуем готовым отрядом.
 // intro — строка «новинка миссии» для карточки и брифинга.
 // ------------------------------------------------------------
@@ -116,9 +118,9 @@ export const MISSIONS = [
     objective: { kind: 'key', type: 'cc', name: 'Сердце лагеря' },
     loseDeadline: { at: 420, label: 'Карательный корпус «Гелиоса»', hard: false },
     map: {
-      seed: 20260103, biome: 'nest', rocks: 9, rich: 1.3, base: { x: 8, y: 48 },
-      lakes: 'default',
-      neutral: [[14, 13], [49, 50], [46, 19], [17, 44]],
+      seed: 20260103, biome: 'nest', w: 76, h: 76, rocks: 10, rich: 1.3, base: { x: 60, y: 48 },
+      lakes: [[30, 20, 4.5, 3.2], [46, 58, 3, 2.2]],
+      neutral: [[24, 30], [52, 48]],
     },
     ai: {
       workerTarget: 14, maxMarines: 30, firstWave: 5, waveGrowth: 2, waveMax: 18,
@@ -141,7 +143,11 @@ export const MISSIONS = [
     intro: 'Скифы против живой волны: быстрые рейдеры выкашивают пехоту с налёта.',
     epilogue: 'Карьер наш. Но рой идёт следом — регион эвакуируют.',
     objective: { kind: 'stockpile', amount: 2500 },
-    map: { seed: 20260104, biome: 'mars', lakes: [[45, 20, 2.4, 1.8], [18, 43, 2.4, 1.8]], rocks: 4, rich: 1.1, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260104, biome: 'mars', w: 88, h: 88, rocks: 6, rich: 1.1, base: { x: 40, y: 76 },
+      lakes: [[24, 24, 3, 2], [64, 24, 3, 2]],
+      neutral: [[20, 60], [44, 44], [68, 60]],
+    },
     ai: {
       workerTarget: 14, maxMarines: 30, firstWave: 5, waveGrowth: 2, waveMax: 18,
       minWaveInterval: 38, secondBarracksAt: 100, maxTurrets: 4,
@@ -162,11 +168,11 @@ export const MISSIONS = [
     ],
     intro: 'Эвакуация: 3 секунды в кругу огней — и боец погружен. Вывезите 8.',
     epilogue: 'Последний транспорт ушёл. Перевал остался рою — но регион жив.',
-    objective: { kind: 'evac', x: 52, y: 10, r: 4, need: 8, hold: 3 },
+    objective: { kind: 'evac', x: 10, y: 8, r: 4, need: 8, hold: 3 },
     map: {
-      seed: 20260105, biome: 'mars', rocks: 12, rich: 1.2, base: { x: 8, y: 9 },
-      lakes: 'default',
-      neutral: [[14, 50], [49, 13], [46, 44], [17, 19]],
+      seed: 20260105, biome: 'mars', w: 56, h: 56, rocks: 9, rich: 1.2, base: { x: 8, y: 40 },
+      lakes: [[20, 5, 3.5, 2.2], [28, 28, 3, 2.5]],
+      neutral: [[16, 30]],
     },
     ai: {
       workerTarget: 10, maxMarines: 26, firstWave: 5, waveGrowth: 2, waveMax: 16,
@@ -218,7 +224,11 @@ export const MISSIONS = [
     intro: 'Новинка: Плазмер — залп выжигает группы. Враг теперь тоже люди!',
     epilogue: 'Флаги сорваны. Но мятеж — это идея, а идеи горят плохо.',
     objective: { kind: 'stockpile', amount: 2000 },
-    map: { seed: 20260107, biome: 'mars', lakes: 'default', rocks: 9, rich: 1.15, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260107, biome: 'mars', w: 84, h: 84, rocks: 12, rich: 1.15, base: { x: 40, y: 8 },
+      lakes: [[26, 30, 4, 3], [58, 30, 4, 3]],
+      neutral: [[20, 50], [42, 42], [64, 50]],
+    },
     ai: {
       workerTarget: 12, maxMarines: 14, firstWave: 4, waveGrowth: 2, waveMax: 14,
       minWaveInterval: 45, secondBarracksAt: 120, maxTurrets: 3,
@@ -242,7 +252,11 @@ export const MISSIONS = [
     epilogue: 'Форт пал. В сейфе — накладные гнезда «Сумрак». Тихо. Никому.',
     objective: { kind: 'key', type: 'cc', name: 'Штаб форта «Гвоздь»' },
     loseDeadline: { at: 480, label: 'Контрудар «Красного флага»', hard: false },
-    map: { seed: 20260108, biome: 'mars', rocks: 10, rich: 1.25, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260108, biome: 'mars', w: 72, h: 72, rocks: 11, rich: 1.25, base: { x: 56, y: 56 },
+      lakes: [[30, 44, 4, 3], [44, 30, 4, 3]],
+      neutral: [[24, 52], [52, 24]],
+    },
     ai: {
       workerTarget: 13, maxMarines: 24, firstWave: 4, waveGrowth: 2, waveMax: 15,
       minWaveInterval: 45, secondBarracksAt: 110, maxTurrets: 6,
@@ -264,7 +278,11 @@ export const MISSIONS = [
     ],
     intro: 'Стелс-рейд: базы НЕТ. Отряд рейнджеров, плазмеров и нанитов — берегите каждого.',
     objective: 'Уничтожьте все постройки гнезда «Сумрак» малым отрядом',
-    map: { seed: 20260109, biome: 'nest', lakes: 'default', rocks: 12, rich: 1.0, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260109, biome: 'nest', w: 52, h: 52, rocks: 9, rich: 1.0, base: { x: 8, y: 8 },
+      lakes: [[30, 14, 3, 2]],
+      neutral: [[36, 30]],
+    },
     noBase: true,
     squad: [['marine', 4], ['flamer', 2], ['medic', 2]],
     ai: {
@@ -340,7 +358,11 @@ export const MISSIONS = [
     objective: { kind: 'key', type: 'cc', name: 'Штаб «Кремня»' },
     loseDeadline: { at: 450, label: 'Ветераны «Кремня»', hard: false },
     epilogue: '«Кремень» молчит. «Глушитель» не найден. Он где-то рядом.',
-    map: { seed: 20260112, biome: 'mars', lakes: 'default', rocks: 11, rich: 1.3, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260112, biome: 'mars', w: 76, h: 76, rocks: 12, rich: 1.3, base: { x: 56, y: 10 },
+      lakes: [[28, 30, 4, 3], [48, 46, 3.5, 2.5]],
+      neutral: [[24, 52], [52, 24]],
+    },
     ai: {
       workerTarget: 15, maxMarines: 32, firstWave: 5, waveGrowth: 2, waveMax: 20,
       minWaveInterval: 38, secondBarracksAt: 100, maxTurrets: 5,
@@ -391,10 +413,14 @@ export const MISSIONS = [
     objective: {
       kind: 'key', type: 'cc', name: 'Око бури',
       text: 'Снесите Око бури, затем выведите 4 бойцов в зону отхода',
-      then: { kind: 'evac', x: 8, y: 48, r: 4, need: 4, hold: 3 },
+      then: { kind: 'evac', x: 20, y: 40, r: 4, need: 4, hold: 3 },
     },
     phaseToast: 'Око уничтожено — отходите к зоне высадки!',
-    map: { seed: 20260114, biome: 'moon', lakes: 'default', rocks: 11, rich: 1.3, base: { x: 8, y: 48 } },
+    map: {
+      seed: 20260114, biome: 'moon', w: 52, h: 52, rocks: 7, rich: 1.3, base: { x: 20, y: 40 },
+      lakes: [[26, 26, 3, 10]],
+      neutral: [[14, 14]],
+    },
     noBase: true,
     squad: [['marine', 6], ['medic', 2]],
     ai: {
@@ -420,15 +446,15 @@ export const MISSIONS = [
     objective: { kind: 'key', type: 'cc', name: 'Крепление «Последняя песня»' },
     epilogue: '«Глушитель» мёртв. Рубеж замкнут. Мир — обеим расам.',
     map: {
-      seed: 20260115, biome: 'nest', rocks: 13, rich: 1.35, base: { x: 8, y: 48 },
-      lakes: 'default',
-      neutral: [[14, 13], [49, 50], [46, 19], [17, 44]],
+      seed: 20260115, biome: 'nest', w: 80, h: 80, rocks: 14, rich: 1.35, base: { x: 10, y: 64 },
+      lakes: [[34, 30, 4.5, 3.2], [52, 50, 3.5, 2.5]],
+      neutral: [[22, 30], [40, 24], [40, 56], [58, 50]],
     },
     ai: {
       workerTarget: 16, maxMarines: 36, firstWave: 5, waveGrowth: 2, waveMax: 24,
       minWaveInterval: 35, secondBarracksAt: 90, maxTurrets: 8,
       factory: true, maxBuggies: 5, maxTanks: 6, medics: 6, flamers: 9, arty: 4,
-      research: true, repair: true,
+      research: true, repair: true, startTech: 1,
     },
     defense: null,
   },

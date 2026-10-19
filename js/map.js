@@ -1,11 +1,11 @@
 // ============================================================
-// map.js — тайловая карта 64×64: рельеф, минералы, проходимость,
+// map.js — тайловая карта переменного размера (48–96, дефолт 64): рельеф,
 // кэш статичной отрисовки (offscreen canvas) и мини-карта.
 // Карта генерируется детерминированно по seed и пресету миссии
 // (позиции баз, озёра, число скал, богатство минералов) и всегда
 // симметрична относительно центра — честно для обеих сторон.
 // ============================================================
-import { TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, BIOMES } from './config.js';
+import { TILE, MAP_W, MAP_H, BIOMES } from './config.js';
 
 export const T_GROUND = 0;
 export const T_WATER = 1;
@@ -41,11 +41,17 @@ export const CC_WORKER_OFFS = [[0, 4], [2, 4], [4, 4], [1, 5]];
 
 export class GameMap {
   // preset: { seed, lakes:'default'|[[cx,cy,rx,ry]...], rocks,
-  //           rich, base:{x,y} — cc игрока; враг зеркалится }
+  //           rich, base:{x,y} — cc игрока; враг зеркалится,
+  //           w,h — размер в тайлах (48–96, дефолт 64) }
+  // C/П7: размер — свойство экземпляра; миссия без w/h играет как раньше.
   constructor(seed, preset = {}) {
     this.seed = seed >>> 0;
     this.preset = preset;
-    const n = MAP_W * MAP_H;
+    const clampSize = (v, d) => Math.max(48, Math.min(96, Math.round(v) || d));
+    this.w = clampSize(preset.w, MAP_W);
+    this.h = clampSize(preset.h, MAP_H);
+    this.pxW = this.w * TILE; this.pxH = this.h * TILE; // размер мира, px
+    const n = this.w * this.h;
     this.terrain = new Uint8Array(n);      // T_GROUND / T_WATER / T_ROCK
     this.mineralGrid = new Uint8Array(n);  // 1 — на тайле стоит кристалл
     this.buildingGrid = new Uint8Array(n); // 1 — тайл занят зданием
@@ -57,14 +63,14 @@ export class GameMap {
   }
 
   // Центральная симметрия: враг зеркален игроку.
-  mirror(x, y) { return [MAP_W - 1 - x, MAP_H - 1 - y]; }
+  mirror(x, y) { return [this.w - 1 - x, this.h - 1 - y]; }
 
   computeBases() {
     const p = this.preset.base || { x: 8, y: 48 };
     const cc = { x: p.x, y: p.y };
     const zone = {
       x0: Math.max(1, cc.x - 3), y0: Math.max(1, cc.y - 3),
-      x1: Math.min(MAP_W - 2, cc.x + 8), y1: Math.min(MAP_H - 2, cc.y + 8),
+      x1: Math.min(this.w - 2, cc.x + 8), y1: Math.min(this.h - 2, cc.y + 8),
     };
     const [ex, ey] = this.mirror(cc.x, cc.y);
     this.bases = {
@@ -73,12 +79,12 @@ export class GameMap {
     };
     this.bases.enemy.zone = {
       x0: Math.max(1, ex - 8), y0: Math.max(1, ey - 8),
-      x1: Math.min(MAP_W - 2, ex + 3), y1: Math.min(MAP_H - 2, ey + 3),
+      x1: Math.min(this.w - 2, ex + 3), y1: Math.min(this.h - 2, ey + 3),
     };
   }
 
-  idx(x, y) { return y * MAP_W + x; }
-  inBounds(x, y) { return x >= 0 && y >= 0 && x < MAP_W && y < MAP_H; }
+  idx(x, y) { return y * this.w + x; }
+  inBounds(x, y) { return x >= 0 && y >= 0 && x < this.w && y < this.h; }
 
   // Проходим ли тайл для пути (рельеф + кристаллы + здания).
   blockedAt(tx, ty) {
@@ -127,11 +133,15 @@ export class GameMap {
     const get = (x, y) => (this.inBounds(x, y) ? T[this.idx(x, y)] : T_ROCK);
 
     // 1) Непроходимая граница карты.
-    for (let x = 0; x < MAP_W; x++) { set(x, 0, T_ROCK); set(x, MAP_H - 1, T_ROCK); }
-    for (let y = 0; y < MAP_H; y++) { set(0, y, T_ROCK); set(MAP_W - 1, y, T_ROCK); }
+    for (let x = 0; x < this.w; x++) { set(x, 0, T_ROCK); set(x, this.h - 1, T_ROCK); }
+    for (let y = 0; y < this.h; y++) { set(0, y, T_ROCK); set(this.w - 1, y, T_ROCK); }
 
     // 2) Озёра — каждая из списка рисуется парой с зеркалом.
-    const lakes = Array.isArray(this.preset.lakes) ? this.preset.lakes : DEFAULT_LAKES;
+    // Дефолтные озёра/нейтралы заданы для 64×64 — масштабируем под размер.
+    // Явные lakes/neutral в пресете — как есть (ручная работа пакета C).
+    const kx = this.w / MAP_W, ky = this.h / MAP_H;
+    const lakes = Array.isArray(this.preset.lakes) ? this.preset.lakes
+      : DEFAULT_LAKES.map(([cx, cy, rx, ry]) => [cx * kx, cy * ky, rx * kx, ry * ky]);
     const ellipse = (cx, cy, rx, ry) => {
       for (let y = Math.floor(cy - ry); y <= cy + ry; y++)
         for (let x = Math.floor(cx - rx); x <= cx + rx; x++)
@@ -158,12 +168,13 @@ export class GameMap {
     };
     // Основное поле — со стороны ближнего края карты от базы игрока.
     const pb = this.bases.player.cc;
-    const sx = pb.x < MAP_W / 2 ? 1 : -1;
-    const sy = pb.y < MAP_H / 2 ? -1 : 1;
+    const sx = pb.x < this.w / 2 ? 1 : -1;
+    const sy = pb.y < this.h / 2 ? -1 : 1;
     field(pb.x + 2 * sx, pb.y + 7 * sy, mainOff, 1350);
     const [emx, emy] = this.mirror(pb.x + 2 * sx, pb.y + 7 * sy);
     field(emx, emy, mainOff, 1350);
-    const neutral = Array.isArray(this.preset.neutral) ? this.preset.neutral : DEFAULT_NEUTRAL;
+    const neutral = Array.isArray(this.preset.neutral) ? this.preset.neutral
+      : DEFAULT_NEUTRAL.map(([cx, cy]) => [Math.round(cx * kx), Math.round(cy * ky)]);
     for (const [cx, cy] of neutral) {
       field(cx, cy, neutralOff, 950);
       const [mx, my] = this.mirror(cx, cy);
@@ -179,10 +190,10 @@ export class GameMap {
     );
     const rocks = this.preset.rocks == null ? 7 : this.preset.rocks;
     for (let i = 0; i < rocks; i++) {
-      let bx = 6 + Math.floor(R() * 52), by = 6 + Math.floor(R() * 52);
+      let bx = 6 + Math.floor(R() * (this.w - 12)), by = 6 + Math.floor(R() * (this.h - 12));
       const steps = 8 + Math.floor(R() * 10);
       for (let s = 0; s < steps; s++) {
-        const mx = MAP_W - 1 - bx, my = MAP_H - 1 - by;
+        const mx = this.w - 1 - bx, my = this.h - 1 - by;
         if (!nearBase(bx, by) && !nearCrystal(bx, by) && get(bx, by) === T_GROUND) set(bx, by, T_ROCK);
         if (!nearBase(mx, my) && !nearCrystal(mx, my) && get(mx, my) === T_GROUND) set(mx, my, T_ROCK);
         bx += Math.floor(R() * 3) - 1; by += Math.floor(R() * 3) - 1;
@@ -209,8 +220,8 @@ export class GameMap {
     const isRock = (x, y) => this.inBounds(x, y) && get(x, y) === T_ROCK;
     const isGroundFree = (x, y) =>
       this.inBounds(x, y) && get(x, y) === T_GROUND && !this.mineralGrid[this.idx(x, y)];
-    for (let y = 1; y < MAP_H - 1; y++) {
-      for (let x = 1; x < MAP_W - 1; x++) {
+    for (let y = 1; y < this.h - 1; y++) {
+      for (let x = 1; x < this.w - 1; x++) {
         if (!isGroundFree(x, y)) continue;
         // а) карман-тупик?
         const walls = [[1, 0], [-1, 0], [0, 1], [0, -1]]
@@ -257,7 +268,7 @@ export class GameMap {
   // Важно: те же правила, что у боевого A* (8 направлений без среза
   // углов), иначе генерация одобряет проходы, в которые A* не войдёт.
   reachable(sx, sy, gx, gy) {
-    const seen = new Uint8Array(MAP_W * MAP_H);
+    const seen = new Uint8Array(this.w * this.h);
     const q = [this.idx(sx, sy)];
     seen[q[0]] = 1;
     const goal = this.idx(gx, gy);
@@ -265,7 +276,7 @@ export class GameMap {
     while (q.length) {
       const cur = q.pop();
       if (cur === goal) return true;
-      const cx = cur % MAP_W, cy = (cur / MAP_W) | 0;
+      const cx = cur % this.w, cy = (cur / this.w) | 0;
       for (const [dx, dy] of D) {
         const nx = cx + dx, ny = cy + dy;
         if (!this.inBounds(nx, ny)) continue;
@@ -293,13 +304,13 @@ export class GameMap {
 
   // ----------------------------------------------------------
   // Кэш рельефа: рисуем всю карту один раз на offscreen canvas
-  // 2048×2048, в кадре — один drawImage видимого куска.
+  // (w×h тайлов), в кадре — один drawImage видимого куска.
   // ----------------------------------------------------------
   buildTerrainCanvas() {
     const R = mulberry32(this.seed ^ 0xABCD1234);
     const B = BIOMES[this.preset.biome] || BIOMES.mars;
     const c = document.createElement('canvas');
-    c.width = WORLD_W; c.height = WORLD_H;
+    c.width = this.pxW; c.height = this.pxH;
     const g = c.getContext('2d');
     const terr = (x, y) => (this.inBounds(x, y) ? this.terrain[this.idx(x, y)] : T_ROCK);
     const isW = (x, y) => terr(x, y) === T_WATER;
@@ -312,11 +323,11 @@ export class GameMap {
 
     // 0) База биома.
     g.fillStyle = B.ground;
-    g.fillRect(0, 0, WORLD_W, WORLD_H);
+    g.fillRect(0, 0, this.pxW, this.pxH);
 
     // 1) Мягкие пятна — объём грунта большими радиальными градиентами.
     for (let i = 0; i < 60; i++) {
-      const x = R() * WORLD_W, y = R() * WORLD_H, r = 90 + R() * 260;
+      const x = R() * this.pxW, y = R() * this.pxH, r = 90 + R() * 260;
       const col = B.blotch[(R() * B.blotch.length) | 0];
       g.save();
       g.translate(x, y); g.scale(1, 0.55 + R() * 0.3); g.translate(-x, -y);
@@ -330,7 +341,7 @@ export class GameMap {
     }
 
     // 2) Потайловый шум значения: ±5% яркости по хешу координат.
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       const hh = ((x * 73856093) ^ (y * 19349663) ^ this.seed) >>> 0;
       const v = (hh % 100) / 100;
       g.fillStyle = v < 0.5
@@ -342,10 +353,10 @@ export class GameMap {
     // 3) Крошка и галька с бликом.
     for (let i = 0; i < 500; i++) {
       g.fillStyle = R() < 0.5 ? B.speck1 : B.speck2;
-      g.fillRect(R() * WORLD_W, R() * WORLD_H, 2 + R() * 2, 2 + R() * 2);
+      g.fillRect(R() * this.pxW, R() * this.pxH, 2 + R() * 2, 2 + R() * 2);
     }
     for (let i = 0; i < 240; i++) {
-      const x = R() * WORLD_W, y = R() * WORLD_H, r = 1.5 + R() * 2.5;
+      const x = R() * this.pxW, y = R() * this.pxH, r = 1.5 + R() * 2.5;
       g.fillStyle = B.pebble;
       g.beginPath(); g.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2); g.fill();
       g.fillStyle = 'rgba(255,255,255,0.22)';
@@ -356,7 +367,7 @@ export class GameMap {
     if (this.preset.biome === 'nest') {
       // Светящиеся жилы улья — волнистые полилинии.
       for (let i = 0; i < 12; i++) {
-        let x = R() * WORLD_W, y = R() * WORLD_H;
+        let x = R() * this.pxW, y = R() * this.pxH;
         g.strokeStyle = B.floraGlow; g.globalAlpha = 0.3; g.lineWidth = 2;
         g.beginPath(); g.moveTo(x, y);
         for (let k = 0; k < 6; k++) { x += (R() - 0.5) * 130; y += (R() - 0.5) * 130; g.lineTo(x, y); }
@@ -364,7 +375,7 @@ export class GameMap {
       }
       // Кусты кристаллов: 3 ромба + точки спор.
       for (let i = 0; i < 130; i++) {
-        const x = R() * WORLD_W, y = R() * WORLD_H, st = 2 + R() * 4;
+        const x = R() * this.pxW, y = R() * this.pxH, st = 2 + R() * 4;
         for (let k = 0; k < 3; k++) {
           const ox = (R() - 0.5) * 14, oy = (R() - 0.5) * 10, s2 = st * (0.6 + R() * 0.7);
           g.fillStyle = B.flora;
@@ -381,7 +392,7 @@ export class GameMap {
     } else {
       // Кратеры с валом: тёмная чаша + светлая дуга сверху-слева.
       for (let i = 0; i < 30; i++) {
-        const x = R() * WORLD_W, y = R() * WORLD_H, r = 10 + R() * 26;
+        const x = R() * this.pxW, y = R() * this.pxH, r = 10 + R() * 26;
         g.fillStyle = 'rgba(0,0,0,0.2)';
         g.beginPath(); g.ellipse(x, y, r, r * 0.72, 0, 0, Math.PI * 2); g.fill();
         g.fillStyle = 'rgba(0,0,0,0.16)';
@@ -398,7 +409,7 @@ export class GameMap {
       // Трещины сухого грунта.
       g.strokeStyle = 'rgba(0,0,0,0.16)'; g.lineWidth = 1;
       for (let i = 0; i < 90; i++) {
-        let x = R() * WORLD_W, y = R() * WORLD_H;
+        let x = R() * this.pxW, y = R() * this.pxH;
         g.beginPath(); g.moveTo(x, y);
         for (let k = 0; k < 4; k++) { x += (R() - 0.5) * 40; y += (R() - 0.5) * 40; g.lineTo(x, y); }
         g.stroke();
@@ -406,7 +417,7 @@ export class GameMap {
       // Сухие кусты (марс) / стеклянные осколки (луна).
       const nBush = this.preset.biome === 'moon' ? 45 : 95;
       for (let i = 0; i < nBush; i++) {
-        const x = R() * WORLD_W, y = R() * WORLD_H;
+        const x = R() * this.pxW, y = R() * this.pxH;
         g.strokeStyle = B.flora; g.lineWidth = 1.4;
         for (let k = 0; k < 5; k++) {
           const a = -Math.PI / 2 + (k - 2) * 0.5 + (R() - 0.5) * 0.3;
@@ -454,18 +465,18 @@ export class GameMap {
       else g.lineTo(x0, s2 ? y1 : y1 - r);
       g.closePath();
     };
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (!isW(x, y)) continue;
       waterPath(x, y, 3, 10);
       g.fillStyle = B.shore; g.fill();
     }
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (!isW(x, y)) continue;
       waterPath(x, y, 0, 9);
       g.fillStyle = B.water; g.fill();
     }
     // Глубина в середине больших озёр.
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (!isW(x, y)) continue;
       let all = true;
       for (let oy = -1; oy <= 1 && all; oy++)
@@ -477,7 +488,7 @@ export class GameMap {
     }
     // Пена вдоль открытых сторон + блики.
     g.strokeStyle = B.foam; g.lineWidth = 2.5; g.lineCap = 'round';
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (!isW(x, y)) continue;
       const x0 = x * TILE, y0 = y * TILE, x1 = x0 + TILE, y1 = y0 + TILE;
       g.beginPath();
@@ -495,7 +506,7 @@ export class GameMap {
 
     // 7) Скалы: гранёные осколки — тёмное основание, средняя грань,
     // светлый скол, верхнее ребро, трещины.
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (terr(x, y) !== T_ROCK) continue;
       const cx = x * TILE + TILE / 2 + (R() - 0.5) * 8;
       const cy = y * TILE + TILE / 2 + (R() - 0.5) * 8;
@@ -543,12 +554,12 @@ export class GameMap {
     this.terrainCanvas = c;
   }
 
-  // Мини-карта: рельеф 2px на тайл (128×128), рисуется один раз.
+  // Мини-карта: рельеф 2px на тайл, рисуется один раз.
   buildMiniCanvas() {
     const c = document.createElement('canvas');
-    c.width = MAP_W * 2; c.height = MAP_H * 2;
+    c.width = this.w * 2; c.height = this.h * 2;
     const g = c.getContext('2d');
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       const t = this.terrain[this.idx(x, y)];
       const B = BIOMES[this.preset.biome] || BIOMES.mars;
       g.fillStyle = t === T_WATER ? B.water : t === T_ROCK ? B.rock[1] : B.ground;
