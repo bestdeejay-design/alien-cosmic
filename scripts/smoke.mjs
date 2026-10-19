@@ -115,20 +115,48 @@ function exercise(game) {
   st.buildMenu = false;
   st.placing = null;
 }
-function forceEnd(game, how) {
+function killSide(game, side) {
   const st = game.state;
   // Убиваем через настоящий боевой урон — идёт полный путь смерти:
   // killEntity, bcount, эффекты, статистика, checkEnd.
-  const side = how === 'win' ? 'enemy' : 'player';
   for (const e of [...st.units, ...st.buildings]) {
     if (e.side === side && !e.dead) U.damageEntity(st, e, 1e9, null);
   }
   for (let i = 0; i < 40 && !st.gameOver; i++) game.tick();
+}
+function forceEnd(game, how) {
+  const st = game.state;
+  const side = how === 'win' ? 'enemy' : 'player';
+  killSide(game, side);
   if (!st.gameOver) throw new Error(`конец не наступил (${how})`);
   const html = document.getElementById('end-stats').innerHTML;
   if (/NaN|undefined/.test(html)) throw new Error(`битая статистика финала: ${html.slice(0, 120)}`);
   if (!/\d\d:\d\d/.test(html)) throw new Error(`нет времени боя в финале: ${html.slice(0, 120)}`);
   return html.match(/\d\d:\d\d/)[0];
+}
+
+// П5-фикс: цепочка key → evac (№13) — зачистка даёт фазу 2, а победа
+// только после отхода: уводим need выживших в зону и ждём финал.
+function forceChainWin(game) {
+  const st = game.state;
+  killSide(game, 'enemy');
+  if (st.gameOver) throw new Error('зачистка победила без отхода');
+  const w = st.win;
+  if (!w || w.kind !== 'evac') throw new Error('цепочка не переключилась на отход');
+  const crew = st.units.filter((u) => u.side === 'player' && !u.dead);
+  if (crew.length < w.need) throw new Error(`к отходу живых меньше need: ${crew.length}/${w.need}`);
+  const cx = (w.x + 0.5) * 32, cy = (w.y + 0.5) * 32;
+  crew.slice(0, w.need).forEach((u, i) => {
+    u.x = cx + (i % 2) * 16; u.y = cy + ((i / 2) | 0) * 16;
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  for (let i = 0; i < 300 && !st.gameOver; i++) game.tick();
+  if (st.gameOver !== 'win') throw new Error('отход не победил');
+  const html = document.getElementById('end-stats').innerHTML;
+  if (/NaN|undefined/.test(html)) throw new Error(`битая статистика финала: ${html.slice(0, 120)}`);
+  if (!/[0-9][0-9]:[0-9][0-9]/.test(html)) throw new Error(`нет времени боя в финале: ${html.slice(0, 120)}`);
+  return html.match(/[0-9][0-9]:[0-9][0-9]/)[0];
 }
 
 // ---------- Фаза 2: все миссии кампании ----------
@@ -146,7 +174,8 @@ for (const m of MISSIONS) {
     exercise(game);
     frames(60);
     perf.push({ tag, ms: dt / 660 });
-    const tWin = forceEnd(game, 'win');
+    // П5-фикс: миссия-цепочка побеждает только через отход.
+    const tWin = (m.objective && m.objective.then) ? forceChainWin(game) : forceEnd(game, 'win');
     game.restart();
     frames(30);
     if (m.defense) {

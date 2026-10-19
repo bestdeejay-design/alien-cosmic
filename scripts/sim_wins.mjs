@@ -515,7 +515,33 @@ try {
   ticks(5);
   assert(game.state.gameOver === 'lose', 'нет поражения при гибели отряда');
   assert(/Отряд погиб/.test(endReason()), 'чужая причина: ' + endReason());
-  pass('W16 rep13: «Око»→отход, 4 отошли = победа + эпилог, недобор/гибель = поражения');
+  // «Око» — последнее здание врага (снос на 2-й секунде): НЕ победа,
+  // фаза 2 началась, отход 4 = победа (блокер приёмки П5).
+  game.startMission(missionsMod.MISSIONS[13]);
+  ticks(5);
+  const st3 = game.state;
+  st3.minerals.enemy = 0; // ИИ не строится — форт не обрастает
+  const eye3 = st3.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
+  U.damageEntity(st3, eye3, 1e9, null);
+  ticks(5);
+  assert(st3.bcount.enemy <= 0, 'у врага остались здания — кейс не про «последнее»');
+  assert(!st3.gameOver, 'снос последнего «Ока» сразу победил');
+  assert(st3.win.kind === 'evac', 'фаза 2 не началась');
+  assert(/Эвакуировано 0\/4/.test(game.objectiveText()), 'нет счётчика отхода: ' + game.objectiveText());
+  st3.units.filter((u) => u.side === 'player' && !u.dead).forEach((u, i) => {
+    if (i < 4) {
+      u.x = (8.5 + (i % 2) * 0.5) * 32; u.y = (48.5 + ((i / 2) | 0) * 0.5) * 32;
+    } else {
+      u.x = (30 + i) * 32; u.y = 30 * 32;
+    }
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  ticks(120);
+  assert(st3.evacuated === 4, 'отошло не 4: ' + st3.evacuated);
+  assert(st3.gameOver === 'win', 'нет победы отходом');
+  assert(/Око закрылось/.test(el('end-epilogue').textContent), 'эпилога нет');
+  pass('W16 rep13: «Око»→отход, 4 отошли = победа + эпилог, недобор/гибель/Око-последнее = честно');
 } catch (e) { fail('W16 rep13-raid', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
