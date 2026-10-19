@@ -88,6 +88,7 @@ globalThis.localStorage = {
 };
 globalThis.document = {
   hidden: false,
+  body: new FakeEl('body'),
   getElementById: (id) => {
     if (!elCache[id]) {
       const isCanvas = id === 'game-canvas' || id === 'minimap';

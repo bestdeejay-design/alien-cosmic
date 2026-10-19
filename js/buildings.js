@@ -6,6 +6,7 @@
 import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname } from './config.js';
 import { nearestFreeTileAround } from './pathfinding.js';
 import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
+import { icon } from './ui.js'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
 import { distToRectPx } from './pathfinding.js';
 import { tr } from './lore.js';
 
@@ -520,6 +521,49 @@ function teethRing(ctx, x, y, ringR, toothL, ang, spread, n, color) {
     const tx = x + Math.cos(a) * (ringR + toothL), ty = y + Math.sin(a) * (ringR + toothL);
     const px = -Math.sin(a) * toothL * 0.32, py = Math.cos(a) * toothL * 0.32;
     poly(ctx, [bx - px, by - py, bx + px, by + py, tx, ty]);
+  }
+}
+
+// Пакет E.2: бейджи над зданием (иконка 20px + полоса прогресса 44px),
+// гарнизон — бейдж «N/M» в правом верхнем углу корпуса. Слоты идут вверх
+// от HP-полосы, друг друга не перекрывают.
+function drawStatusBadges(ctx, b, px, py, w) {
+  let sy = py - 16;
+  const slot = (iconType, frac, accent) => {
+    ctx.drawImage(icon(iconType), px, sy - 20, 20, 20);
+    ctx.fillStyle = 'rgba(8,10,12,0.7)';
+    ctx.fillRect(px + 23, sy - 13, 44, 6);
+    ctx.fillStyle = accent;
+    ctx.fillRect(px + 24, sy - 12, 42 * Math.max(0, Math.min(1, frac)), 4);
+    sy -= 24;
+  };
+  if (b.queue && b.queue.length) {
+    const item = b.queue[0];
+    slot(b.faction === 'alien' ? 'a_' + item.type : item.type,
+      item.total ? 1 - item.t / item.total : 0, '#8ff5e2');
+    if (b.queue.length > 1) {
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.fillStyle = '#e8f4f1';
+      ctx.textAlign = 'left';
+      ctx.fillText('\u00d7' + b.queue.length, px + 70, sy + 12);
+    }
+  }
+  if (b.res) {
+    slot('u_' + b.res.key, b.res.total ? 1 - b.res.t / b.res.total : 0, '#f3c579');
+  }
+  if (b.cfg.garrisonCap && Array.isArray(b.garrison)) {
+    const t = b.garrison.length + '/' + b.cfg.garrisonCap;
+    const bx = px + w - 38, by = py + 4;
+    ctx.fillStyle = 'rgba(8,10,12,0.75)';
+    ctx.fillRect(bx, by, 36, 16);
+    ctx.strokeStyle = 'rgba(143,255,226,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, 35, 15);
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = '#e8f4f1';
+    ctx.textAlign = 'center';
+    ctx.fillText(t, bx + 18, by + 12);
+    ctx.textAlign = 'left';
   }
 }
 
@@ -1153,6 +1197,13 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
       ctx.fillStyle = b.side === 'player' ? '#7BE495' : '#ff6e5f';
       ctx.fillRect(px + 1, py - 10, w - 2, 4);
     }
+  }
+
+  // Пакет E.2: мировые статусы своих настоящих зданий — производство,
+  // исследование, гарнизон числом. Только свои достроенные: чужие заказы —
+  // разведданные, им в мире не место. У превью/фейков нет id — молчим.
+  if (!ghost && b.side === 'player' && b.done !== false && typeof b.id === 'number') {
+    drawStatusBadges(ctx, b, px, py, w);
   }
 
   // Красная вспышка попадания.

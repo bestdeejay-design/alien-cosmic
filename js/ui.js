@@ -22,7 +22,7 @@ const FACTIONS = {
 // Иконки команд: маленькие canvas 26×26, рисуются один раз.
 // ------------------------------------------------------------
 const iconCache = {};
-function icon(type) {
+export function icon(type) {
   if (iconCache[type]) return iconCache[type];
   const c = document.createElement('canvas');
   c.width = 26; c.height = 26;
@@ -381,6 +381,9 @@ export function initUI(game) {
     pause: $('btn-pause'),
     restart: $('btn-restart'),
     exit: $('btn-exit'),
+    panelPosBtn: $('panel-pos'),
+    panelHideBtn: $('panel-hide'),
+    panelShow: $('panel-show'),
     selInfo: $('sel-info'),
     cmdGrid: $('cmd-grid'),
     toasts: $('toasts'),
@@ -458,6 +461,10 @@ export function initUI(game) {
   });
   els.restart.addEventListener('click', () => game.restart());
   els.exit.addEventListener('click', () => game.toMenu());
+  els.panelPosBtn.addEventListener('click', () => { cyclePanelPos(); game.resize(); game.sound.click(); });
+  els.panelHideBtn.addEventListener('click', () => { setPanelHidden(true); game.resize(); game.sound.click(); });
+  els.panelShow.addEventListener('click', () => { setPanelHidden(false); game.resize(); game.sound.click(); });
+  applyPanelPrefs();
   els.pause.addEventListener('click', () => game.togglePause());
   els.sound.addEventListener('click', () => game.toggleSound());
 
@@ -561,6 +568,63 @@ export function showCodex() {
 
 export function hideStart() { els.overlay.classList.add('hidden'); }
 export function showStart() { els.overlay.classList.remove('hidden'); }
+
+// ------------------------------------------------------------
+// Пакет E.1: положение командной панели + режим «скрыть».
+// Низ (как было) / слева / справа / верх; выбор в localStorage.
+// Инсеты — константы по CSS (190px высота, 236px ширина боковых).
+// ------------------------------------------------------------
+const PANEL_KEY = 'terranrts.panel';
+const PANEL_POS = ['bottom', 'left', 'right', 'top'];
+const PANEL_NAMES = { bottom: 'низ', left: 'слева', right: 'справа', top: 'верх' };
+let panelPos = 'bottom', panelHidden = false;
+
+export function getPanelPos() { return panelPos; }
+export function isPanelHidden() { return panelHidden; }
+export function getPanelInsets() {
+  if (panelHidden) return { top: 0, bottom: 0, left: 0, right: 0 };
+  return {
+    top: panelPos === 'top' ? 190 : 0,
+    bottom: panelPos === 'bottom' ? 190 : 0,
+    left: panelPos === 'left' ? 236 : 0,
+    right: panelPos === 'right' ? 236 : 0,
+  };
+}
+function savePanelPrefs() {
+  try { localStorage.setItem(PANEL_KEY, JSON.stringify({ pos: panelPos, hidden: panelHidden })); }
+  catch (e) { /* приватный режим — не запоминаем */ }
+}
+function applyPanelClass() {
+  const cl = document.body.classList;
+  cl.remove('panel-left', 'panel-right', 'panel-top', 'panel-hidden');
+  if (panelPos !== 'bottom') cl.add('panel-' + panelPos);
+  if (panelHidden) cl.add('panel-hidden');
+  if (els && els.panelPosBtn) els.panelPosBtn.textContent = 'Панель: ' + PANEL_NAMES[panelPos];
+  if (els && els.panelShow) els.panelShow.textContent = 'Панель';
+}
+export function applyPanelPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PANEL_KEY) || '{}');
+    if (PANEL_POS.includes(p.pos)) panelPos = p.pos;
+    panelHidden = !!p.hidden;
+  } catch (e) { /* битый JSON — дефолты */ }
+  applyPanelClass();
+}
+export function setPanelPos(pos) {
+  if (!PANEL_POS.includes(pos)) return;
+  panelPos = pos;
+  savePanelPrefs();
+  applyPanelClass();
+}
+export function cyclePanelPos() {
+  setPanelPos(PANEL_POS[(PANEL_POS.indexOf(panelPos) + 1) % PANEL_POS.length]);
+}
+export function setPanelHidden(h) {
+  panelHidden = !!h;
+  savePanelPrefs();
+  applyPanelClass();
+}
+export function togglePanel() { setPanelHidden(!panelHidden); }
 export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
 export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
 export function hideEnd() { els.endOverlay.classList.add('hidden'); }

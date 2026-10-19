@@ -196,6 +196,10 @@ export function attachInput(game) {
       return;
     }
     if (e.code === 'KeyP' && !e.ctrlKey && !e.altKey) { game.togglePause(); return; }
+    // Пакет E.1: V — показать/скрыть командную панель.
+    if (e.code === 'KeyV' && !e.ctrlKey && !e.altKey) {
+      game.ui.togglePanel(); game.resize(); game.sound.click(); return;
+    }
     // П2: зум + / − с якорем под курсором (колесо — панорама, не трогаем).
     if ((e.code === 'Equal' || e.code === 'NumpadAdd' ||
          e.code === 'Minus' || e.code === 'NumpadSubtract') && !e.ctrlKey && !e.altKey) {
@@ -345,10 +349,12 @@ export function updateCamera(game, dt) {
     const m = game.mouse, M = EDGE_MARGIN;
     const w = window.innerWidth, h = window.innerHeight;
     const top = game.uiTop || 0, bot = game.uiBottom || 0;
-    const inPlay = m.y > top && m.y < h - bot; // курсор в игровой зоне
+    const L = game.uiLeft || 0, R = game.uiRight || 0;
+    // Курсор в игровой зоне (вне панелей E.1); края считаются от неё.
+    const inPlay = m.x > L && m.x < w - R && m.y > top && m.y < h - bot;
     if (inPlay) {
-      if (m.x < M) st.camera.x -= EDGE_SCROLL_SPEED * dt;
-      else if (m.x > w - M) st.camera.x += EDGE_SCROLL_SPEED * dt;
+      if (m.x < L + M) st.camera.x -= EDGE_SCROLL_SPEED * dt;
+      else if (m.x > w - R - M) st.camera.x += EDGE_SCROLL_SPEED * dt;
       if (m.y < top + M) st.camera.y -= EDGE_SCROLL_SPEED * dt;
       else if (m.y > h - bot - M) st.camera.y += EDGE_SCROLL_SPEED * dt;
     }
