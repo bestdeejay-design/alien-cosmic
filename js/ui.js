@@ -5,7 +5,7 @@
 // Весь UI — DOM поверх canvas; иконки команд рисуются кодом.
 // ============================================================
 import {
-  TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, MAP_W, MAP_H, SUPPLY_MAX, COLORS,
+  TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, SUPPLY_MAX, COLORS,
   fname, fdesc,
 } from './config.js';
 import { MISSIONS, loadProgress, objectiveLabel } from './missions.js';
@@ -472,9 +472,11 @@ export function initUI(game) {
   const mm = els.minimap;
   const mmWorld = (e) => {
     const r = mm.getBoundingClientRect();
+    // C/П7: масштаб миникарты — от размера карты (фолбэк 64 до старта).
+    const mp = (game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
     return {
-      x: ((e.clientX - r.left) / r.width) * WORLD_W,
-      y: ((e.clientY - r.top) / r.height) * WORLD_H,
+      x: ((e.clientX - r.left) / r.width) * mp.pxW,
+      y: ((e.clientY - r.top) / r.height) * mp.pxH,
     };
   };
   mm.addEventListener('mousedown', (e) => {
@@ -1030,7 +1032,7 @@ export function drawMinimap(game) {
   if (!st || !els) return;
   const g = els.minimap.getContext('2d');
   const S = els.minimap.width; // 176
-  const k = S / WORLD_W;
+  const k = S / st.map.pxW; // C/П7: карты квадратные — один масштаб
   g.imageSmoothingEnabled = false;
   g.drawImage(st.map.miniCanvas, 0, 0, S, S);
 
@@ -1057,7 +1059,7 @@ export function drawMinimap(game) {
   // Туман войны.
   if (st.fog.dirty) st.fog.paint();
   g.imageSmoothingEnabled = false;
-  g.drawImage(st.fog.canvas, 0, 0, MAP_W, MAP_H, 0, 0, S, S);
+  g.drawImage(st.fog.canvas, 0, 0, st.fog.w, st.fog.h, 0, 0, S, S);
   // Рамка обзора камеры.
   g.strokeStyle = 'rgba(255,255,255,0.85)';
   g.lineWidth = 1;

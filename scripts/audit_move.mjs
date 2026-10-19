@@ -9,6 +9,7 @@
 //   A6. formationGoals: слоты строя — на свободных разных тайлах.
 //   A7. nearestFreeFrom находит свободную клетку из стены.
 //   A8. Perf: 200 длинных путей — время (санити бюджета).
+//   A11. Пресеты кампании C: размер, путь база↔база, калитки 0, старты, зоны.
 // Запуск: node scripts/audit_move.mjs
 // ============================================================
 
@@ -297,6 +298,70 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
   }
   const ms = Date.now() - t0;
   ok('A8. 200 длинных путей с clearance считаются быстро', ms < 3000, `${n} путей за ${ms} мс (${(ms / Math.max(1, n)).toFixed(1)} мс/путь)`);
+}
+
+// ---------- A11. Пресеты кампании (пакет C) ----------
+{
+  const { MISSIONS } = await import('../js/missions.js');
+  const { CC_WORKER_OFFS } = await import('../js/map.js');
+  for (const m of MISSIONS) {
+    const gm = new GameMap(m.map.seed, m.map);
+    const errs = [];
+    // Размер: явный — в диапазоне 48–96, иначе дефолт 64 (гвард).
+    if (m.map.w || m.map.h) {
+      if (gm.w < 48 || gm.w > 96 || gm.h < 48 || gm.h > 96) errs.push(`размер ${gm.w}×${gm.h} вне 48–96`);
+    } else if (gm.w !== 64 || gm.h !== 64) {
+      errs.push(`дефолт не 64: ${gm.w}×${gm.h}`);
+    }
+    // Полный путь A* база↔база (правила боевого поиска).
+    const s = gm.bases.player.center, g = gm.bases.enemy.center;
+    const tiles = PF.findPath(gm, s.x, s.y, (x, y) => x === g.x && y === g.y,
+      (x, y) => Math.max(Math.abs(g.x - x), Math.abs(g.y - y)));
+    const last = tiles[tiles.length - 1];
+    if (!last || last.x !== g.x || last.y !== g.y) errs.push(`путь частичный (${tiles.length})`);
+    // Скальных диагональных калиток — 0; карманы — считаем.
+    const free = (x, y) => gm.inBounds(x, y) && !gm.blockedAt(x, y);
+    const isRock = (x, y) => gm.inBounds(x, y) && gm.terrain[gm.idx(x, y)] === T_ROCK;
+    let rockGates = 0, pockets = 0;
+    for (let y = 1; y < gm.h - 1; y++) for (let x = 1; x < gm.w - 1; x++) {
+      if (!free(x, y)) continue;
+      const walls = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => !free(x + dx, y + dy)).length;
+      if (walls >= 3) pockets++;
+      if (free(x + 1, y + 1) && isRock(x + 1, y) && isRock(x, y + 1)) rockGates++;
+    }
+    if (rockGates) errs.push(`калиток ${rockGates}`);
+    // Старты: cc 4×3 свободен, рабочие на земле, кристаллы есть.
+    const footFree = (tx, ty, w, h) => {
+      for (let y = ty; y < ty + h; y++) for (let x = tx; x < tx + w; x++) {
+        if (!gm.inBounds(x, y) || gm.terrain[gm.idx(x, y)] !== T_GROUND || gm.mineralGrid[gm.idx(x, y)]) return false;
+      }
+      return true;
+    };
+    [gm.bases.player.cc, gm.bases.enemy.cc].forEach((cc, i) => {
+      if (!footFree(cc.x, cc.y, 4, 3)) errs.push(`cc ${i ? 'врага' : 'игрока'} не встаёт`);
+      for (const [dx, dy] of CC_WORKER_OFFS) {
+        if (gm.blockedAt(cc.x + dx, cc.y + dy)) { errs.push(`рабочий ${i ? 'врага' : 'игрока'} в стене`); break; }
+      }
+    });
+    if (!gm.crystals.length) errs.push('нет кристаллов');
+    // Зоны миссии — внутри карты.
+    const checkEvac = (w) => {
+      if (!w || w.kind !== 'evac') return;
+      if (w.x - w.r < 0 || w.y - w.r < 0 || w.x + 1 + w.r > gm.w || w.y + 1 + w.r > gm.h) errs.push('evac-зона вне карты');
+    };
+    if (m.objective && typeof m.objective === 'object') { checkEvac(m.objective); checkEvac(m.objective.then); }
+    for (const z of (m.buildZone || [])) {
+      if (z.x < 0 || z.y < 0 || z.x + z.w > gm.w || z.y + z.h > gm.h) errs.push('buildZone вне карты');
+    }
+    // Сторона базы для таблицы отчёта.
+    const pb = gm.bases.player.cc;
+    const dx = pb.x + 2 - gm.w / 2, dy = pb.y + 1.5 - gm.h / 2;
+    const side = Math.abs(dx) > Math.abs(dy) * 1.4 ? (dx > 0 ? 'В' : 'З')
+      : Math.abs(dy) > Math.abs(dx) * 1.4 ? (dy > 0 ? 'Ю' : 'С')
+      : (dy > 0 ? 'Ю' : 'С') + (dx > 0 ? 'В' : 'З');
+    ok(`A11. №${m.id} ${m.name}: ${gm.w}×${gm.h}, база ${side} (${pb.x},${pb.y})`,
+      errs.length === 0, errs.join('; ') || `путь ${tiles.length}, калиток 0, карманов ${pockets}, кристаллов ${gm.crystals.length}`);
+  }
 }
 
 console.log(fails ? `\nИТОГ АУДИТА ДВИЖЕНИЯ: ЕСТЬ ПРОВАЛЫ (${fails})` : '\nИТОГ АУДИТА ДВИЖЕНИЯ: ВСЕ ПРОВЕРКИ ПРОШЛИ');

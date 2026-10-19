@@ -6,7 +6,7 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 import {
-  TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, LOGIC_DT, MAX_FRAME_DT,
+  TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES,
   fname, fdesc,
 } from './config.js';
@@ -142,7 +142,10 @@ export class Game {
       lastAlertPos: null, // точка последней тревоги — прыжок по H
     };
     st.map = new GameMap(seed, m.map);
-    st.fog = new Fog();
+    st.fog = new Fog(st.map.w, st.map.h);
+    // С3/П7: стартовый tech врага — исследования 1-го уровня закрыты сразу.
+    const startTech = (m.ai && m.ai.startTech) || 0;
+    if (startTech > 0) for (const key of Object.keys(st.tech.enemy)) st.tech.enemy[key] = startTech;
     st.game = this;
     this.state = st;
     this.box = null;
@@ -303,8 +306,8 @@ export class Game {
   clampCam() {
     const st = this.state;
     if (!st) return;
-    st.camera.x = Math.max(0, Math.min(WORLD_W - this.viewW(), st.camera.x));
-    st.camera.y = Math.max(0, Math.min(WORLD_H - this.viewH(), st.camera.y));
+    st.camera.x = Math.max(0, Math.min(st.map.pxW - this.viewW(), st.camera.x));
+    st.camera.y = Math.max(0, Math.min(st.map.pxH - this.viewH(), st.camera.y));
   }
 
   centerCamera(wx, wy) {
@@ -648,8 +651,8 @@ export class Game {
     if (!pl) return;
     const cfg = BUILDINGS[pl.type];
     const fac = st.factions.player;
-    tx = Math.max(0, Math.min(MAP_W - cfg.w, tx));
-    ty = Math.max(0, Math.min(MAP_H - cfg.h, ty));
+    tx = Math.max(0, Math.min(st.map.w - cfg.w, tx));
+    ty = Math.max(0, Math.min(st.map.h - cfg.h, ty));
     for (let y = ty; y < ty + cfg.h; y++)
       for (let x = tx; x < tx + cfg.w; x++)
         if (!st.fog.tileExplored(x, y)) {
@@ -716,8 +719,8 @@ export class Game {
     for (let i = 0; i <= steps; i++) {
       const x = Math.round(d.x0 + (steps ? dx * i / steps : 0));
       const y = Math.round(d.y0 + (steps ? dy * i / steps : 0));
-      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
-      const k = y * MAP_W + x;
+      if (x < 0 || y < 0 || x >= st.map.w || y >= st.map.h) continue;
+      const k = y * st.map.w + x;
       if (seen.has(k)) continue;
       seen.add(k);
       tiles.push({ x, y });
@@ -1060,7 +1063,7 @@ export class Game {
     ctx.scale(z, z);
 
     // Рельеф: один drawImage видимого куска кэша 2048×2048.
-    const sw = Math.min(vw, WORLD_W - cam.x), sh = Math.min(vh, WORLD_H - cam.y);
+    const sw = Math.min(vw, st.map.pxW - cam.x), sh = Math.min(vh, st.map.pxH - cam.y);
     if (sw > 0 && sh > 0) {
       ctx.drawImage(st.map.terrainCanvas, cam.x, cam.y, sw, sh, 0, 0, sw, sh);
     }
@@ -1099,7 +1102,7 @@ export class Game {
       const visibleNow = b.side === 'player' ||
         st.fog.tileVisible(b.tx + (b.w >> 1), b.ty + (b.h >> 1));
       if (b.side === 'enemy' && !b.spotted && !visibleNow) continue;
-      B.drawBuilding(ctx, b, b.side === 'enemy' && !visibleNow, cam.x, cam.y);
+      B.drawBuilding(ctx, b, b.side === 'enemy' && !visibleNow, cam.x, cam.y, st);
       // M0: пульсирующий ромб над ключевой целью (обе расы, янтарь DS).
       if (b.keyTarget && !b.dead) {
         const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.005);
@@ -1168,7 +1171,7 @@ export class Game {
 
     this.drawEffects(ctx, st, inView, cam.x, cam.y);
 
-    // Туман войны поверх мира (мягкие края за счёт масштабирования 64→экран).
+    // Туман войны поверх мира (мягкие края за счёт масштабирования w→экран).
     if (st.fog.dirty) st.fog.paint();
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(st.fog.canvas, cam.x / TILE, cam.y / TILE, vw / TILE, vh / TILE, 0, 0, vw, vh);
@@ -1365,8 +1368,8 @@ export class Game {
   drawGhost(ctx, st, cam) {
     const pl = st.placing;
     const cfg = BUILDINGS[pl.type];
-    const tx = Math.max(0, Math.min(MAP_W - cfg.w, pl.tx));
-    const ty = Math.max(0, Math.min(MAP_H - cfg.h, pl.ty));
+    const tx = Math.max(0, Math.min(st.map.w - cfg.w, pl.tx));
+    const ty = Math.max(0, Math.min(st.map.h - cfg.h, pl.ty));
     let ok = st.minerals.player >= cfg.cost;
     if (ok && !B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) ok = false;
     for (let y = ty; y < ty + cfg.h && ok; y++)

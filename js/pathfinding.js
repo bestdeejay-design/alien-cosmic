@@ -1,5 +1,5 @@
 // ============================================================
-// pathfinding.js — поиск пути A* по тайловой сетке 64×64.
+// pathfinding.js — поиск пути A* по тайловой сетке карты (w×h).
 // 8 направлений, без «среза углов» по диагонали; при полном
 // исчерпании бюджета возвращается частичный путь (юнит идёт
 // максимально близко к цели). Плюс сглаживание по видимости,
@@ -10,7 +10,7 @@
 // Новые функции — только расширения: hasLosClear,
 // smoothPathClear, nearestFreeFrom.
 // ============================================================
-import { TILE, MAP_W, MAP_H } from './config.js';
+import { TILE } from './config.js';
 
 const SQRT2 = Math.SQRT2;
 // Смещения соседей: [dx, dy, стоимость шага].
@@ -68,8 +68,8 @@ function octile(dx, dy) {
 // Возвращает {x, y} или null.
 // ------------------------------------------------------------
 export function nearestFreeFrom(map, sx, sy, maxR = 4) {
-  sx = Math.max(0, Math.min(MAP_W - 1, sx));
-  sy = Math.max(0, Math.min(MAP_H - 1, sy));
+  sx = Math.max(0, Math.min(map.w - 1, sx));
+  sy = Math.max(0, Math.min(map.h - 1, sy));
   if (!map.blockedAt(sx, sy)) return { x: sx, y: sy };
   for (let r = 1; r <= maxR; r++) {
     let best = null, bd = Infinity;
@@ -100,8 +100,8 @@ export function nearestFreeFrom(map, sx, sy, maxR = 4) {
 // (Г2). Частичный путь при бюджете/недостижимости — как раньше.
 // ------------------------------------------------------------
 export function findPath(map, sx, sy, goalTest, heur, maxExpand = 8000) {
-  sx = Math.max(0, Math.min(MAP_W - 1, sx));
-  sy = Math.max(0, Math.min(MAP_H - 1, sy));
+  sx = Math.max(0, Math.min(map.w - 1, sx));
+  sy = Math.max(0, Math.min(map.h - 1, sy));
   // Старт внутри стены: ищем, откуда реально идти.
   let escapeTile = null;
   if (map.blockedAt(sx, sy)) {
@@ -112,13 +112,13 @@ export function findPath(map, sx, sy, goalTest, heur, maxExpand = 8000) {
       sx = free.x; sy = free.y;
     }
   }
-  const N = MAP_W * MAP_H;
+  const N = map.w * map.h;
   const g = new Float32Array(N).fill(Infinity);
   const came = new Int32Array(N).fill(-1);
   const closed = new Uint8Array(N);
   const open = new MinHeap();
 
-  const si = sy * MAP_W + sx;
+  const si = sy * map.w + sx;
   g[si] = 0;
   open.push(si, heur(sx, sy));
   if (goalTest(sx, sy)) {
@@ -133,7 +133,7 @@ export function findPath(map, sx, sy, goalTest, heur, maxExpand = 8000) {
     const cur = open.pop();
     if (closed[cur]) continue;
     closed[cur] = 1;
-    const cx = cur % MAP_W, cy = (cur / MAP_W) | 0;
+    const cx = cur % map.w, cy = (cur / map.w) | 0;
 
     if (goalTest(cx, cy)) { best = cur; found = true; break; }
     const h = heur(cx, cy);
@@ -142,8 +142,8 @@ export function findPath(map, sx, sy, goalTest, heur, maxExpand = 8000) {
 
     for (const [dx, dy, cost] of DIRS) {
       const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
-      const ni = ny * MAP_W + nx;
+      if (nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) continue;
+      const ni = ny * map.w + nx;
       if (closed[ni] || map.blockedAt(nx, ny)) continue;
       // Диагональ запрещена, если срезает угол между двумя стенами.
       if (dx && dy && (map.blockedAt(cx + dx, cy) || map.blockedAt(cx, cy + dy))) continue;
@@ -160,7 +160,7 @@ export function findPath(map, sx, sy, goalTest, heur, maxExpand = 8000) {
   // Восстановление пути от цели к старту.
   const pts = [];
   let c = best;
-  while (c !== -1 && c !== si) { pts.push({ x: c % MAP_W, y: (c / MAP_W) | 0 }); c = came[c]; }
+  while (c !== -1 && c !== si) { pts.push({ x: c % map.w, y: (c / map.w) | 0 }); c = came[c]; }
   pts.reverse();
   if (escapeTile) pts.unshift(escapeTile);
   return pts;
@@ -255,7 +255,7 @@ export function pathToRect(map, sx, sy, rect, opts = null) {
     for (let x = rect.x - 1; x <= rect.x + rect.w; x++) {
       const inside = x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
       if (inside || !map.inBounds(x, y) || map.blockedAt(x, y)) continue;
-      adj.push(y * MAP_W + x);
+      adj.push(y * map.w + x);
     }
   if (!adj.length) return null; // прямоугольник полностью заперт
   const adjSet = new Set(adj);
@@ -265,7 +265,7 @@ export function pathToRect(map, sx, sy, rect, opts = null) {
     const dy = Math.max(ey0 - y, 0, y - ey1);
     return octile(dx, dy);
   };
-  const tiles = findPath(map, sx, sy, (x, y) => adjSet.has(y * MAP_W + x), heur);
+  const tiles = findPath(map, sx, sy, (x, y) => adjSet.has(y * map.w + x), heur);
   return toWorldPts(smoothPathClear(map, tiles, clearance));
 }
 
@@ -277,8 +277,8 @@ export function pathToRect(map, sx, sy, rect, opts = null) {
 // opts.clearance — габарит корпуса в px для сглаживания.
 export function pathToPoint(map, sx, sy, wx, wy, opts = null) {
   const clearance = (opts && opts.clearance) || 0;
-  const tx = Math.max(0, Math.min(MAP_W - 1, (wx / TILE) | 0));
-  const ty = Math.max(0, Math.min(MAP_H - 1, (wy / TILE) | 0));
+  const tx = Math.max(0, Math.min(map.w - 1, (wx / TILE) | 0));
+  const ty = Math.max(0, Math.min(map.h - 1, (wy / TILE) | 0));
   if (!map.blockedAt(tx, ty)) {
     const tiles = findPath(map, sx, sy, (x, y) => x === tx && y === ty,
       (x, y) => octile(tx - x, ty - y));

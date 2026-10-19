@@ -16,6 +16,7 @@
 // W17 rep10: ЦЕЛЬ — снос штаба «Гелиоса» = победа + эпилог, снос базы = поражение.
 // W18 rep11: ОСАДА — штаб до дедлайна = победа + эпилог, ветераны = волна.
 // W19 rep14: ЦЕЛЬ-финал — снос крепления = победа + campaignDone + эпилог.
+// W20 rep14-C3: стартовый tech 1 врага — исследования закрыты, иконки на лабе видны.
 //
 // Запуск: node scripts/sim_wins.mjs
 // ============================================================
@@ -56,6 +57,11 @@ function killAll(st, side) {
   }
 }
 function endReason() { return el('end-reason').textContent; }
+function recCtx() {
+  const calls = [];
+  const sink = new Proxy(function () {}, { get: () => sink, set: () => true, apply: () => sink });
+  return { calls, ctx: new Proxy({}, { get: (t, k) => (...a) => { calls.push([k, ...a]); return sink; }, set: () => true }) };
+}
 
 // ---------- W1: ключевая цель ----------
 try {
@@ -244,11 +250,12 @@ try {
   assert(!game.mission.defense, 'таймер обороны остался');
   assert(/Эвакуировано 0\/8/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
   paint(); // круг зоны + счётчик — без ошибок
-  // Восьмерых в зону шаттлов (52.5, 10.5): 4 своих рабочих + 4 рейнджера.
+  // Восьмерых в зону шаттлов из конфига: 4 своих рабочих + 4 рейнджера.
   const crew = st.units.filter((u) => u.side === 'player' && !u.dead);
-  for (let i = crew.length; i < 8; i++) crew.push(U.spawnUnit(st, 'player', 'marine', 8.5 * 32, 9.5 * 32));
+  for (let i = crew.length; i < 8; i++) crew.push(U.spawnUnit(st, 'player', 'marine', 8.5 * 32, 40.5 * 32));
+  const zx = st.win.x + 0.5, zy = st.win.y + 0.5;
   crew.forEach((u, i) => {
-    u.x = (52.5 + (i % 4) * 0.5) * 32; u.y = (10.5 + ((i / 4) | 0) * 0.5) * 32;
+    u.x = (zx + (i % 4) * 0.5) * 32; u.y = (zy + ((i / 4) | 0) * 0.5) * 32;
     u.prevX = u.x; u.prevY = u.y;
     u.order = { kind: 'idle' }; u.moving = false; // стоять в кругу, не разбредаться
   });
@@ -480,13 +487,14 @@ try {
   assert(st.win.kind === 'evac', 'цель не переключилась на отход');
   assert(/Эвакуировано 0\/4/.test(game.objectiveText()), 'нет счётчика отхода: ' + game.objectiveText());
   paint(); // круг зоны отхода — без ошибок
-  // Четверых в зону высадки (8.5, 48.5), остальных — подальше
+  // Четверых в зону высадки из конфига, остальных — подальше
   // (часть отряда спавнится внутри круга зоны, их отводим).
+  const wz = st.win;
   squad.filter((u) => !u.dead).forEach((u, i) => {
     if (i < 4) {
-      u.x = (8.5 + (i % 2) * 0.5) * 32; u.y = (48.5 + ((i / 2) | 0) * 0.5) * 32;
+      u.x = (wz.x + 0.5 + (i % 2) * 0.5) * 32; u.y = (wz.y + 0.5 + ((i / 2) | 0) * 0.5) * 32;
     } else {
-      u.x = (30 + i) * 32; u.y = 30 * 32;
+      u.x = (44 + i) * 32; u.y = 44 * 32;
     }
     u.prevX = u.x; u.prevY = u.y;
     u.order = { kind: 'idle' }; u.moving = false;
@@ -531,11 +539,12 @@ try {
   assert(!st3.gameOver, 'снос последнего «Ока» сразу победил');
   assert(st3.win.kind === 'evac', 'фаза 2 не началась');
   assert(/Эвакуировано 0\/4/.test(game.objectiveText()), 'нет счётчика отхода: ' + game.objectiveText());
+  const wz3 = st3.win;
   st3.units.filter((u) => u.side === 'player' && !u.dead).forEach((u, i) => {
     if (i < 4) {
-      u.x = (8.5 + (i % 2) * 0.5) * 32; u.y = (48.5 + ((i / 2) | 0) * 0.5) * 32;
+      u.x = (wz3.x + 0.5 + (i % 2) * 0.5) * 32; u.y = (wz3.y + 0.5 + ((i / 2) | 0) * 0.5) * 32;
     } else {
-      u.x = (30 + i) * 32; u.y = 30 * 32;
+      u.x = (44 + i) * 32; u.y = 44 * 32;
     }
     u.prevX = u.x; u.prevY = u.y;
     u.order = { kind: 'idle' }; u.moving = false;
@@ -627,6 +636,64 @@ try {
   assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
   pass('W19 rep14: крепление = победа + campaignDone + эпилог, снос = поражение');
 } catch (e) { fail('W19 rep14-final', e); }
+
+// ---------- W20: №14 — стартовый tech врага (С3) ----------
+try {
+  game.startMission(missionsMod.MISSIONS[14]);
+  ticks(5);
+  const st = game.state;
+  assert(game.mission.ai.startTech === 1, 'startTech не 1');
+  const KEYS = ['infAtk', 'vehAtk', 'infArm', 'vehArm'];
+  for (const key of KEYS) {
+    assert(st.tech.enemy[key] === 1, `tech врага ${key} не 1: ` + st.tech.enemy[key]);
+    assert((st.tech.player[key] || 0) === 0, `tech игрока ${key} тронут`);
+  }
+  // 1-й уровень закрыт: лаборатория врага качает сразу 2-й.
+  st.minerals.enemy = 99999;
+  const e = st.map.bases.enemy.cc;
+  let spot = null;
+  for (let dy = -10; dy <= 10 && !spot; dy++) {
+    for (let dx = -10; dx <= 10; dx++) {
+      if (B.canPlace(st.map, e.x + dx, e.y + dy, 3, 3)) { spot = [e.x + dx, e.y + dy]; break; }
+    }
+  }
+  assert(spot, 'лаборатории негде встать');
+  const lab = B.placeBuildingCmd(st, 'enemy', 'lab', spot[0], spot[1], []);
+  lab.done = true; lab.hp = lab.maxHp;
+  const rc = B.startResearch(st, lab, 'infAtk');
+  assert(rc === 'ok', 'исследование 2-го уровня не стартует: ' + rc);
+  assert(lab.res.lvl === 2, 'уровень не 2: ' + lab.res.lvl);
+  B.cancelResearch(st, lab);
+  // Иконки 4 закрытых уровней — на лабе (разница со сброшенным tech).
+  const imgs = (stArg) => {
+    const rec = recCtx();
+    B.drawBuilding(rec.ctx, lab, false, 0, 0, stArg);
+    return rec.calls.filter((c) => c[0] === 'drawImage').length;
+  };
+  const n1 = imgs(st);
+  for (const key of KEYS) st.tech.enemy[key] = 0;
+  const n0 = imgs(st);
+  assert(n1 - n0 === 4, `иконок закрытых tech не 4: ${n1}-${n0}`);
+  for (const key of KEYS) st.tech.enemy[key] = 1;
+  // Не-лаборатория молчит и со st: бункер врага без tech-слотов.
+  let spotB = null;
+  for (let ty = 2; ty < st.map.h - 4 && !spotB; ty++) {
+    for (let tx = 2; tx < st.map.w - 4; tx++) {
+      if (B.canPlace(st.map, tx, ty, 2, 2)) { spotB = [tx, ty]; break; }
+    }
+  }
+  assert(spotB, 'бункеру негде встать');
+  const bun = B.placeBuildingCmd(st, 'enemy', 'bunker', spotB[0], spotB[1], []);
+  bun.done = true; bun.hp = bun.maxHp;
+  const recB = recCtx();
+  B.drawBuilding(recB.ctx, bun, false, 0, 0, st);
+  const recB0 = recCtx();
+  B.drawBuilding(recB0.ctx, bun, false, 0, 0, null);
+  const cB = recB.calls.filter((c) => c[0] === 'drawImage').length;
+  const cB0 = recB0.calls.filter((c) => c[0] === 'drawImage').length;
+  assert(cB === cB0, `бункер врага шумит: ${cB} vs ${cB0}`);
+  pass('W20 rep14-C3: tech 1 закрыт, качается 2-й, 4 иконки на лабе, бункер молчит');
+} catch (e) { fail('W20 rep14-startTech', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
