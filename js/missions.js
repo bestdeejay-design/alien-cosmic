@@ -1,8 +1,8 @@
 // ============================================================
 // missions.js — кампания «Звёздный рубеж»: сюжета корпорации
 // «Гелиос», кристаллорождённых кхарид и отступников «Красного
-// флага». 15 миссий / 3 акта: обучение, обороны, штурмы,
-// стелс-рейд без базы. Прогресс хранится в localStorage.
+// флага». 15 миссий / 3 акта + бонусные «Главы Хроники» (№16–19,
+// открываются после финала). Прогресс хранится в localStorage.
 // ============================================================
 
 const PROGRESS_KEY = 'terranrts.progress';
@@ -21,6 +21,42 @@ export function saveProgress(missionIndex) {
   try {
     if (missionIndex > loadProgress()) localStorage.setItem(PROGRESS_KEY, String(missionIndex));
   } catch (e) { /* приватный режим — прогресс не сохраняем */ }
+}
+
+// П8: сброс прогресса (кнопка в меню) — кодекс закрывается сам:
+// записи читают только loadProgress().
+export function resetProgress() {
+  try { localStorage.removeItem(PROGRESS_KEY); } catch (e) { /* нечего сбрасывать */ }
+}
+
+// П8 (С1): честные «Новинки». Юнит/здание открывается миссией, чья
+// intro его анонсирует (сверено с GAME_GUIDE; гайд местами stale —
+// турели №0 и завод №1 из разборов отменены интро №1/№2 и киккоффом).
+// -1 = открыто всегда. Семантика меню: доступно в миссии с индексом
+// M, если M >= UNLOCK_AT (при переигровке ранних — по-прежнему честно);
+// в скирмише открыто всё. medic: 8 — №8 анонсирует нанитов в отряде,
+// а «Новинка у кхарид» №10 честна пофракционно (у роя — впервые).
+export const UNLOCK_AT = {
+  worker: -1, depot: -1, cc: -1,
+  marine: 0, barracks: 0,
+  turret: 1, wall: 1, bunker: 1,
+  factory: 2, buggy: 2, tank: 2,
+  flamer: 6, arty: 7, medic: 8, lab: 11,
+};
+
+// Индекс миссии в MISSIONS (-1 = скирмиш/чужая). Разблокировка идёт
+// по порядку массива, а не по id: бонусные главы продолжают шкалу.
+export function missionIndex(m) {
+  return m ? MISSIONS.findIndex((x) => x.id === m.id) : -1;
+}
+
+// Фильтр меню стройки/производства: глобальный UNLOCK_AT + per-mission
+// запрет (banBuild №18). Уже построенное/очереди не трогает — только меню.
+export function isUnlocked(mission, type) {
+  const idx = missionIndex(mission);
+  if (idx < 0) return true; // скирмиш — всё открыто
+  if ((mission.banBuild || []).includes(type)) return false;
+  return (UNLOCK_AT[type] === undefined ? -1 : UNLOCK_AT[type]) <= idx;
 }
 
 // Подпись цели для меню/брифингов/тостов. Легаси-миссии хранят objective
@@ -48,6 +84,11 @@ export function objectiveLabel(m) {
 // startTech в профиле ИИ — стартовые уровни улучшений врага (С3, финал).
 // noBase + squad — стелс-миссия: базы нет, стартуем готовым отрядом.
 // intro — строка «новинка миссии» для карточки и брифинга.
+// enemyFaction — фракция врага (по умолчанию противоположная игроку;
+// зеркальные бои №17–№19 задают явно). enemyExtra — достроенные здания
+// врага у его базы [{ type, dx, dy }] (склады №17). banBuild — типы,
+// скрытые из меню стройки этой миссии (казарма/завод №18).
+// bonus — «Главы Хроники»: видны после победы в №14.
 // ------------------------------------------------------------
 export const MISSIONS = [
   // ==================== АКТ I «РУБЕЖ» ====================
@@ -455,6 +496,136 @@ export const MISSIONS = [
       minWaveInterval: 35, secondBarracksAt: 90, maxTurrets: 8,
       factory: true, maxBuggies: 5, maxTanks: 6, medics: 6, flamers: 9, arty: 4,
       research: true, repair: true, startTech: 1,
+    },
+    defense: null,
+  },
+  // ==================== ГЛАВЫ ХРОНИКИ (бонус после №14) ====================
+  {
+    id: 16,
+    faction: 'human',
+    act: 'Главы Хроники',
+    bonus: true,
+    name: 'Ржавый караван',
+    place: 'Актан-4, карьер «Рудник-7» — забои «Дельты»',
+    brief: [
+      'Карьер «Рудник-7» удержан — теперь выжми из него всё. Штаб считает: каждый кристалл — место в шаттле, каждый шаттл — спасённый посёлок.',
+      'Рой уже идёт: гнёзда поднялись по всему региону, первые стаи будут здесь раньше, чем инженеры допьют кофе. Армии у тебя почти нет — только то, что успеешь построить.',
+      'Держи забои турелями, режь стаи скифами с флангов и грузи эрг: 2500 — и караван уйдёт прежде, чем карьер захлебнётся. Сносить гнёзда не нужно: победа считается добычей, а не сносом.',
+    ],
+    intro: 'Караван эрга: добудь 2500 — волны с первых минут. Турели держат, скифы режут.',
+    epilogue: 'Караван ушёл. Шаттлы загружены — теперь держать перевал.',
+    objective: { kind: 'stockpile', amount: 2500 },
+    map: {
+      seed: 20260117, biome: 'mars', w: 84, h: 84, rocks: 12, rich: 1.1, base: { x: 40, y: 72 },
+      lakes: [[24, 30, 4, 3], [60, 30, 4, 3]],
+      neutral: [[20, 52], [64, 52], [42, 42]],
+    },
+    ai: {
+      workerTarget: 12, maxMarines: 24, firstWave: 2, waveGrowth: 1, waveMax: 12,
+      minWaveInterval: 40, secondBarracksAt: 150, maxTurrets: 2,
+      factory: true, maxBuggies: 4, maxTanks: 0, medics: 0, flamers: 4, arty: 0,
+      research: false, repair: false,
+    },
+    defense: null,
+  },
+  {
+    id: 17,
+    faction: 'alien',
+    act: 'Главы Хроники',
+    bonus: true,
+    name: 'Тихая грань',
+    place: 'Брок-Тхаал, окраина гнезда «Сумрак» — мёртвые грани',
+    brief: [
+      'Пока люди жгли инкубаторы снаружи (№8), верные грани жгли предательство изнутри.',
+      'Гнездо «Сумрак» продало спящих сородичей за станки и топливо. Твой выводок — те, кто отказался: без базы, без песни улья, только когти и пыльца.',
+      'Сожги три склада «Сумрака» — и не потеряй ни одного цветня: лечить больше некому. Потеря цветня — гибель выводка.',
+    ],
+    intro: 'Рейд без базы: сожги 3 склада. Потеря цветня = провал.',
+    epilogue: 'Склады горят. Сумрак запомнит: грани не продаются.',
+    objective: {
+      kind: 'key', type: 'depot', name: 'Склады «Сумрака»',
+      guardType: 'medic', guardLose: 'Выводок пал — цветень погиб, лечить некому.',
+    },
+    noBase: true,
+    squad: [['marine', 6], ['medic', 2]],
+    enemyFaction: 'alien', // рой против роя — зеркальные юниты
+    enemyExtra: [
+      { type: 'depot', dx: -3, dy: 0 }, { type: 'depot', dx: 4, dy: 0 }, { type: 'depot', dx: 0, dy: 6 },
+    ],
+    map: {
+      seed: 20260118, biome: 'nest', w: 52, h: 52, rocks: 9, rich: 1.0, base: { x: 36, y: 36 },
+      lakes: [[16, 34, 3, 2]],
+      neutral: [[26, 26]],
+    },
+    ai: {
+      workerTarget: 6, maxMarines: 12, firstWave: 3, waveGrowth: 1, waveMax: 8,
+      minWaveInterval: 55, secondBarracksAt: 240, maxTurrets: 3,
+      factory: false, maxBuggies: 0, maxTanks: 0, medics: 2, flamers: 2, arty: 0,
+      research: false, repair: false, depots: false, // складов ровно 3 — ИИ не достраивает
+    },
+    defense: null,
+  },
+  {
+    id: 18,
+    faction: 'human',
+    act: 'Главы Хроники',
+    bonus: true,
+    name: 'Долгая ночь',
+    place: 'Селенит-Б, плато «Вала» — якорь лифта',
+    brief: [
+      '«Вал», что строили в пламени №9, теперь прикрывает коридор для роя.',
+      'Мятежники идут сбросить «Вал» в разлом: удержи якорь до рассвета. Стройся только на плато — внизу, в тумане, уже их разъезды. Казарм и заводов не будет: подкреплений нет.',
+      'На рассвете сядут шаттлы: погрузи восьмерых. То, что не погрузилось, — остаётся.',
+    ],
+    intro: 'Держи «Вал» до рассвета, потом погрузи 8 бойцов. Без казарм и завода.',
+    epilogue: 'Коридор открыт. Рой прошёл — теперь Око бури.',
+    objective: {
+      kind: 'evac', x: 34, y: 14, r: 3, need: 8, hold: 3,
+      text: 'Удержите «Вал» до рассвета, затем погрузите 8 бойцов в зону шаттлов',
+    },
+    phaseToast: 'Рассвело — шаттлы сели! Погрузите 8 бойцов в круг огней!',
+    enemyFaction: 'human', // свои против своих — мятежники
+    banBuild: ['barracks', 'factory'], // подкреплений нет
+    buildZone: [{ x: 24, y: 2, w: 24, h: 18 }], // только плато «Вала»
+    map: {
+      seed: 20260119, biome: 'moon', w: 72, h: 72, rocks: 10, rich: 1.15, base: { x: 32, y: 8 },
+      lakes: [[20, 40, 4, 3], [52, 40, 4, 3]],
+      neutral: [[16, 56], [56, 56]],
+    },
+    ai: {
+      workerTarget: 0, maxMarines: 60, firstWave: 0, waveGrowth: 0, waveMax: 0,
+      minWaveInterval: 0, secondBarracksAt: 0, maxTurrets: 0,
+      factory: false, maxBuggies: 0, maxTanks: 0, repair: false, flamers: 2, arty: 1,
+    },
+    defense: { prep: 150, every: 60, start: 4, grow: 1, max: 14, total: 480, nests: 2 },
+  },
+  {
+    id: 19,
+    faction: 'alien',
+    act: 'Главы Хроники',
+    bonus: true,
+    name: 'Глушитель молчит',
+    place: 'Актан-4, пески за «Кремнём» — старые выработки',
+    brief: [
+      'Недобитки «Красного флага» ушли в пески за «Кремнём» — и собрали там малый «Глушитель». Не тот, что пал в «Последней песне»: слабее, но полям хватит и слабого.',
+      'Гарнизон у них жидкий — твоя стая сметёт его. Часы — вот настоящий враг: через десять минут устройство запоёт, и песня полей оборвётся.',
+      'Веди выводок через пески и снеси «Глушитель» раньше, чем он проснётся. Закрой нить мятежа — навсегда.',
+    ],
+    intro: 'Штурм против часов: снеси «Глушитель» за 10:00. Время вышло = поражение.',
+    epilogue: 'Война кончилась. Но в песках ещё тикает.',
+    objective: { kind: 'key', type: 'cc', name: '«Глушитель»' },
+    loseDeadline: { at: 600, label: 'Глушитель запел', hard: true }, // первый жёсткий дедлайн
+    enemyFaction: 'human', // верный выводок добивает мятежников
+    map: {
+      seed: 20260120, biome: 'mars', w: 76, h: 76, rocks: 10, rich: 1.2, base: { x: 60, y: 40 },
+      lakes: [[30, 24, 3.5, 2.5], [30, 52, 3.5, 2.5]],
+      neutral: [[38, 38]],
+    },
+    ai: {
+      workerTarget: 8, maxMarines: 12, firstWave: 3, waveGrowth: 1, waveMax: 8,
+      minWaveInterval: 60, secondBarracksAt: 300, maxTurrets: 4,
+      factory: false, maxBuggies: 0, maxTanks: 0, medics: 0, flamers: 0, arty: 0,
+      research: false, repair: false,
     },
     defense: null,
   },

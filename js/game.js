@@ -16,7 +16,7 @@ import { Sound } from './audio.js';
 import * as U from './units.js';
 import * as B from './buildings.js';
 import { AIController } from './ai.js';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel } from './missions.js';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked } from './missions.js';
 import * as ui from './ui.js';
 import { attachInput, updateCamera } from './input.js';
 import { tr } from './lore.js';
@@ -112,7 +112,7 @@ export class Game {
       repathsThisTick: 0,                  // бюджет пересчётов пути на тик
       factions: {
         player: m.faction,
-        enemy: m.faction === 'alien' ? 'human' : 'alien',
+        enemy: m.enemyFaction || (m.faction === 'alien' ? 'human' : 'alien'), // П8: зеркальные бои задают явно
       },
       minerals: { player: START_MINERALS, enemy: START_MINERALS },
       supply: { player: { used: 0, cap: 0 }, enemy: { used: 0, cap: 0 } },
@@ -135,6 +135,7 @@ export class Game {
       deadlineFired: false,
       buildZone: m.buildZone || null,       // [{ x,y,w,h }] в тайлах — стройка игрока
       evacuated: 0,                         // погружено в зону эвакуации
+      guardLost: false, // П8: потерян ключевой юнит (цветень №17)
       keyTotal: 0,                          // ключевых целей встречено (защита от мгновенной победы)
       phase2: false,                        // П5: фаза 2 двухфазной миссии началась (тост показан)
       shakeT: 0, shakeMag: 0,       // тряска экрана от взрывов
@@ -193,12 +194,24 @@ export class Game {
         st.bcount.enemy++;
         placed++;
       }
-      if (m.faction === 'human') {
-        // Фракция игрока — люди: у противника кхарид ставим жвала.
+      if (st.factions.enemy === 'alien') {
+        // П8: жвала — по фракции врага (было: по фракции игрока; поведение то же).
         this.placeEnemyTurrets(st, e, 2);
       }
     }
 
+    // П8: достроенные здания врага у его базы (склады №17).
+    if (m.enemyExtra) {
+      const e = st.map.bases.enemy.cc;
+      for (const ex of m.enemyExtra) {
+        const cfg = BUILDINGS[ex.type];
+        const tx = e.x + ex.dx, ty = e.y + ex.dy;
+        if (!B.canPlace(st.map, tx, ty, cfg.w, cfg.h)) continue;
+        const xb = new B.Building(st, 'enemy', ex.type, tx, ty, true);
+        st.map.markBuilding(xb);
+        st.bcount.enemy++;
+      }
+    }
     st.ai = new AIController({ ...m.ai, defense: m.defense });
     calcSupply(st);
     st.fog.recompute(st);
@@ -375,6 +388,7 @@ export class Game {
       if (b.done && b.cfg.produces) {
         const list = Array.isArray(b.cfg.produces) ? b.cfg.produces : [b.cfg.produces];
         list.forEach((type, i) => {
+          if (!isUnlocked(this.mission, type)) return; // П8/С1: неоткрытое не показываем (хоткей стабилен)
           const ut = UNITS[type];
           cmds.push({
             code: PRODUCE_KEYS[i], icon: b.faction === 'alien' ? 'a_' + type : type,
@@ -425,6 +439,7 @@ export class Game {
           cmds.push({ code: 'KeyB', icon: 'build', label: 'Строить', on: () => { st.buildMenu = true; } });
         } else {
           for (const [code, type] of BUILD_ORDER) {
+            if (!isUnlocked(this.mission, type)) continue; // П8/С1 + banBuild
             const cfg = BUILDINGS[type];
             cmds.push({
               code, icon: fac === 'alien' ? 'a_' + type : type,
@@ -858,6 +873,7 @@ export class Game {
     if (dl && !st.deadlineFired && st.time >= dl.at) {
       st.deadlineFired = true;
       if (dl.hard) {
+        ui.toast(dl.label, 'error'); // П8: жёсткий дедлайн — тост + поражение
         this.lose(dl.label);
       } else {
         st.ai.raidWave(st, st.ai.p.waveMax);
@@ -965,6 +981,8 @@ export class Game {
     // Снос всей базы врага остаётся запасным путём победы и в новых типах:
     // уничтоживший угрозу игрок не должен упереться в софтлок.
     if (st.noBase) {
+      // П8: №17 — потеря ключевого юнита раньше запасного пути (жёстче №13).
+      if (w && w.guardType && st.guardLost) { this.lose(w.guardLose || 'Отряд погиб — миссия провалена'); return; }
       const alive = st.units.some((u) => u.side === 'player' && !u.dead);
       // П5-фикс: запасной путь подавлен, пока висит evac-цель (фаза 2 №13):
       // «победа только после отхода», даже если «Око» — последнее здание.
@@ -995,7 +1013,7 @@ export class Game {
     st.gameOver = 'win';
     st.stats.time = st.time;
     this.sound.win();
-    if (this.mission.id >= 0) saveProgress(this.mission.id + 1);
+    if (this.mission.id >= 0) saveProgress(missionIndex(this.mission) + 1); // П8: шкала — порядок массива
     ui.showEnd(true, st.stats, this.endOpts(true, reason));
   }
 
@@ -1012,10 +1030,11 @@ export class Game {
     const m = this.mission;
     const opts = { faction: m.faction };
     if (reason) opts.reason = reason;
-    if (win && m.id >= 0 && m.id < MISSIONS.length - 1) {
-      opts.next = MISSIONS[m.id + 1];
+    const ni = missionIndex(m) + 1; // П8: следующая — по порядку массива (id бонусных идут с разрывом)
+    if (win && m.id >= 0 && ni > 0 && ni < MISSIONS.length) {
+      opts.next = MISSIONS[ni];
     }
-    if (win && m.id === MISSIONS.length - 1) opts.campaignDone = true;
+    if (win && m.id === 14) opts.campaignDone = true; // П8: кампанию закрывает №14, не хвост массива
     if (win && m.epilogue) opts.epilogue = m.epilogue;
     return opts;
   }

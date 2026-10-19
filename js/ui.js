@@ -8,8 +8,8 @@ import {
   TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, SUPPLY_MAX, COLORS,
   fname, fdesc,
 } from './config.js';
-import { MISSIONS, loadProgress, objectiveLabel } from './missions.js';
-import { CODEX, tr } from './lore.js';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel } from './missions.js';
+import { CODEX, tr, codexEntryHTML } from './lore.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -454,6 +454,13 @@ export function initUI(game) {
   // Стартовая кнопка на фоне меню (старое поведение): запускаем первую миссию.
   els.startBtn.textContent = 'Быстрый старт — миссия ' + (loadProgress() + 1);
   els.startBtn.addEventListener('click', () => game.startMission(MISSIONS[loadProgress()]));
+  // П8: сброс прогресса — кодекс и главы закрываются сами (читают прогресс).
+  $('btn-reset').addEventListener('click', () => {
+    if (!confirm('Сбросить прогресс кампании? Кодекс закроется, главы Хроники скроются.')) return;
+    resetProgress();
+    els.startBtn.textContent = 'Быстрый старт — миссия ' + (loadProgress() + 1);
+    game.sound.click();
+  });
   els.againBtn.addEventListener('click', () => {
     els.endOverlay.classList.add('hidden');
     if (pendingNext) { showBrief(game, pendingNext); pendingNext = null; }
@@ -500,7 +507,10 @@ export function showMissions(game) {
   const unlocked = loadProgress();
   els.missionList.innerHTML = '';
   let lastAct = null;
-  MISSIONS.forEach((m) => {
+  // П8: бонусные главы видны только после финала (победа №14 → прогресс 15).
+  // Разблокировка — по порядку массива (id бонусных идут с разрывом).
+  MISSIONS.forEach((m, idx) => {
+    if (m.bonus && unlocked <= 14) return;
     // Заголовок акта перед первой миссией акта.
     if (m.act !== lastAct) {
       lastAct = m.act;
@@ -510,18 +520,18 @@ export function showMissions(game) {
       els.missionList.appendChild(head);
     }
     const card = document.createElement('button');
-    card.className = 'mission-card' + (m.id > unlocked ? ' locked' : '');
+    card.className = 'mission-card' + (idx > unlocked ? ' locked' : '');
     const fac = FACTIONS[m.faction];
     card.innerHTML =
       `<div class="mc-top"><span class="badge ${fac.cls}">${fac.title}</span>` +
-      `<span class="mc-num">Миссия ${m.id + 1}</span>` +
-      (m.id > unlocked ? '<span class="mc-lock">■ закрыто</span>' : '') + '</div>' +
+      `<span class="mc-num">${m.bonus ? 'Глава ' + (idx - 14) : 'Миссия ' + (m.id + 1)}</span>` +
+      (idx > unlocked ? '<span class="mc-lock">■ закрыто</span>' : '') + '</div>' +
       `<div class="mc-name">${m.name}</div>` +
       `<div class="mc-place">${m.place}</div>` +
       `<div class="mc-obj">${objectiveLabel(m)}</div>` +
       (m.intro ? `<div class="mc-intro">${m.intro}</div>` : '') +
       (m.defense ? '<div class="mc-def">◆ режим обороны: волны врага</div>' : '');
-    if (m.id <= unlocked) {
+    if (idx <= unlocked) {
       card.addEventListener('click', () => {
         els.missionOverlay.classList.add('hidden');
         showBrief(game, m);
@@ -550,9 +560,9 @@ export function showBrief(game, m) {
 // Кодекс: вкладки из CODEX (lore.js), тело — абзацы вкладки.
 export function showCodex() {
   els.codexTabs.innerHTML = '';
+  const progress = loadProgress(); // П8: кодекс читает только прогресс кампании
   const render = (entry) => {
-    els.codexBody.innerHTML = `<h2>${entry.title}</h2>` +
-      entry.body.map((p) => `<p>${p}</p>`).join('');
+    els.codexBody.innerHTML = codexEntryHTML(entry, progress);
     for (const b of els.codexTabs.children) {
       b.classList.toggle('active', b.dataset.id === entry.id);
     }
