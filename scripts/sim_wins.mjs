@@ -79,7 +79,7 @@ try {
   pass('W2 legacy: снос всей базы = прежняя победа winKill');
 } catch (e) { fail('W2 legacy', e); }
 
-// ---------- W3: накопление ----------
+// ---------- W3: добыча ----------
 try {
   game.startMission(testMission({ objective: { kind: 'stockpile', amount: 500 } }));
   ticks(600); // 20 игровых секунд реальной добычи
@@ -87,7 +87,7 @@ try {
   assert(st.stats.mined > 0, 'добыча не идёт, счётчик мёртв');
   assert(!st.gameOver, 'преждевременная победа');
   const honest = Math.floor(st.stats.mined);
-  assert(/Накоплено/.test(game.objectiveText()), 'нет прогресса в цели: ' + game.objectiveText());
+  assert(/Собрано/.test(game.objectiveText()), 'нет прогресса в цели: ' + game.objectiveText());
   st.stats.mined = 499;
   ticks(2);
   assert(!st.gameOver, 'победа до порога');
@@ -214,7 +214,7 @@ try {
   game.startMission(missionsMod.MISSIONS[3]);
   ticks(5);
   assert(!game.state.gameOver, 'преждевременный финал');
-  assert(/Накоплено 0\/2500/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
+  assert(/Собрано 0\/2500/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
   game.state.stats.mined = 2499;
   ticks(2);
   assert(!game.state.gameOver, 'победа до порога');

@@ -31,7 +31,7 @@ export function objectiveLabel(m) {
   if (typeof o === 'string' || !o) return o || '';
   if (o.text) return o.text;
   if (o.kind === 'key') return 'Уничтожьте: ' + (o.name || 'ключевая цель');
-  if (o.kind === 'stockpile') return 'Накопите ' + o.amount + ' минералов';
+  if (o.kind === 'stockpile') return 'Соберите ' + o.amount + ' эрга';
   if (o.kind === 'evac') return 'Эвакуируйте ' + o.need + ' бойцов в зону';
   return 'Выполните задачу';
 }

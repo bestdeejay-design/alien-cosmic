@@ -51,6 +51,10 @@ export function attachInput(game) {
     const w = screenToWorld(e);
     st.mouseWorld = w;
     if (st.placing) updatePlacing(st, w);
+    if (st.wallDrag) {
+      st.wallDrag.x1 = Math.max(0, Math.min(MAP_W - 1, Math.floor(w.x / TILE)));
+      st.wallDrag.y1 = Math.max(0, Math.min(MAP_H - 1, Math.floor(w.y / TILE)));
+    }
     if (game.box) { game.box.x1 = w.x; game.box.y1 = w.y; }
   });
 
@@ -66,10 +70,20 @@ export function attachInput(game) {
         game.hooks.issueAttackMove(w.x, w.y);
         return;
       }
-      if (st.placing) { game.hooks.tryPlace(st.placing.tx, st.placing.ty); return; }
+      if (st.placing) {
+        const cfg = BUILDINGS[st.placing.type];
+        // П3 (B.7.4): 1×1 тянется линией — старт драга, коммит на mouseup.
+        if (cfg.w === 1 && cfg.h === 1) {
+          st.wallDrag = { x0: st.placing.tx, y0: st.placing.ty, x1: st.placing.tx, y1: st.placing.ty };
+          return;
+        }
+        game.hooks.tryPlace(st.placing.tx, st.placing.ty);
+        return;
+      }
       game.box = { x0: w.x, y0: w.y, x1: w.x, y1: w.y };
     } else if (e.button === 2) {
       if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; return; }
+      if (st.wallDrag) { st.wallDrag = null; return; }
       if (st.placing) { st.placing = null; return; }
       game.hooks.issueRMB(w.x, w.y);
     } else if (e.button === 1) {
@@ -91,7 +105,18 @@ export function attachInput(game) {
       return;
     }
     const st = game.state;
-    if (e.button !== 0 || !st || !game.box) return;
+    if (!st) return;
+    // П3: отпуск драга линии — одиночный клик ставит один тайл.
+    if (e.button === 0 && st.wallDrag) {
+      const d = st.wallDrag;
+      st.wallDrag = null;
+      // Фикс блокера П3: коммит идёт от снимка — поле уже обнулено.
+      if (d.x0 === d.x1 && d.y0 === d.y1) game.hooks.tryPlace(d.x0, d.y0);
+      else game.commitWallLine(d);
+      game.sound.click();
+      return;
+    }
+    if (e.button !== 0 || !game.box) return;
     const box = game.box;
     game.box = null;
     const w = screenToWorld(e);
@@ -115,7 +140,18 @@ export function attachInput(game) {
   window.addEventListener('keydown', (e) => {
     const st = game.state;
     if (!st) return;
-    if (e.code.startsWith('Arrow')) { held.add(e.code); e.preventDefault(); return; }
+    // П3 (B.7.5): в режиме стройки стрелки двигают ПРИЗРАК по тайлам.
+    if (e.code.startsWith('Arrow')) {
+      if (st.placing) {
+        e.preventDefault();
+        st.wallDrag = null;
+        stepPlacing(st,
+          e.code === 'ArrowLeft' ? -1 : e.code === 'ArrowRight' ? 1 : 0,
+          e.code === 'ArrowUp' ? -1 : e.code === 'ArrowDown' ? 1 : 0);
+        return;
+      }
+      held.add(e.code); e.preventDefault(); return;
+    }
     if (!game.started || st.gameOver || e.repeat) return;
 
     // Cmd+… целиком отдаём браузеру/macOS (вкладки, перезагрузка и т.п.).
@@ -141,7 +177,8 @@ export function attachInput(game) {
     }
     if (e.code === 'Escape') {
       if (game.paused) { game.togglePause(); return; }
-      if (st.placing) st.placing = null;
+      if (st.wallDrag) st.wallDrag = null;
+      else if (st.placing) st.placing = null;
       else if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; }
       else if (st.buildMenu) st.buildMenu = false;
       else st.selection = [];
@@ -184,6 +221,12 @@ export function attachInput(game) {
       game.hooks.cycleCombat();
       return;
     }
+    // П3 (B.7.5): Enter/Space в placing — поставить под призраком.
+    if ((e.code === 'Enter' || e.code === 'Space') && st.placing && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      game.hooks.tryPlace(st.placing.tx, st.placing.ty);
+      return;
+    }
     if (e.code === 'Space' && !e.ctrlKey && !e.altKey) {
       // Пробел — мгновенный прыжок камерой к своей базе.
       e.preventDefault();
@@ -197,6 +240,13 @@ export function attachInput(game) {
 
   window.addEventListener('keyup', (e) => held.delete(e.code));
   window.addEventListener('blur', () => held.clear());
+}
+
+// П3: шаг призрака по сетке с клампом (клавиатурная постановка).
+export function stepPlacing(st, dx, dy) {
+  const cfg = BUILDINGS[st.placing.type];
+  st.placing.tx = Math.max(0, Math.min(MAP_W - cfg.w, st.placing.tx + dx));
+  st.placing.ty = Math.max(0, Math.min(MAP_H - cfg.h, st.placing.ty + dy));
 }
 
 // Призрак здания следует за курсором, привязан к сетке тайлов.

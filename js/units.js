@@ -7,8 +7,7 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME,
-  REPAIR_HP_PER_MINERAL, COLORS, fname,
-} from './config.js';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { tr } from './lore.js';
 
@@ -246,9 +245,9 @@ export function orderGather(st, u, crystal, excludeFail) {
 // Стройка и ремонт помнят прежний кристалл: завершив работу, рабочий
 // сам вернётся к добыче, а не замрёт у стены (авто-режим «вернуться
 // к делу» — как у инженеров Рубежа 64).
-export function orderBuild(st, u, building) {
+export function orderBuild(st, u, building, auto = false) {
   if (u.garrison) return;
-  u.order = { kind: 'build', target: building, resume: currentCrystal(u) };
+  u.order = { kind: 'build', target: building, resume: currentCrystal(u), auto };
   u.path = null; u.pathI = 0;
   resetStuck(u);
 }
@@ -410,6 +409,13 @@ function updateOrderByKind(st, u, dt, grid) {
           u.scanT = 0.5;
           const veh = findRepairTarget(st, u);
           if (veh) { orderRepair(st, u, veh, true); break; }
+          // П3 (B.7.6): некому строить — рабочий в простое подхватывает
+          // ближайший голодный недострой сам. Приказ игрока свят:
+          // подхват только из idle, после ремонта техники.
+          if (u.cfg.canBuild) {
+            const site = findUnfinishedSite(st, u);
+            if (site) { orderBuild(st, u, site, true); break; }
+          }
         }
       }
       // Бойцы без приказа сами ищут цель в радиусе обзора.
@@ -558,6 +564,30 @@ function findHealTarget(st, u) {
 
 // Ближайшая повреждённая техника своих (зеркало findHealTarget; здания —
 // только по приказу игрока: их повреждение видно, и траты решает он).
+// П3: сколько живых своих рабочих уже идёт/строит на этой стройке.
+// Считаем приказы (не прибытие): заказ мгновенно резервирует место.
+export function buildersOf(st, b) {
+  let n = 0;
+  for (const w of st.units) {
+    if (w.dead || w.garrison || w.side !== b.side) continue;
+    const o = w.order;
+    if (o && o.kind === 'build' && o.target === b) n++;
+  }
+  return n;
+}
+
+// П3: ближайший недострой своих с местом (< BUILDERS_PER_SITE) в обзоре.
+export function findUnfinishedSite(st, u) {
+  let best = null, bd = Infinity;
+  for (const b of st.buildings) {
+    if (b.dead || b.done || b.side !== u.side) continue;
+    if (buildersOf(st, b) >= BUILDERS_PER_SITE) continue;
+    const d = Math.hypot(b.x - u.x, b.y - u.y);
+    if (d < bd && d <= u.cfg.sightTiles * TILE) { bd = d; best = b; }
+  }
+  return best;
+}
+
 function findRepairTarget(st, u) {
   let best = null, bd = Infinity;
   for (const a of st.units) {

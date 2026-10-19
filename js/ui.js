@@ -664,7 +664,8 @@ function rebuildPanel(game, sel) {
 
   // Режим размещения здания.
   if (st.placing) {
-    els.selInfo.innerHTML = '<div class="hint">Клик по карте — поставить здание.<br>ПКМ / ESC — отмена.</div>';
+    els.selInfo.innerHTML = '<div class="hint">Клик — поставить (серия: режим не сбрасывается).<br>' +
+    'Стена/турель: тяни ЛКМ — линия с ценой.<br>Стрелки — призрак, Enter — поставить.<br>ПКМ / ESC — отмена.</div>';
     return;
   }
   if (!sel.length) {

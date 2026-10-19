@@ -7,7 +7,7 @@
 // ============================================================
 import {
   TILE, MAP_W, MAP_H, WORLD_W, WORLD_H, LOGIC_DT, MAX_FRAME_DT,
-  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, UPGRADES,
+  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES,
   fname, fdesc,
 } from './config.js';
 import { GameMap, CC_WORKER_OFFS } from './map.js';
@@ -117,7 +117,7 @@ export class Game {
       minerals: { player: START_MINERALS, enemy: START_MINERALS },
       supply: { player: { used: 0, cap: 0 }, enemy: { used: 0, cap: 0 } },
       units: [], buildings: [], projectiles: [], effects: [], floats: [], pings: [],
-      selection: [], groups: {}, placing: null, buildMenu: false,
+      selection: [], groups: {}, placing: null, wallDrag: null, buildMenu: false,
       camera: { x: 0, y: 0, z: 1 }, mouseWorld: { x: 0, y: 0 },
       gameOver: null,
       stats: { kills: 0, losses: 0, mined: 0, time: 0 },
@@ -667,14 +667,107 @@ export class Game {
     if (st.minerals.player < cfg.cost) {
       ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); return;
     }
-    const builders = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
-      e.cfg.canBuild && !e.dead);
-    if (!builders.length) {
+    const pool = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
+      e.cfg.canBuild && !e.dead)
+      .sort((p, q) => Math.hypot(p.x - tx * TILE, p.y - ty * TILE) -
+        Math.hypot(q.x - tx * TILE, q.y - ty * TILE));
+    if (!pool.length) {
       ui.toast('Выделите ' + fname(UNITS.worker, fac).toLowerCase(), 'error');
       this.sound.error(); return;
     }
-    const b = B.placeBuildingCmd(st, 'player', pl.type, tx, ty, builders);
-    if (b) { st.placing = null; this.sound.build(); }
+    const b = B.placeBuildingCmd(st, 'player', pl.type, tx, ty, pool);
+    if (!b) return; // деньги/место могли уйти между кликом и коммитом
+    // П3 (B.7.2): остатки пула — по голодным стройкам жадно: каждый —
+    // на самую голодную (меньше строителей, ничья — ближайшая). «Все на
+    // одну» запрещено: placeBuildingCmd уже забрал 5 ближайших на новую.
+    const leftovers = pool.slice(BUILDERS_PER_SITE);
+    for (const w of leftovers) {
+      let best = null, bn = Infinity, bd = Infinity;
+      for (const s2 of st.buildings) {
+        if (s2.dead || s2.done || s2.side !== 'player' || s2 === b) continue;
+        const n = U.buildersOf(st, s2);
+        if (n >= BUILDERS_PER_SITE) continue;
+        const d = Math.hypot(w.x - s2.x, w.y - s2.y);
+        if (n < bn || (n === bn && d < bd)) { bn = n; bd = d; best = s2; }
+      }
+      if (best) U.orderBuild(st, w, best);
+    }
+    // П3 (B.7.3): серии — режим НЕ сбрасываем, выход ПКМ/Esc.
+    this.sound.build();
+  }
+
+  // П3 (B.7.4): тайлы линии 1×1 от снимка драга (DDA, без дублей, кламп
+  // по бюджету). Чистая от st.wallDrag: mouseup обнуляет поле ДО коммита —
+  // коммит идёт от снимка, живого поля может уже не быть (фикс блокера).
+  wallLineTiles(d = this.state.wallDrag) {
+    const st = this.state;
+    if (!d || !st.placing) return { tiles: [], skipped: 0 };
+    const cfg = BUILDINGS[st.placing.type];
+    const dx = d.x1 - d.x0, dy = d.y1 - d.y0;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    const tiles = [];
+    const seen = new Set();
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.round(d.x0 + (steps ? dx * i / steps : 0));
+      const y = Math.round(d.y0 + (steps ? dy * i / steps : 0));
+      if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) continue;
+      const k = y * MAP_W + x;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      tiles.push({ x, y });
+    }
+    // Кламп длины по бюджету: больше, чем можем оплатить, не тянем.
+    const afford = Math.floor(st.minerals.player / cfg.cost);
+    return { tiles: tiles.slice(0, Math.max(0, afford)), skipped: Math.max(0, tiles.length - afford) };
+  }
+
+  // П3 (B.7.4): коммит линии — стройки по тайлам, бригада вдоль по очереди.
+  commitWallLine(d = this.state.wallDrag) {
+    const st = this.state;
+    const pl = st.placing;
+    if (!pl) return 0;
+    const cfg = BUILDINGS[pl.type];
+    const fac = st.factions.player;
+    if (cfg.requires) {
+      const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
+        b.type === cfg.requires && b.done);
+      if (!ok) {
+        ui.toast(tr(fac, 'requires') + fname(BUILDINGS[cfg.requires], fac), 'error');
+        this.sound.error(); return 0;
+      }
+    }
+    const { tiles } = this.wallLineTiles(d);
+    const pool = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
+      e.cfg.canBuild && !e.dead);
+    if (!pool.length) {
+      ui.toast('Выделите ' + fname(UNITS.worker, fac).toLowerCase(), 'error');
+      this.sound.error(); return 0;
+    }
+    const sites = [];
+    for (const t of tiles) {
+      if (st.minerals.player < cfg.cost) break;
+      if (!st.fog.tileExplored(t.x, t.y)) continue;
+      const b = B.placeBuildingCmd(st, 'player', pl.type, t.x, t.y, []);
+      if (b) sites.push(b);
+    }
+    if (!sites.length) {
+      ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return 0;
+    }
+    // Бригада идёт вдоль линии по очереди: рабочие пула (от ближнего
+    // к началу линии) разбирают стройки round-robin, кап 5 — как везде.
+    const first = sites[0];
+    const crew = pool.filter((w) => !w.dead)
+      .sort((p, q) => Math.hypot(p.x - first.x, p.y - first.y) -
+        Math.hypot(q.x - first.x, q.y - first.y));
+    let i = 0;
+    for (const w of crew) {
+      const site = sites[i % sites.length];
+      i++;
+      if (U.buildersOf(st, site) >= BUILDERS_PER_SITE) continue;
+      U.orderBuild(st, w, site);
+    }
+    this.sound.build();
+    return sites.length;
   }
 
   // ----------------------------------------------------------
@@ -775,7 +868,7 @@ export class Game {
       ? ' · ' + st.loseDeadline.label + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
       : '';
     if (w && w.kind === 'stockpile') {
-      return 'Накоплено ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
+      return 'Собрано ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
         tr(st.factions.player, 'minedWord') + dl;
     }
     if (w && w.kind === 'evac') {
@@ -1037,8 +1130,11 @@ export class Game {
       ctx.setLineDash([]);
     }
 
-    // Призрак размещаемого здания.
-    if (st.placing && st.placing.tx > -900) this.drawGhost(ctx, st, cam);
+    // Призрак размещаемого здания (во время драга линии — сама линия).
+    if (st.placing && st.placing.tx > -900) {
+      if (st.wallDrag) this.drawWallLine(ctx, st, cam);
+      else this.drawGhost(ctx, st, cam);
+    }
 
     // П2: флажки точек сбора выделенных своих зданий.
     for (const b of st.buildings) {
@@ -1235,6 +1331,35 @@ export class Game {
       done: true, progress: 1, hp: 1, maxHp: 1, flashT: 0, selected: false,
     }, false, cam.x, cam.y);
     ctx.globalAlpha = 1;
+  }
+
+  // П3 (B.7.4): превью линии 1×1 — тайлы (зелёный/красный) + стоимость.
+  drawWallLine(ctx, st, cam) {
+    const cfg = BUILDINGS[st.placing.type];
+    const { tiles, skipped } = this.wallLineTiles();
+    for (const t of tiles) {
+      const ok = st.fog.tileExplored(t.x, t.y) && B.canPlace(st.map, t.x, t.y, 1, 1) &&
+        B.zoneAllows(st, t.x, t.y, 1, 1);
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = ok ? 'rgba(118,227,215,0.6)' : 'rgba(255,96,87,0.55)';
+      ctx.fillRect(t.x * TILE - cam.x, t.y * TILE - cam.y, TILE, TILE);
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(t.x * TILE - cam.x + 1, t.y * TILE - cam.y + 1, TILE - 2, TILE - 2);
+    }
+    ctx.globalAlpha = 1;
+    if (tiles.length) {
+      const last = tiles[tiles.length - 1];
+      const total = tiles.length * cfg.cost;
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = skipped > 0 ? '#f3c579' : '#e8f4f1';
+      ctx.fillText(tiles.length + ' × ' + cfg.cost + ' = ' + total +
+        (skipped > 0 ? ' (не хватает на ' + skipped + ')' : ''),
+        (last.x + 0.5) * TILE - cam.x, last.y * TILE - cam.y - 8);
+      ctx.textAlign = 'left';
+    }
   }
 
   drawEffects(ctx, st, inView, camX, camY) {
