@@ -696,10 +696,13 @@ export class Game {
     this.sound.build();
   }
 
-  // П3 (B.7.4): тайлы линии 1×1 от драга (DDA, без дублей, кламп по бюджету).
-  wallLineTiles() {
+  // П3 (B.7.4): тайлы линии 1×1 от снимка драга (DDA, без дублей, кламп
+  // по бюджету). Чистая от st.wallDrag: mouseup обнуляет поле ДО коммита —
+  // коммит идёт от снимка, живого поля может уже не быть (фикс блокера).
+  wallLineTiles(d = this.state.wallDrag) {
     const st = this.state;
-    const d = st.wallDrag, cfg = BUILDINGS[st.placing.type];
+    if (!d || !st.placing) return { tiles: [], skipped: 0 };
+    const cfg = BUILDINGS[st.placing.type];
     const dx = d.x1 - d.x0, dy = d.y1 - d.y0;
     const steps = Math.max(Math.abs(dx), Math.abs(dy));
     const tiles = [];
@@ -719,7 +722,7 @@ export class Game {
   }
 
   // П3 (B.7.4): коммит линии — стройки по тайлам, бригада вдоль по очереди.
-  commitWallLine() {
+  commitWallLine(d = this.state.wallDrag) {
     const st = this.state;
     const pl = st.placing;
     if (!pl) return 0;
@@ -733,7 +736,7 @@ export class Game {
         this.sound.error(); return 0;
       }
     }
-    const { tiles } = this.wallLineTiles();
+    const { tiles } = this.wallLineTiles(d);
     const pool = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
       e.cfg.canBuild && !e.dead);
     if (!pool.length) {

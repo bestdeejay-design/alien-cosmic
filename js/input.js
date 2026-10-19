@@ -110,8 +110,9 @@ export function attachInput(game) {
     if (e.button === 0 && st.wallDrag) {
       const d = st.wallDrag;
       st.wallDrag = null;
+      // Фикс блокера П3: коммит идёт от снимка — поле уже обнулено.
       if (d.x0 === d.x1 && d.y0 === d.y1) game.hooks.tryPlace(d.x0, d.y0);
-      else game.commitWallLine();
+      else game.commitWallLine(d);
       game.sound.click();
       return;
     }

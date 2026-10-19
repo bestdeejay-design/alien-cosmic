@@ -175,5 +175,24 @@ try {
   pass('B7 keyboard: призрак шагает с клампом, Enter ставит под ним');
 } catch (e) { fail('B7 keyboard', e); }
 
+// ---------- B8: коммит от снимка при уже обнулённом драге (блокер П3) ----------
+try {
+  const st = start();
+  crew(st, 8);
+  st.placing = { type: 'wall', tx: 20, ty: 36 };
+  st.wallDrag = { x0: 20, y0: 36, x1: 27, y1: 36 };
+  const snap = st.wallDrag;
+  st.wallDrag = null; // ровно как mouseup: сначала null, потом коммит
+  const pure = game.wallLineTiles(snap);
+  assert(pure.tiles.length === 8, 'снимок дал не 8: ' + pure.tiles.length);
+  const n = game.commitWallLine(snap);
+  assert(n === 8, 'коммит от снимка дал не 8: ' + n);
+  assert(st.minerals.player === 99999 - 8 * 30, 'минералы не по коммиту');
+  // Вызовы без аргументов при мёртвом драге — не падают, дают пусто.
+  const empty = game.wallLineTiles();
+  assert(empty.tiles.length === 0, 'пустого нет');
+  pass('B8 snapshot: null-then-commit ставит 8, списано 240, no-arg безопасен');
+} catch (e) { fail('B8 snapshot', e); }
+
 console.log(failures.length ? `\nИТОГ SIM_BUILD: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_BUILD: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
