@@ -17,7 +17,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + 
 await page.addInitScript(() => localStorage.setItem('terranrts.progress', '14'));
 await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1200);
-await page.locator('#btn-campaign').click();
+await page.locator('#btn-season1').click();
 await page.waitForTimeout(400);
 await page.locator('.mission-card').first().click();
 await page.waitForTimeout(400);

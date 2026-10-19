@@ -7,7 +7,7 @@
 // ============================================================
 import {
   TILE, LOGIC_DT, MAX_FRAME_DT,
-  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar,
+  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   fname, fdesc,
 } from './config.js';
 import { GameMap, CC_WORKER_OFFS } from './map.js';
@@ -265,18 +265,21 @@ export class Game {
     ui.toast(objectiveLabel(m));
   }
 
-  startSkirmish(faction) {
+  // G.5: dims {w,h} из пресетов скирмиша; без них — классика 64×64.
+  // Биом оставляем сид-рандомом (на баланс не влияет, кликов меньше).
+  startSkirmish(faction, dims) {
     const seed = (Math.random() * 0xFFFFFFFF) >>> 0;
     const biome = ['mars', 'nest', 'moon'][seed % 3];
+    const w = (dims && dims.w) || 64, h = (dims && dims.h) || 64;
     this.startMission({
       ...SKIRMISH,
       id: -1,
       faction,
       map: {
-        seed, biome,
+        seed, biome, w, h,
         lakes: 'default', rocks: 6 + (seed % 5),
         rich: 1 + ((seed >> 4) % 3) * 0.15,
-        base: { x: 8, y: 48 },
+        base: { x: 8, y: h - 16 }, // G.5: база масштабируется с высотой (64→48 как раньше)
       },
     });
   }
@@ -325,18 +328,35 @@ export class Game {
   viewW() { return this.cssW / ((this.state && this.state.camera.z) || 1); }
   viewH() { return this.cssH / ((this.state && this.state.camera.z) || 1); }
 
+  // G.2: видимая область (канвас минус инсеты панели/топбара) в px мира.
+  visW() { return (this.cssW - (this.uiLeft || 0) - (this.uiRight || 0)) / ((this.state && this.state.camera.z) || 1); }
+  visH() { return (this.cssH - (this.uiTop || 0) - (this.uiBottom || 0)) / ((this.state && this.state.camera.z) || 1); }
+
   clampCam() {
     const st = this.state;
     if (!st) return;
-    st.camera.x = Math.max(0, Math.min(st.map.pxW - this.viewW(), st.camera.x));
-    st.camera.y = Math.max(0, Math.min(st.map.pxH - this.viewH(), st.camera.y));
+    // G.2: кламп по видимой области — за панелью прячется пустота, а не карта.
+    // Без инсетов сводится к старому [0, pxW-viewW]. Карта меньше видимой —
+    // центрируем (середина [lo, hi] при hi < lo — ровно центр карты).
+    const z = st.camera.z || 1;
+    const vw = this.cssW / z, vh = this.cssH / z;
+    const L = (this.uiLeft || 0) / z, R = (this.uiRight || 0) / z;
+    const T = (this.uiTop || 0) / z, B = (this.uiBottom || 0) / z;
+    const loX = -L, hiX = st.map.pxW - vw + R;
+    const loY = -T, hiY = st.map.pxH - vh + B;
+    st.camera.x = hiX < loX ? (loX + hiX) / 2 : Math.max(loX, Math.min(hiX, st.camera.x));
+    st.camera.y = hiY < loY ? (loY + hiY) / 2 : Math.max(loY, Math.min(hiY, st.camera.y));
   }
 
   centerCamera(wx, wy) {
     const st = this.state;
     if (!st) return;
-    st.camera.x = wx - this.viewW() / 2;
-    st.camera.y = wy - this.viewH() / 2;
+    // G.2: цель — в центр ВИДИМОЙ области (все прыжки: Пробел/H/Tab/отряды).
+    const z = st.camera.z || 1;
+    const L = this.uiLeft || 0, R = this.uiRight || 0;
+    const T = this.uiTop || 0, B = this.uiBottom || 0;
+    st.camera.x = wx - (L + (this.cssW - L - R) / 2) / z;
+    st.camera.y = wy - (T + (this.cssH - T - B) / 2) / z;
     this.clampCam();
   }
 
@@ -352,12 +372,12 @@ export class Game {
     return { x: (wx - cam.x) * z, y: (wy - cam.y) * z };
   }
 
-  // П2: зум 0.6–1.6 с якорем: мировая точка под (ax, ay) стоит на месте.
+  // П2/G.5: зум ZOOM_MIN–ZOOM_MAX с якорем: мировая точка под (ax, ay) стоит на месте.
   // Якорь — в CSS-пикселях экрана; без якоря — центр экрана.
   setZoom(nz, ax = this.cssW / 2, ay = this.cssH / 2) {
     const st = this.state;
     if (!st) return;
-    nz = Math.max(0.6, Math.min(1.6, nz));
+    nz = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, nz)); // G.5
     const cam = st.camera;
     const z0 = cam.z || 1;
     cam.x = cam.x + ax / z0 - ax / nz;
@@ -683,7 +703,7 @@ export class Game {
       }
       const repairers = units.filter((u) => u.cfg.canRepair);
       if (own.done && own.hp < own.maxHp && repairers.length) {
-        for (const u of repairers) U.orderRepair(st, u, own);
+        U.orderRepairSpread(st, repairers, wx, wy, own); // G.4
         for (const u of units) if (!u.cfg.canRepair) U.orderMove(st, u, wx, wy);
         this.sound.ack();
         return;
@@ -694,7 +714,7 @@ export class Game {
     if (ownU && ownU.cfg.vehicle && ownU.hp < ownU.maxHp) {
       const repairers = units.filter((u) => u.cfg.canRepair);
       if (repairers.length) {
-        for (const u of repairers) U.orderRepair(st, u, ownU);
+        U.orderRepairSpread(st, repairers, wx, wy, ownU); // G.4
         for (const u of units) if (!u.cfg.canRepair) U.orderMove(st, u, ownU.x, ownU.y);
         this.sound.ack();
         return;

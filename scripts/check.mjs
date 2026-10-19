@@ -90,5 +90,12 @@ console.log('\n[5] Бренд:');
 if (!html.includes('ALIEN COSMIC')) err('index.html: нет заголовка ALIEN COSMIC');
 else ok('заголовок ALIEN COSMIC на месте');
 
+// 6) Версия (V): бейдж на экране входа
+console.log('\n[6] Версия:');
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'G'")) err('config.js: нет GAME_VERSION === \'G\'');
+else ok("GAME_VERSION === 'G'");
+if (!html.includes('id="ver-badge"') || !html.includes('версия G · 20.10.2026')) err('index.html: нет бейджа версии');
+else ok('бейдж «версия G · 20.10.2026» на месте');
+
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
 process.exit(failed);

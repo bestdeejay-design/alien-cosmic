@@ -110,9 +110,9 @@ try {
   start();
   const st = game.state;
   game.setZoom(99);
-  assert(st.camera.z === 1.6, 'верхний кламп не 1.6: ' + st.camera.z);
+  assert(st.camera.z === 2.0, 'верхний кламп не 2.0 (G.5): ' + st.camera.z);
   game.setZoom(0);
-  assert(st.camera.z === 0.6, 'нижний кламп не 0.6: ' + st.camera.z);
+  assert(st.camera.z === 0.5, 'нижний кламп не 0.5 (G.5): ' + st.camera.z);
   game.setZoom(1);
   st.camera.x = 100; st.camera.y = 200;
   const ax = 400, ay = 300;

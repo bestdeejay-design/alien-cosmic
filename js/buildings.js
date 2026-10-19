@@ -341,7 +341,15 @@ function spawnTrainedUnit(st, b, type, x, y) {
   if (b.rally) {
     const rc = b.rally.crystal;
     if (type === 'worker' && rc && !rc.dead && rc.amount > 0) orderGather(st, u, rc);
-    else orderMove(st, u, b.rally.x, b.rally.y);
+    else {
+      // G.1: точка сбора раздаёт строй, а не стек: детерминированное кольцо
+      // по золотому углу (счётчик здания) — новички встают рядом с точкой.
+      const seq = (b.rallySeq = (b.rallySeq || 0) + 1);
+      const a = seq * 2.39996, r = 20 + 9 * Math.sqrt(seq);
+      const gx = b.rally.x + Math.cos(a) * r, gy = b.rally.y + Math.sin(a) * r;
+      const bad = st.map.blockedAt((gx / TILE) | 0, (gy / TILE) | 0);
+      orderMove(st, u, bad ? b.rally.x : gx, bad ? b.rally.y : gy);
+    }
   }
   addEffect(st, { kind: 'spark', x, y, ang: -Math.PI / 2, t: 0, life: 0.25 });
   if (b.side === 'player') st.game.sound.ready();

@@ -16,7 +16,7 @@ await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.evaluate(() => localStorage.setItem('terranrts.progress', '15'));
 await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(900);
-await page.locator('#btn-campaign').click();
+await page.locator('#btn-season1').click();
 await page.waitForTimeout(400);
 await page.evaluate(() => {
   const nums = [...document.querySelectorAll('.mc-num')];
@@ -34,7 +34,7 @@ await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.evaluate(() => localStorage.setItem('terranrts.progress', '18'));
 await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(900);
-await page.locator('#btn-campaign').click();
+await page.locator('#btn-season1').click();
 await page.waitForTimeout(350);
 await page.locator('.mission-card').nth(17).click();
 await page.waitForTimeout(350);

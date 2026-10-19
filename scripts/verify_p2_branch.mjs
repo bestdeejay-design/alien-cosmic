@@ -17,7 +17,7 @@ await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Старт миссии №0 (поток проверен в П1)
-await page.locator('#btn-campaign').click();
+await page.locator('#btn-season1').click();
 await page.waitForTimeout(500);
 await page.locator('.mission-card').first().click();
 await page.waitForTimeout(500);

@@ -42,12 +42,12 @@ export const CC_WORKER_OFFS = [[0, 4], [2, 4], [4, 4], [1, 5]];
 export class GameMap {
   // preset: { seed, lakes:'default'|[[cx,cy,rx,ry]...], rocks,
   //           rich, base:{x,y} — cc игрока; враг зеркалится,
-  //           w,h — размер в тайлах (48–96, дефолт 64) }
+  //           w,h — размер в тайлах (32–96, дефолт 64) }
   // C/П7: размер — свойство экземпляра; миссия без w/h играет как раньше.
   constructor(seed, preset = {}) {
     this.seed = seed >>> 0;
     this.preset = preset;
-    const clampSize = (v, d) => Math.max(48, Math.min(96, Math.round(v) || d));
+    const clampSize = (v, d) => Math.max(32, Math.min(96, Math.round(v) || d)); // G.5: 3:2 от 48/64 дают 32/42
     this.w = clampSize(preset.w, MAP_W);
     this.h = clampSize(preset.h, MAP_H);
     this.pxW = this.w * TILE; this.pxH = this.h * TILE; // размер мира, px
@@ -65,8 +65,22 @@ export class GameMap {
   // Центральная симметрия: враг зеркален игроку.
   mirror(x, y) { return [this.w - 1 - x, this.h - 1 - y]; }
 
+  // G.5: футпринт КЦ 4×3 + центр базы (цель путей) + тайлы стартовых
+  // рабочих (обе базы) — кристаллам тут не место.
+  inStartFootprint(x, y) {
+    for (const side of ['player', 'enemy']) {
+      const cc = this.bases[side].cc;
+      if (x >= cc.x && x < cc.x + 4 && y >= cc.y && y < cc.y + 3) return true;
+      if (x === this.bases[side].center.x && y === this.bases[side].center.y) return true;
+      for (const [dx, dy] of CC_WORKER_OFFS) {
+        if (x === cc.x + dx && y === cc.y + dy) return true;
+      }
+    }
+    return false;
+  }
+
   computeBases() {
-    const p = this.preset.base || { x: 8, y: 48 };
+    const p = this.preset.base || { x: 8, y: this.h - 16 }; // G.5: дефолт в bounds и на малых картах (64→48 как раньше)
     const cc = { x: p.x, y: p.y };
     const zone = {
       x0: Math.max(1, cc.x - 3), y0: Math.max(1, cc.y - 3),
@@ -166,7 +180,13 @@ export class GameMap {
     const field = (cx, cy, offs, amount) => {
       // F.1: каждый штамп — одно месторождение (полнота по построению).
       const fid = (this._fieldSeq = (this._fieldSeq || 0) + 1);
-      for (const [dx, dy] of offs) this.addCrystal(cx + dx, cy + dy, Math.round((amount + Math.floor(R() * 300)) * rich), fid);
+      for (const [dx, dy] of offs) {
+        // G.5: на малых/узких картах масштабированные нейтралы могут сесть
+        // на футпринт КЦ — такие кристаллы пропускаем (на кампаниях гард
+        // не срабатывает никогда: пресеты разведены заранее, A11 зелёный).
+        if (this.inStartFootprint(cx + dx, cy + dy)) continue;
+        this.addCrystal(cx + dx, cy + dy, Math.round((amount + Math.floor(R() * 300)) * rich), fid);
+      }
     };
     // Основное поле — со стороны ближнего края карты от базы игрока.
     const pb = this.bases.player.cc;
