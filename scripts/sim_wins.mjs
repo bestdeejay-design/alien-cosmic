@@ -209,5 +209,56 @@ try {
   pass(`W8 medics: волна с медиками (${medics.length} при лимите 3)`);
 } catch (e) { fail('W8 medics', e); }
 
+// ---------- W9: №3 «Рудник-7» — реальная ЭКОНОМИКА ----------
+try {
+  game.startMission(missionsMod.MISSIONS[3]);
+  ticks(5);
+  assert(!game.state.gameOver, 'преждевременный финал');
+  assert(/Накоплено 0\/2500/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
+  game.state.stats.mined = 2499;
+  ticks(2);
+  assert(!game.state.gameOver, 'победа до порога');
+  game.state.stats.mined = 2500;
+  ticks(2);
+  assert(game.state.gameOver === 'win', 'нет победы на 2500');
+  assert(/Эрга достаточно/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Карьер наш/.test(el('end-epilogue').textContent), 'эпилога нет на экране победы');
+  game.startMission(missionsMod.MISSIONS[3]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  pass('W9 rep3: 2500 = победа + эпилог, снос базы = поражение');
+} catch (e) { fail('W9 rep3-economy', e); }
+
+// ---------- W10: №4 «Пепельная линия» — реальная ЭВАКУАЦИЯ ----------
+try {
+  game.startMission(missionsMod.MISSIONS[4]);
+  const st = game.state;
+  assert(!game.mission.defense, 'таймер обороны остался');
+  assert(/Эвакуировано 0\/8/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
+  paint(); // круг зоны + счётчик — без ошибок
+  // Восьмерых в зону шаттлов (52.5, 10.5): 4 своих рабочих + 4 рейнджера.
+  const crew = st.units.filter((u) => u.side === 'player' && !u.dead);
+  for (let i = crew.length; i < 8; i++) crew.push(U.spawnUnit(st, 'player', 'marine', 8.5 * 32, 9.5 * 32));
+  crew.forEach((u, i) => {
+    u.x = (52.5 + (i % 4) * 0.5) * 32; u.y = (10.5 + ((i / 4) | 0) * 0.5) * 32;
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false; // стоять в кругу, не разбредаться
+  });
+  ticks(120); // 4 секунды при hold 3
+  assert(st.evacuated === 8, 'погружено не 8: ' + st.evacuated);
+  assert(st.gameOver === 'win', 'нет победы эвакуацией');
+  assert(/Эвакуация завершена/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Последний транспорт/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[4]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W10 rep4: 8 погружены = победа + эпилог, снос = поражение без эпилога');
+} catch (e) { fail('W10 rep4-evac', e); }
+
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);

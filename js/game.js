@@ -818,6 +818,7 @@ export class Game {
       opts.next = MISSIONS[m.id + 1];
     }
     if (win && m.id === MISSIONS.length - 1) opts.campaignDone = true;
+    if (win && m.epilogue) opts.epilogue = m.epilogue;
     return opts;
   }
 

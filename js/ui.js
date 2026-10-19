@@ -388,6 +388,7 @@ export function initUI(game) {
     endTitle: $('end-title'),
     endReason: $('end-reason'),
     endStats: $('end-stats'),
+    endEpilogue: $('end-epilogue'),
     codexOverlay: $('codex-overlay'),
     codexTabs: $('codex-tabs'),
     codexBody: $('codex-body'),
@@ -581,6 +582,7 @@ export function showEnd(win, stats, opts = {}) {
   els.endTitle.textContent = win ? 'Победа!' : 'Поражение';
   els.endTitle.className = win ? 'win' : 'lose';
   els.endReason.textContent = opts.reason || '';
+  els.endEpilogue.textContent = win ? (opts.epilogue || '') : '';
   if (opts.campaignDone) els.endReason.textContent = 'Кампания пройдена — поля кхарид свободны!';
   els.endStats.innerHTML =
     `<div class="row"><span>Время боя</span><b>${fmtElapsed(stats.time)}</b></div>` +

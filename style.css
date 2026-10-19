@@ -457,6 +457,7 @@ html, body {
 .fc-list { font-size: 12px; color: #c3d8d1; line-height: 1.6; }
 
 .end-reason { color: var(--amber); font-size: 14px; margin: 2px 0 8px; min-height: 18px; }
+.end-epilogue { color: var(--ink-dim); font-size: 13px; font-style: italic; margin: 0 0 8px; max-width: 420px; }
 
 /* ---------- Кодекс «Легенда» ---------- */
 .codex-box { text-align: left; }
