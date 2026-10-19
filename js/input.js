@@ -50,6 +50,9 @@ export function attachInput(game) {
     }
     const w = screenToWorld(e);
     st.mouseWorld = w;
+    // F.1: тултип остатков кристалла (гейт: только канвас, не во время приказов).
+    if (e.target && e.target.id === 'game-canvas' && game.updateCrystalTip &&
+        !st.placing && !st.wallDrag && !st.box) game.updateCrystalTip(w.x, w.y);
     if (st.placing) updatePlacing(st, w);
     if (st.wallDrag) {
       st.wallDrag.x1 = Math.max(0, Math.min(st.map.w - 1, Math.floor(w.x / TILE)));

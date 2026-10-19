@@ -3,7 +3,7 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname } from './config.js';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js';
 import { nearestFreeTileAround } from './pathfinding.js';
 import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
 import { icon } from './ui.js'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
@@ -30,6 +30,8 @@ export class Building {
     this.maxHp = this.cfg.hp;
     this.queue = [];                     // [{type, t, total, hold}]
     this.res = null;                     // текущее исследование лаборатории {key, lvl, t, total}
+    this.level = 1;                      // F.2: грейд здания (1–3)
+    this.gradeUp = null;                 // F.2: идущий грейд {to, t, total}
     this.rally = null;                   // точка сбора (ПКМ по земле)
     this.garrison = [];                  // пехота внутри (бункер)
     this.cd = 0;                         // перезарядка (турель)
@@ -114,7 +116,7 @@ export function enqueueUnit(st, b, type) {
   if (!b || b.dead || !b.done) return 'wrong';
   const list = Array.isArray(b.cfg.produces) ? b.cfg.produces : [b.cfg.produces];
   if (!list.includes(type)) return 'wrong';
-  if (b.queue.length >= 5) return 'queue';
+  if (b.queue.length >= gradeQueue(b.type, b.level || 1)) return 'queue'; // F.2
   const cost = UNITS[type].cost;
   if (st.minerals[b.side] < cost) return 'money';
   st.minerals[b.side] -= cost;
@@ -151,6 +153,44 @@ export function cancelResearch(st, b) {
   b.res = null;
 }
 
+// F.2: запустить грейд здания. Коды: ok | money | busy | max | wrong.
+export function startGrade(st, b) {
+  if (!b || b.dead || !b.done) return 'wrong';
+  const to = (b.level || 1) + 1;
+  const g = glevel(b.type, to);
+  if (!g || to > 3) return b.level >= 3 ? 'max' : 'wrong';
+  if (b.gradeUp) return 'busy';
+  if (st.minerals[b.side] < g.cost) return 'money';
+  st.minerals[b.side] -= g.cost;
+  b.gradeUp = { to, t: g.time, total: g.time };
+  return 'ok';
+}
+
+// F.2: отменить грейд (возврат минералов).
+export function cancelGrade(st, b) {
+  if (!b.gradeUp) return;
+  const g = glevel(b.type, b.gradeUp.to);
+  if (g) st.minerals[b.side] += g.cost;
+  b.gradeUp = null;
+}
+
+// F.2: завершить грейд: уровень + применение статов.
+function completeGrade(st, b) {
+  const to = b.gradeUp.to;
+  b.level = to;
+  b.gradeUp = null;
+  const g = glevel(b.type, to);
+  if (g && g.hpMul) { // бункер: прочность растёт с добором HP
+    const nm = Math.round(b.cfg.hp * g.hpMul);
+    b.hp += nm - b.maxHp;
+    b.maxHp = nm;
+  }
+  if (b.side === 'player') {
+    st.game.ui.toast(tr(b.faction, 'gradeDone') + fname(b.cfg, b.faction) + ' · ' + GRADE_ROMAN[to]);
+    st.game.sound.ready();
+  }
+}
+
 // Тик зданий: производство, автострельба турелей, огонь гарнизона
 // бункера. Прогресс стройки ведут рабочие (updateBuild в units.js).
 export function updateBuildings(st, dt, grid) {
@@ -183,10 +223,16 @@ export function updateBuildings(st, dt, grid) {
       }
     }
 
+    // --- F.2: грейд тикает, здание при этом работает ---
+    if (b.gradeUp) {
+      b.gradeUp.t -= dt;
+      if (b.gradeUp.t <= 0) completeGrade(st, b);
+    }
+
     // --- Производство ---
     if (b.queue.length) {
       const q = b.queue[0];
-      q.t -= dt;
+      q.t -= dt * gradeRate(b.type, b.level || 1); // F.2: темп найма от грейда
       if (q.t <= 0) {
         // Юнит «готов», но ждёт свободного населения.
         if (st.supply[b.side].used + UNITS[q.type].supply > st.supply[b.side].cap) {
@@ -212,7 +258,7 @@ export function updateBuildings(st, dt, grid) {
       b.scanT -= dt;
       // Проверяем актуальность цели: жива и в радиусе.
       if (b.target && (b.target.dead ||
-          distToRectPx(b.target.x, b.target.y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE) > b.cfg.range + TILE)) {
+          distToRectPx(b.target.x, b.target.y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE) > gradeRange(b.type, b.level || 1, b.cfg.range) + TILE)) { // F.2
         b.target = null;
       }
       if (!b.target && b.scanT <= 0) {
@@ -530,6 +576,26 @@ function teethRing(ctx, x, y, ringR, toothL, ang, spread, n, color) {
 // С3/П7: лаборатория врага показывает ЗАКРЫТЫЕ уровни (st.tech) — финал
 // чувствуется с первой минуты. Идёт через drawStatusBadges, слоты те же.
 const ENEMY_TECH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm'];
+// F.2: шевроны грейда (II/III) + окантовка. Враг не грейдится, но рисуем
+// defensively — любой b.level >= 2 виден обеим сторонам.
+function drawGradeMarks(ctx, b, px, py, w) {
+  const lv = b.level || 1;
+  if (lv < 2 || b.done === false) return;
+  const col = lv >= 3 ? '#f3c579' : '#9fb6c3';
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 2.5, py + 2.5, w - 5, (b.h || 1) * TILE - 5);
+  ctx.fillStyle = col;
+  const n = lv >= 3 ? 3 : 2;
+  for (let i = 0; i < n; i++) {
+    const x = px + w / 2 + (i - (n - 1) / 2) * 10;
+    ctx.beginPath();
+    ctx.moveTo(x - 4, py - 4); ctx.lineTo(x, py - 9); ctx.lineTo(x + 4, py - 4);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.textAlign = 'left';
+}
+
 function drawStatusBadges(ctx, b, px, py, w, st = null) {
   let sy = py - 16;
   const slot = (iconType, frac, accent) => {
@@ -554,6 +620,10 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
   if (b.side === 'player' && b.res) {
     slot('u_' + b.res.key, b.res.total ? 1 - b.res.t / b.res.total : 0, '#f3c579');
   }
+  // F.2: идущий грейд — слот языком E.2-бейджей.
+  if (b.side === 'player' && b.gradeUp) {
+    slot('grade', b.gradeUp.total ? 1 - b.gradeUp.t / b.gradeUp.total : 0, '#ffd27f');
+  }
   // С3/П7: закрытые исследования врага — полные слоты (прогресс скрыт).
   if (st && b.side === 'enemy' && b.cfg && b.cfg.research && st.tech && st.tech[b.side]) {
     for (const key of ENEMY_TECH_ORDER) {
@@ -561,7 +631,7 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
     }
   }
   if (b.side === 'player' && b.cfg.garrisonCap && Array.isArray(b.garrison)) {
-    const t = b.garrison.length + '/' + b.cfg.garrisonCap;
+    const t = b.garrison.length + '/' + gradeGar(b.type, b.level || 1, b.cfg.garrisonCap); // F.2
     const bx = px + w - 38, by = py + 4;
     ctx.fillStyle = 'rgba(8,10,12,0.75)';
     ctx.fillRect(bx, by, 36, 16);
@@ -574,6 +644,7 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
     ctx.fillText(t, bx + 18, by + 12);
     ctx.textAlign = 'left';
   }
+  drawGradeMarks(ctx, b, px, py, w);
 }
 
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = null) {

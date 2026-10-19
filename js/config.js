@@ -160,6 +160,32 @@ export const UPGRADES = {
     adesc: 'Многослойный хитин: −3 урона по тяжёлым за уровень' },
 };
 
+// --- F.1: занятость кристаллов (прецедент BUILDERS_PER_SITE) ---
+export const WORKERS_PER_CRYSTAL = 2; // оптимум на кристалл; маржинальный 3-й — только когда свободных нет
+
+// --- F.2: грейды зданий Г1→Г2→Г3. GRADES[type][to] — цена/время/статы ЦЕЛЕВОГО уровня.
+export const GRADES = {
+  turret: [null, null, // F.2: индекс = целевой уровень (2, 3)
+    { cost: 60, time: 30, dmg: 10, range: 165 },
+    { cost: 100, time: 45, dmg: 12, range: 180 }],
+  barracks: [null, null, // F.2: индекс = целевой уровень (2, 3)
+    { cost: 90, time: 30, rate: 1.25, queue: 7 },
+    { cost: 150, time: 45, rate: 1.5, queue: 9 }],
+  factory: [null, null, // F.2: индекс = целевой уровень (2, 3)
+    { cost: 150, time: 30, rate: 1.25, queue: 7 },
+    { cost: 250, time: 45, rate: 1.5, queue: 9 }],
+  bunker: [null, null, // F.2: индекс = целевой уровень (2, 3)
+    { cost: 72, time: 30, gar: 6, hpMul: 1.25 },
+    { cost: 120, time: 45, gar: 8, hpMul: 1.5 }],
+};
+export const GRADE_ROMAN = ['', 'I', 'II', 'III'];
+export function glevel(type, level) { const g = GRADES[type]; return g ? g[level] || null : null; }
+export function gradeDmg(type, level, base) { const e = glevel(type, level); return e && e.dmg ? e.dmg : base; }
+export function gradeRange(type, level, base) { const e = glevel(type, level); return e && e.range ? e.range : base; }
+export function gradeRate(type, level) { const e = glevel(type, level); return e && e.rate ? e.rate : 1; }
+export function gradeQueue(type, level) { const e = glevel(type, level); return e && e.queue ? e.queue : 5; }
+export function gradeGar(type, level, base) { const e = glevel(type, level); return e && e.gar ? e.gar : base; }
+
 // --- ИИ противника (базовый профиль; миссии переопределяют) ---
 export const AI = {
   workerTarget: 12,      // до скольких рабочих добывать

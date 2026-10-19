@@ -105,13 +105,13 @@ export class GameMap {
         if (this.inBounds(x, y)) this.buildingGrid[this.idx(x, y)] = 0;
   }
 
-  addCrystal(tx, ty, amount) {
+  addCrystal(tx, ty, amount, fieldId = 0) {
     if (!this.inBounds(tx, ty) || this.mineralGrid[this.idx(tx, ty)]) return;
     this.terrain[this.idx(tx, ty)] = T_GROUND; // под кристаллом всегда земля
     this.mineralGrid[this.idx(tx, ty)] = 1;
     this.crystals.push({
       kind: 'mineral', tx, ty, x: (tx + 0.5) * TILE, y: (ty + 0.5) * TILE,
-      amount, max: amount, dead: false,
+      amount, max: amount, dead: false, fieldId, // F.1: месторождение-группа
     });
   }
 
@@ -164,7 +164,9 @@ export class GameMap {
     const mainOff = [[-2, -1], [-1, -1], [0, -1], [1, -1], [-2, 0], [1, 0], [-2, 1], [1, 1]];
     const neutralOff = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [0, 1]];
     const field = (cx, cy, offs, amount) => {
-      for (const [dx, dy] of offs) this.addCrystal(cx + dx, cy + dy, Math.round((amount + Math.floor(R() * 300)) * rich));
+      // F.1: каждый штамп — одно месторождение (полнота по построению).
+      const fid = (this._fieldSeq = (this._fieldSeq || 0) + 1);
+      for (const [dx, dy] of offs) this.addCrystal(cx + dx, cy + dy, Math.round((amount + Math.floor(R() * 300)) * rich), fid);
     };
     // Основное поле — со стороны ближнего края карты от базы игрока.
     const pb = this.bases.player.cc;
