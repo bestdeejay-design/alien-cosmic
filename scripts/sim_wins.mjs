@@ -13,6 +13,9 @@
 // W14 rep1: двухфазная оборона — таймер, затем эвакуация 6 (некого грузить = поражение).
 // W15 rep5: зона стройки священные поля, мортиры, оборонная победа, контратака текстом.
 // W16 rep13: диверсия noBase — «Око», затем отход 4 выживших.
+// W17 rep10: ЦЕЛЬ — снос штаба «Гелиоса» = победа + эпилог, снос базы = поражение.
+// W18 rep11: ОСАДА — штаб до дедлайна = победа + эпилог, ветераны = волна.
+// W19 rep14: ЦЕЛЬ-финал — снос крепления = победа + campaignDone + эпилог.
 //
 // Запуск: node scripts/sim_wins.mjs
 // ============================================================
@@ -543,6 +546,87 @@ try {
   assert(/Око закрылось/.test(el('end-epilogue').textContent), 'эпилога нет');
   pass('W16 rep13: «Око»→отход, 4 отошли = победа + эпилог, недобор/гибель/Око-последнее = честно');
 } catch (e) { fail('W16 rep13-raid', e); }
+
+
+// ---------- W17: №10 «Сердце улья» — ЦЕЛЬ ----------
+try {
+  game.startMission(missionsMod.MISSIONS[10]);
+  ticks(5);
+  const st = game.state;
+  assert(/Уничтожьте: Штаб «Гелиоса»/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint(); // ромб над штабом + точка минимапа — без ошибок
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса штаба');
+  assert(/Сердце чужаков вырвано/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Поля святы/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[10]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе гнезда');
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W17 rep10: штаб = победа + эпилог, снос гнезда = поражение');
+} catch (e) { fail('W17 rep10-goal', e); }
+
+// ---------- W18: №11 «Переворот» — ОСАДА ----------
+try {
+  game.startMission(missionsMod.MISSIONS[11]);
+  ticks(5);
+  const st = game.state;
+  assert(/Уничтожьте: Штаб «Кремня»/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(/Ветераны «Кремня»/.test(game.objectiveText()), 'нет таймера: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint(); // ромб над штабом + точка минимапа — без ошибок
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса штаба');
+  assert(/Ключевая цель уничтожена/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/«Кремень» молчит/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Мягкий дедлайн: ветераны пришли волной, игра идёт.
+  game.startMission(missionsMod.MISSIONS[11]);
+  game.state.time = 449;
+  const before = game.state.units.filter((u) => u.side === 'enemy').length;
+  ticks(60);
+  assert(game.state.deadlineFired, 'дедлайн не сработал');
+  assert(!game.state.gameOver, 'мягкий дедлайн завершил игру');
+  assert(game.state.units.filter((u) => u.side === 'enemy').length > before, 'волны нет');
+  // Поражение: снос своей базы.
+  game.startMission(missionsMod.MISSIONS[11]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W18 rep11: штаб = победа + эпилог, ветераны = волна, снос = поражение');
+} catch (e) { fail('W18 rep11-siege', e); }
+
+// ---------- W19: №14 «Звёздный рубеж» — ЦЕЛЬ-финал ----------
+try {
+  game.startMission(missionsMod.MISSIONS[14]);
+  ticks(5);
+  const st = game.state;
+  assert(/Уничтожьте: Крепление «Последняя песня»/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint(); // ромб над креплением + точка минимапа — без ошибок
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса крепления');
+  assert(/Кампания пройдена — поля кхарид свободны!/.test(endReason()), 'нет флага campaignDone: ' + endReason());
+  assert(/«Глушитель» мёртв/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[14]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  assert(/База потеряна/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W19 rep14: крепление = победа + campaignDone + эпилог, снос = поражение');
+} catch (e) { fail('W19 rep14-final', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
