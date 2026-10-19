@@ -34,10 +34,7 @@ export function attachInput(game) {
 
   const screenToWorld = (e) => {
     const r = cv.getBoundingClientRect();
-    return {
-      x: e.clientX - r.left + game.state.camera.x,
-      y: e.clientY - r.top + game.state.camera.y,
-    };
+    return game.screenToWorld(e.clientX - r.left, e.clientY - r.top);
   };
 
   window.addEventListener('mousemove', (e) => {
@@ -162,6 +159,20 @@ export function attachInput(game) {
       return;
     }
     if (e.code === 'KeyP' && !e.ctrlKey && !e.altKey) { game.togglePause(); return; }
+    // П2: зум + / − с якорем под курсором (колесо — панорама, не трогаем).
+    if ((e.code === 'Equal' || e.code === 'NumpadAdd' ||
+         e.code === 'Minus' || e.code === 'NumpadSubtract') && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      const zin = e.code === 'Equal' || e.code === 'NumpadAdd';
+      const r = cv.getBoundingClientRect();
+      const mx = game.mouse.x - r.left, my = game.mouse.y - r.top;
+      const over = mx >= 0 && my >= 0 && mx < game.cssW && my < game.cssH;
+      const z = st.camera.z || 1;
+      if (over) game.setZoom(z * (zin ? 1.15 : 1 / 1.15), mx, my);
+      else game.setZoom(z * (zin ? 1.15 : 1 / 1.15));
+      game.sound.click();
+      return;
+    }
     // Трекпад-набор: . — свободный рабочий, , — вся армия,
     // Tab — перебор бойцов, H — к последней тревоге. Tab не трогаем
     // на паузе, чтобы не ломать фокус кнопок оверлея.
@@ -195,7 +206,7 @@ function updatePlacing(st, w) {
   st.placing.ty = Math.max(0, Math.min(MAP_H - cfg.h, Math.round(w.y / TILE - cfg.h / 2)));
 }
 
-function clickSelect(game, st, w, shift) {
+export function clickSelect(game, st, w, shift) {
   let picked = unitAt(st, w.x, w.y, 'player');
   let inspect = false;
   if (!picked) {
@@ -234,7 +245,7 @@ function doubleSelect(game, st, w) {
     return;
   }
   const x0 = st.camera.x, y0 = st.camera.y;
-  const x1 = x0 + game.cssW, y1 = y0 + game.cssH;
+  const x1 = x0 + game.viewW(), y1 = y0 + game.viewH();
   const same = st.units.filter((o) => !o.dead && !o.garrison && o.side === 'player' &&
     o.type === u.type && o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1);
   st.selection = same.length ? same : [u];
@@ -242,7 +253,7 @@ function doubleSelect(game, st, w) {
   game.sound.click();
 }
 
-function boxSelect(game, st, box, shift) {
+export function boxSelect(game, st, box, shift) {
   const x0 = Math.min(box.x0, box.x1), x1 = Math.max(box.x0, box.x1);
   const y0 = Math.min(box.y0, box.y1), y1 = Math.max(box.y0, box.y1);
   const inR = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;

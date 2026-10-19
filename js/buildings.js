@@ -1134,6 +1134,21 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0) {
     ctx.fillRect(px + 1, py - 10, (w - 2) * frac, 4);
   }
 
+  // П2: контур выделения + полоска HP у выделенного (целого тоже —
+  // иначе клик по зданию не даёт обратной связи). Свои — бирюза Рубежа,
+  // чужие на осмотре — красный.
+  if (b.selected) {
+    ctx.strokeStyle = b.side === 'player' ? '#8ff5e2' : '#ff6e5f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px - 3, py - 3, w + 6, h + 6);
+    if (b.hp >= b.maxHp && b.done !== false) {
+      ctx.fillStyle = 'rgba(8,10,12,0.7)';
+      ctx.fillRect(px, py - 11, w, 6);
+      ctx.fillStyle = b.side === 'player' ? '#7BE495' : '#ff6e5f';
+      ctx.fillRect(px + 1, py - 10, w - 2, 4);
+    }
+  }
+
   // Красная вспышка попадания.
   if (b.flashT > 0 && !ghost) {
     ctx.globalAlpha = Math.min(1, b.flashT * 6) * 0.45;

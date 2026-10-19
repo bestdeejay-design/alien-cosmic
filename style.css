@@ -116,6 +116,7 @@ html, body {
   background: rgba(4, 17, 22, .27);
 }
 .hint { color: var(--muted); font-size: 13px; line-height: 1.55; }
+.portrait { float: left; margin: 0 8px 4px 0; border: 1px solid var(--line); border-radius: 6px; background: #0c1a1f; }
 .sel-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; color: var(--cyan-light); }
 .small { color: var(--muted); font-size: 12px; margin-top: 5px; line-height: 1.45; }
 

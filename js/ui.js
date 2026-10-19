@@ -352,6 +352,15 @@ function iconEl(type) {
   c.getContext('2d').drawImage(src, 0, 0);
   return c;
 }
+// П2: портрет здания в панели — та же иконка, крупнее.
+function portraitEl(type) {
+  const src = icon(type);
+  const c = document.createElement('canvas');
+  c.width = 52; c.height = 52;
+  c.className = 'portrait';
+  c.getContext('2d').drawImage(src, 0, 0, 52, 52);
+  return c;
+}
 
 let els = null;        // кэш DOM-элементов
 let dyn = null;        // динамические ссылки для апдейтов без перестройки
@@ -371,6 +380,7 @@ export function initUI(game) {
     sound: $('btn-sound'),
     pause: $('btn-pause'),
     restart: $('btn-restart'),
+    exit: $('btn-exit'),
     selInfo: $('sel-info'),
     cmdGrid: $('cmd-grid'),
     toasts: $('toasts'),
@@ -447,6 +457,7 @@ export function initUI(game) {
     else game.restart();
   });
   els.restart.addEventListener('click', () => game.restart());
+  els.exit.addEventListener('click', () => game.toMenu());
   els.pause.addEventListener('click', () => game.togglePause());
   els.sound.addEventListener('click', () => game.toggleSound());
 
@@ -549,6 +560,7 @@ export function showCodex() {
 }
 
 export function hideStart() { els.overlay.classList.add('hidden'); }
+export function showStart() { els.overlay.classList.remove('hidden'); }
 export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
 export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
 export function hideEnd() { els.endOverlay.classList.add('hidden'); }
@@ -667,6 +679,7 @@ function rebuildPanel(game, sel) {
     const b = first;
     const box = document.createElement('div');
     box.className = 'sel-box';
+    box.appendChild(portraitEl(b.faction === 'alien' ? 'a_' + b.type : b.type));
     const name = document.createElement('div');
     name.className = 'sel-name';
     name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : ' — строится');
@@ -983,7 +996,7 @@ export function drawMinimap(game) {
   // Рамка обзора камеры.
   g.strokeStyle = 'rgba(255,255,255,0.85)';
   g.lineWidth = 1;
-  g.strokeRect(st.camera.x * k, st.camera.y * k, game.cssW * k, game.cssH * k);
+  g.strokeRect(st.camera.x * k, st.camera.y * k, game.viewW() * k, game.viewH() * k);
   // M0: ключевая цель — янтарный ромб (если здание разведано).
   for (const b of st.buildings) {
     if (b.dead || !b.keyTarget || (b.side === 'enemy' && !b.spotted)) continue;

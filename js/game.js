@@ -118,7 +118,7 @@ export class Game {
       supply: { player: { used: 0, cap: 0 }, enemy: { used: 0, cap: 0 } },
       units: [], buildings: [], projectiles: [], effects: [], floats: [], pings: [],
       selection: [], groups: {}, placing: null, buildMenu: false,
-      camera: { x: 0, y: 0 }, mouseWorld: { x: 0, y: 0 },
+      camera: { x: 0, y: 0, z: 1 }, mouseWorld: { x: 0, y: 0 },
       gameOver: null,
       stats: { kills: 0, losses: 0, mined: 0, time: 0 },
       bcount: { player: 0, enemy: 0 },
@@ -290,19 +290,64 @@ export class Game {
     this.clampCam();
   }
 
+  // Видимый размер мира в пикселях при текущем зуме.
+  viewW() { return this.cssW / ((this.state && this.state.camera.z) || 1); }
+  viewH() { return this.cssH / ((this.state && this.state.camera.z) || 1); }
+
   clampCam() {
     const st = this.state;
     if (!st) return;
-    st.camera.x = Math.max(0, Math.min(WORLD_W - this.cssW, st.camera.x));
-    st.camera.y = Math.max(0, Math.min(WORLD_H - this.cssH, st.camera.y));
+    st.camera.x = Math.max(0, Math.min(WORLD_W - this.viewW(), st.camera.x));
+    st.camera.y = Math.max(0, Math.min(WORLD_H - this.viewH(), st.camera.y));
   }
 
   centerCamera(wx, wy) {
     const st = this.state;
     if (!st) return;
-    st.camera.x = wx - this.cssW / 2;
-    st.camera.y = wy - this.cssH / 2;
+    st.camera.x = wx - this.viewW() / 2;
+    st.camera.y = wy - this.viewH() / 2;
     this.clampCam();
+  }
+
+  // Экран (CSS-пиксели от левого верхнего угла канваса) ↔ мир.
+  screenToWorld(sx, sy) {
+    const cam = this.state.camera;
+    const z = cam.z || 1;
+    return { x: cam.x + sx / z, y: cam.y + sy / z };
+  }
+  worldToScreen(wx, wy) {
+    const cam = this.state.camera;
+    const z = cam.z || 1;
+    return { x: (wx - cam.x) * z, y: (wy - cam.y) * z };
+  }
+
+  // П2: зум 0.6–1.6 с якорем: мировая точка под (ax, ay) стоит на месте.
+  // Якорь — в CSS-пикселях экрана; без якоря — центр экрана.
+  setZoom(nz, ax = this.cssW / 2, ay = this.cssH / 2) {
+    const st = this.state;
+    if (!st) return;
+    nz = Math.max(0.6, Math.min(1.6, nz));
+    const cam = st.camera;
+    const z0 = cam.z || 1;
+    cam.x = cam.x + ax / z0 - ax / nz;
+    cam.y = cam.y + ay / z0 - ay / nz;
+    cam.z = nz;
+    this.clampCam();
+  }
+
+  // П2: выход в главное меню. Прогресс кампании не трогаем (сейвы целы):
+  // записывается он только победой. Состояние партии остаётся фоном меню.
+  toMenu() {
+    this.started = false;
+    this.paused = false;
+    this.box = null;
+    if (this.state) { this.state.placing = null; this.state.attackMoveMode = false; }
+    ui.setPausedUI(false);
+    ui.hideEnd();
+    ui.hideMissions();
+    ui.hideBrief();
+    ui.showStart();
+    this.sound.click();
   }
 
   // ----------------------------------------------------------
@@ -853,21 +898,25 @@ export class Game {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
+    // П2: зум. Весь мировой рендер уже считает (world - cam) сам —
+    // scale(z) даёт ровно (world-cam)*z без правок каждого вызова.
+    const z = cam.z || 1, vw = W / z, vh = H / z;
+    ctx.save();
     // Тряска экрана: затухающие случайные смещения от взрывов/артиллерии.
     if (st.shakeT > 0) {
       const k = st.shakeMag * (st.shakeT / 0.3);
-      ctx.save();
       ctx.translate((Math.random() - 0.5) * 2 * k, (Math.random() - 0.5) * 2 * k);
     }
+    ctx.scale(z, z);
 
     // Рельеф: один drawImage видимого куска кэша 2048×2048.
-    const sw = Math.min(W, WORLD_W - cam.x), sh = Math.min(H, WORLD_H - cam.y);
+    const sw = Math.min(vw, WORLD_W - cam.x), sh = Math.min(vh, WORLD_H - cam.y);
     if (sw > 0 && sh > 0) {
       ctx.drawImage(st.map.terrainCanvas, cam.x, cam.y, sw, sh, 0, 0, sw, sh);
     }
 
     const inView = (x, y, m) =>
-      x > cam.x - m && x < cam.x + W + m && y > cam.y - m && y < cam.y + H + m;
+      x > cam.x - m && x < cam.x + vw + m && y > cam.y - m && y < cam.y + vh + m;
 
     // M0: пунктирные границы зоны стройки (всегда видны, в режиме
     // размещения — ярче). Своя земля подсвечена бирюзой Рубежа.
@@ -878,7 +927,7 @@ export class Game {
       ctx.strokeStyle = st.placing ? 'rgba(143,255,226,0.8)' : 'rgba(143,255,226,0.35)';
       for (const z of st.buildZone) {
         const zx = z.x * TILE - cam.x, zy = z.y * TILE - cam.y;
-        if (zx > W || zy > H || zx + z.w * TILE < 0 || zy + z.h * TILE < 0) continue;
+        if (zx > vw || zy > vh || zx + z.w * TILE < 0 || zy + z.h * TILE < 0) continue;
         ctx.strokeRect(zx, zy, z.w * TILE, z.h * TILE);
       }
       ctx.restore();
@@ -972,7 +1021,7 @@ export class Game {
     // Туман войны поверх мира (мягкие края за счёт масштабирования 64→экран).
     if (st.fog.dirty) st.fog.paint();
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(st.fog.canvas, cam.x / TILE, cam.y / TILE, W / TILE, H / TILE, 0, 0, W, H);
+    ctx.drawImage(st.fog.canvas, cam.x / TILE, cam.y / TILE, vw / TILE, vh / TILE, 0, 0, vw, vh);
 
     // Рамка выделения — бирюза «Рубежа 64».
     if (this.box) {
@@ -991,6 +1040,13 @@ export class Game {
     // Призрак размещаемого здания.
     if (st.placing && st.placing.tx > -900) this.drawGhost(ctx, st, cam);
 
+    // П2: флажки точек сбора выделенных своих зданий.
+    for (const b of st.buildings) {
+      if (!b.dead && b.selected && b.side === 'player' && b.rally) {
+        this.drawRallyFlag(ctx, b, cam.x, cam.y);
+      }
+    }
+
     // Всплывающий текст (+8 минералов и т.п.).
     ctx.font = 'bold 13px system-ui, sans-serif';
     ctx.textAlign = 'center';
@@ -1002,7 +1058,51 @@ export class Game {
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
 
-    if (st.shakeT > 0) ctx.restore(); // конец зоны тряски
+    ctx.restore(); // конец зоны мира (тряска + зум)
+  }
+
+  // П2: флажок точки сбора. Линия от здания к точке + шест с вымпелом
+  // и кольцо на земле (у сбора на кристалле — янтарный ромб вместо кольца).
+  drawRallyFlag(ctx, b, camX, camY) {
+    const r = b.rally;
+    if (!r) return;
+    const bx = b.x - camX, by = b.y - camY;
+    const rx = r.x - camX, ry = r.y - camY;
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = '#8ff5e2';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (r.crystal) {
+      ctx.fillStyle = '#f3c579';
+      ctx.beginPath();
+      ctx.moveTo(rx, ry - 7); ctx.lineTo(rx + 5, ry);
+      ctx.lineTo(rx, ry + 7); ctx.lineTo(rx - 5, ry);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(rx, ry, 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Шест и вымпел флага.
+    ctx.strokeStyle = '#e8f4f1';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx, ry - 22);
+    ctx.stroke();
+    ctx.fillStyle = '#8ff5e2';
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - 22);
+    ctx.lineTo(rx + 13, ry - 18);
+    ctx.lineTo(rx, ry - 14);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
   }
 
   // Пунктиры маршрутов выделенных юнитов (см. вызов в render).
