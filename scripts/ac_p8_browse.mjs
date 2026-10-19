@@ -38,7 +38,7 @@ const gotoProgress = async (n) => {
   await page.waitForTimeout(900);
 };
 const startCard = async (idx) => {
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(350);
   await page.locator('.mission-card').nth(idx).click();
   await page.waitForTimeout(350);
@@ -148,7 +148,7 @@ try { // ---------- Ш4: Арсенал ----------
 
 try { // ---------- Ш5: Главы Хроники в меню ----------
   await gotoProgress(15);
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(400);
   const t = await listText(); // карточки в .mc-num отдаются в UPPERCASE (CSS text-transform)
   assert(/Главы Хроники/i.test(t), 'нет секции «Главы Хроники»');
@@ -165,7 +165,7 @@ try { // ---------- Ш6: сброс прогресса ----------
   await page.waitForTimeout(300);
   const startTxt = await page.locator('#btn-start').textContent();
   assert(/миссия 1\b/.test(startTxt), 'кнопка старта не сброшена: ' + startTxt);
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(350);
   const t = await listText();
   assert(!/ГЛАВА/i.test(t), 'главы видны после сброса');

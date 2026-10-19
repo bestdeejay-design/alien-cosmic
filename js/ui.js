@@ -419,19 +419,21 @@ export function initUI(game) {
     againBtn: $('btn-again'),
   };
 
-  // Главное меню.
-  $('btn-campaign').addEventListener('click', () => showMissions(game));
-  $('btn-skirmish').addEventListener('click', () => {
-    els.overlay.classList.add('hidden');
-    els.skirmishOverlay.classList.remove('hidden');
-  });
+  // Главное меню: сезоны. G.6: Сезон 1 → миссии, Сезон 2 — заглушка с тостом.
+  $('btn-season1').addEventListener('click', () => showMissions(game));
+  $('btn-season2').addEventListener('click', () => toast('Сезон 2 — сюжетные миссии. Скоро.'));
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
+  // G.6: быстрый бой живёт внутри сезона 1 (миссии ⇄ скирмиш).
+  $('btn-missions-skirmish').addEventListener('click', () => {
+    els.missionOverlay.classList.add('hidden');
+    els.skirmishOverlay.classList.remove('hidden');
+  });
   $('btn-skirmish-back').addEventListener('click', () => {
     els.skirmishOverlay.classList.add('hidden');
-    els.overlay.classList.remove('hidden');
+    els.missionOverlay.classList.remove('hidden');
   });
   // Кодекс «Легенда».
   $('btn-codex').addEventListener('click', () => {
@@ -443,12 +445,19 @@ export function initUI(game) {
     els.codexOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
-  // Выбор фракции в быстром бою.
+  // Выбор фракции в быстром бою (G.5: с пресетом размера/формы).
+  const skDimsLabel = () => {
+    const d = skirmishDims($('sk-size').value, $('sk-shape').value);
+    $('sk-dims').textContent = d.w + '×' + d.h;
+  };
+  $('sk-size').addEventListener('change', skDimsLabel);
+  $('sk-shape').addEventListener('change', skDimsLabel);
+  skDimsLabel();
   for (const fac of ['human', 'alien']) {
     $(fac === 'human' ? 'btn-skirmish-human' : 'btn-skirmish-alien')
       .addEventListener('click', () => {
         els.skirmishOverlay.classList.add('hidden');
-        game.startSkirmish(fac);
+        game.startSkirmish(fac, skirmishDims($('sk-size').value, $('sk-shape').value));
       });
   }
   // Брифинг: «В бой!».
@@ -510,6 +519,17 @@ export function initUI(game) {
 // ------------------------------------------------------------
 // Меню: список миссий кампании с брифингами и замками.
 // ------------------------------------------------------------
+// G.5: габариты скирмиша из пресета — size (строка из select — ок) длинная
+// сторона, short чётная ≈ 2/3: 32/42/54/64 для 48/64/80/96.
+export function skirmishDims(size, shape) {
+  const n = Number(size);
+  const s = [48, 64, 80, 96].includes(n) ? n : 64;
+  const short = Math.round(s / 3) * 2;
+  if (shape === 'wide') return { w: s, h: short };
+  if (shape === 'tall') return { w: short, h: s };
+  return { w: s, h: s };
+}
+
 export function showMissions(game) {
   els.overlay.classList.add('hidden');
   els.missionOverlay.classList.remove('hidden');
@@ -1119,7 +1139,10 @@ export function drawMinimap(game) {
   // Рамка обзора камеры.
   g.strokeStyle = 'rgba(255,255,255,0.85)';
   g.lineWidth = 1;
-  g.strokeRect(st.camera.x * k, st.camera.y * k, game.viewW() * k, game.viewH() * k);
+  // G.2: рамка — видимая область (за вычетом панели), а не весь канвас.
+  const vz = st.camera.z || 1;
+  g.strokeRect((st.camera.x + (game.uiLeft || 0) / vz) * k, (st.camera.y + (game.uiTop || 0) / vz) * k,
+    game.visW() * k, game.visH() * k);
   // M0: ключевая цель — янтарный ромб (если здание разведано).
   for (const b of st.buildings) {
     if (b.dead || !b.keyTarget || (b.side === 'enemy' && !b.spotted)) continue;

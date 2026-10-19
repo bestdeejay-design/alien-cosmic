@@ -15,7 +15,7 @@ await page.addInitScript(() => localStorage.setItem('terranrts.progress', '14'))
 const startCard = async (idx) => {
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForTimeout(900);
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(350);
   await page.locator('.mission-card').nth(idx).click();
   await page.waitForTimeout(350);

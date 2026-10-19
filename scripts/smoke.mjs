@@ -35,7 +35,7 @@ pass('boot: игра загрузилась, меню построено');
 // ---------- Фаза 1: клики по меню ----------
 try {
   const $ = (id) => document.getElementById(id);
-  $('btn-campaign').click();               // список миссий
+  $('btn-season1').click();               // список миссий
   const cards = $('mission-list').children.length;
   if (!cards) throw new Error('список миссий пуст');
   // Первый доступный брифинг: кликаем первую незаблокированную карточку.
@@ -56,10 +56,11 @@ try {
   $('btn-codex').click();
   for (const tab of $('codex-tabs').children) tab.click();
   $('btn-codex-back').click();
-  $('btn-skirmish').click();
+  $('btn-missions-skirmish').click(); // G.6: скирмиш внутри сезона 1
   if ($('skirmish-overlay').classList.contains('hidden')) throw new Error('оверлей скирмиша не открылся');
   $('btn-skirmish-back').click();
-  $('btn-skirmish').click();
+  if ($('mission-overlay').classList.contains('hidden')) throw new Error('назад из скирмиша не в миссии');
+  $('btn-missions-skirmish').click();
   $('btn-skirmish-human').click(); // стартует быстрый бой за людей
   if (!game.started) throw new Error('скирмиш не стартовал по клику');
   $('btn-brief-back').click();

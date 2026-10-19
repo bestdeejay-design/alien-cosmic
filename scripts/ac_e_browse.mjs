@@ -39,7 +39,7 @@ const shot = (name) => page.screenshot({ path: `${OUT}/${name}.png` });
 const startMission = async () => {
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForTimeout(900);
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(350);
   await page.locator('.mission-card').nth(0).click();
   await page.waitForTimeout(350);

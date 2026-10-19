@@ -364,5 +364,53 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
   }
 }
 
+// ---------- A12. Скирмиш-пресеты G.5 (12 форм × 2 сида) ----------
+{
+  const { CC_WORKER_OFFS } = await import('../js/map.js');
+  // Формула — та же, что skirmishDims в ui.js (size длинная, short ≈ 2/3 чётная).
+  const dims = (size, shape) => {
+    const short = Math.round(size / 3) * 2;
+    if (shape === 'wide') return [size, short];
+    if (shape === 'tall') return [short, size];
+    return [size, size];
+  };
+  for (const size of [48, 64, 80, 96]) for (const shape of ['square', 'wide', 'tall']) {
+    const [w, h] = dims(size, shape);
+    for (const seed of [7, 424242]) {
+      // base — как startSkirmish в game.js (y = h - 16).
+      const gm = new GameMap(seed, { w, h, seed, lakes: 'default', rocks: 8, rich: 1.0, base: { x: 8, y: h - 16 } });
+      const errs = [];
+      if (gm.w !== w || gm.h !== h) errs.push(`размер ${gm.w}×${gm.h}, ждали ${w}×${h}`);
+      const ps = gm.bases.player.center, pg = gm.bases.enemy.center;
+      const tiles = PF.findPath(gm, ps.x, ps.y, (x, y) => x === pg.x && y === pg.y,
+        (x, y) => Math.max(Math.abs(pg.x - x), Math.abs(pg.y - y)));
+      const last = tiles[tiles.length - 1];
+      if (!last || last.x !== pg.x || last.y !== pg.y) errs.push(`путь частичный (${tiles.length})`);
+      const free = (x, y) => gm.inBounds(x, y) && !gm.blockedAt(x, y);
+      const isRock = (x, y) => gm.inBounds(x, y) && gm.terrain[gm.idx(x, y)] === T_ROCK;
+      let rockGates = 0;
+      for (let y = 1; y < gm.h - 1; y++) for (let x = 1; x < gm.w - 1; x++) {
+        if (free(x, y) && free(x + 1, y + 1) && isRock(x + 1, y) && isRock(x, y + 1)) rockGates++;
+      }
+      if (rockGates) errs.push(`калиток ${rockGates}`);
+      const footFree = (tx, ty, fw, fh) => {
+        for (let y = ty; y < ty + fh; y++) for (let x = tx; x < tx + fw; x++) {
+          if (!gm.inBounds(x, y) || gm.terrain[gm.idx(x, y)] !== T_GROUND || gm.mineralGrid[gm.idx(x, y)]) return false;
+        }
+        return true;
+      };
+      [gm.bases.player.cc, gm.bases.enemy.cc].forEach((cc, i) => {
+        if (!footFree(cc.x, cc.y, 4, 3)) errs.push(`cc ${i ? 'врага' : 'игрока'} не встаёт`);
+        for (const [dx, dy] of CC_WORKER_OFFS) {
+          if (gm.blockedAt(cc.x + dx, cc.y + dy)) { errs.push(`рабочий ${i ? 'врага' : 'игрока'} в стене`); break; }
+        }
+      });
+      if (!gm.crystals.length) errs.push('нет кристаллов');
+      ok(`A12. скирмиш ${w}×${h} сид ${seed}`, errs.length === 0,
+        errs.join('; ') || `путь ${tiles.length}, калиток 0, кристаллов ${gm.crystals.length}`);
+    }
+  }
+}
+
 console.log(fails ? `\nИТОГ АУДИТА ДВИЖЕНИЯ: ЕСТЬ ПРОВАЛЫ (${fails})` : '\nИТОГ АУДИТА ДВИЖЕНИЯ: ВСЕ ПРОВЕРКИ ПРОШЛИ');
 process.exit(fails ? 1 : 0);

@@ -420,6 +420,23 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
   border: 1px solid var(--line-strong);
   margin: 0 0 4px;
 }
+/* G.6: заглушка сезона — тихая, пунктирная, но кликабельная (тост) */
+.season-soon {
+  border-style: dashed;
+  opacity: .55;
+}
+/* G.5: пресеты скирмиша */
+.sk-config {
+  display: flex; gap: 14px; justify-content: center; align-items: center;
+  margin: 2px 0 14px; flex-wrap: wrap;
+  font-size: 13px; color: var(--muted);
+}
+.sk-config select {
+  background: #0b1e27; color: var(--cyan-light);
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  font-size: 13px; padding: 4px 8px; margin-left: 6px;
+}
+.sk-dims { font-size: 13px; color: var(--cyan); letter-spacing: 1px; }
 
 /* ---------- Список миссий ---------- */
 .overlay-box.wide { max-width: 720px; max-height: 88vh; overflow-y: auto; scrollbar-width: thin; }

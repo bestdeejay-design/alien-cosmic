@@ -6,7 +6,7 @@
 // side:'player'|'enemy', x/y (px мира), hp, dead, cfg.
 // ============================================================
 import {
-  TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar,
+  TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { tr } from './lore.js';
@@ -278,6 +278,68 @@ function resumeGather(st, u) {
   if (!u.cfg.canMine) return;
   const c = (r && !r.dead && r.amount > 0) ? r : nearestCrystal(st, u);
   if (c) orderGather(st, u, c);
+}
+
+// G.3: цепочка строек — достроил → ближайший свободный недострой своей
+// стороны (BUILDERS_PER_SITE на сайт в силе, учёт живой из ордеров);
+// сайтов нет → к добыче.
+export function chainBuild(st, u, doneB) {
+  let best = null, bd = Infinity;
+  for (const s of st.buildings) {
+    if (s === doneB || s.dead || s.done || s.side !== u.side) continue;
+    if (buildersOf(st, s) >= BUILDERS_PER_SITE) continue;
+    const d = Math.hypot(s.x - u.x, s.y - u.y);
+    if (d < bd) { bd = d; best = s; }
+  }
+  if (best) orderBuild(st, u, best);
+  else resumeGather(st, u);
+}
+
+// G.4: сколько своих уже чинит цель (живой учёт из ордеров, приём F.1).
+export function repairersOf(st, t, self) {
+  let n = 0;
+  for (const w of st.units) {
+    if (w === self || w.dead || w.side !== t.side || !w.cfg.canRepair) continue;
+    const o = w.order;
+    if (o.kind === 'repair' && o.target === t) n++;
+  }
+  return n;
+}
+
+// G.4: распределение ручного ремонта — кликнутая цель первая, дальше
+// повреждённые техника+здания в радиусе по близости, по 2 на цель;
+// излишек продолжает добычу (добывать не умеет — стоит).
+export function orderRepairSpread(st, repairers, x, y, primary) {
+  if (!repairers.length) return;
+  const side = repairers[0].side;
+  const pool = [];
+  const seen = new Set();
+  const push = (t) => {
+    if (t && !t.dead && t.side === side && t.hp < t.maxHp && !seen.has(t.id)) {
+      seen.add(t.id); pool.push(t);
+    }
+  };
+  push(primary);
+  const rest = [];
+  for (const b of st.buildings) {
+    if (b.side !== side || b.dead || b.hp >= b.maxHp || seen.has(b.id)) continue;
+    rest.push([distToRectPx(x, y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE), b]);
+  }
+  for (const v of st.units) {
+    if (v.kind !== 'unit' || v.side !== side || v.dead || !v.cfg.vehicle || v.hp >= v.maxHp || seen.has(v.id)) continue;
+    rest.push([Math.hypot(v.x - x, v.y - y), v]);
+  }
+  rest.sort((a, b) => a[0] - b[0]);
+  for (const [d, t] of rest) { if (d <= REPAIR_SPREAD_PX) push(t); }
+  for (const u of repairers) {
+    const slot = pool.find((t) => repairersOf(st, t, u) < REPAIRERS_PER_TARGET);
+    if (slot) { orderRepair(st, u, slot); continue; }
+    if (u.cfg.canMine) {
+      const c = nearestCrystal(st, u);
+      if (c) orderGather(st, u, c);
+      else orderStop(u);
+    } else orderStop(u);
+  }
 }
 
 // Гарнизон: пехота заходит в бункер.
@@ -987,10 +1049,10 @@ function updateGather(st, u, dt) {
 }
 
 // Стройка: подойти к площадке и «сваривать» — прогресс и HP растут.
-// Завершив (или если стройка отменена/готова) — рабочий сам идёт добывать.
+// Завершив (или стройка отменена/готова) — дальше по цепочке G.3 или к добыче.
 function updateBuild(st, u, dt) {
   const b = u.order.target;
-  if (!b || b.dead || b.done) { resumeGather(st, u); return; }
+  if (!b || b.dead || b.done) { chainBuild(st, u, b); return; } // G.3
   const rx = b.tx * TILE, ry = b.ty * TILE, rw = b.w * TILE, rh = b.h * TILE;
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.1) {
     u.path = null; u.moving = false;
@@ -1009,7 +1071,7 @@ function updateBuild(st, u, dt) {
         st.game.sound.ready();
         st.game.ui.toast(tr(st.factions.player, 'builtDone') + fname(b.cfg, b.faction));
       }
-      resumeGather(st, u);
+      chainBuild(st, u, b); // G.3: дальше по цепочке или к добыче
     }
     return;
   }
@@ -1220,6 +1282,22 @@ function integrate(st, u, dt, grid) {
         slowK = 0.3;
         if (!u.wallSide) u.wallSide = hand;
         u.wallT = Math.max(u.wallT, 0.8);
+      }
+    }
+    // G.1: встречный разъезд — сосед идёт навстречу → смещаемся к своей
+    // правой стороне (мировой базис: встречные всегда расходятся, в отличие
+    // от чётности id). Рулевой уровень, A* не трогаем.
+    if (!u.yielded && u.stuckT < 1.0) {
+      const ux = Math.cos(u.angle), uy = Math.sin(u.angle);
+      let headOn = false;
+      grid.query(u.x, u.y, 44, (o) => {
+        if (headOn || o === u || o.dead || !o.moving) return;
+        if (ux * Math.cos(o.angle) + uy * Math.sin(o.angle) < -0.35) headOn = true;
+      });
+      if (headOn) {
+        const mx = dir.x - dir.y * 0.55, my = dir.y + dir.x * 0.55;
+        const l = Math.hypot(mx, my) || 1;
+        dir = { x: mx / l, y: my / l };
       }
     }
     vx = dir.x * u.cfg.speed * slowK;

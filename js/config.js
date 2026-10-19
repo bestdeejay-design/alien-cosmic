@@ -9,7 +9,7 @@
 // ============================================================
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
-export const GAME_VERSION = 'F';
+export const GAME_VERSION = 'G';
 
 // --- Мир ---
 export const TILE = 32;               // размер одного тайла, px мира
@@ -21,6 +21,8 @@ export const WORLD_H = MAP_H * TILE;
 // --- Игровой цикл ---
 export const LOGIC_DT = 1 / 30;       // фиксированный шаг логики, сек
 export const MAX_FRAME_DT = 0.25;     // потолок кадра — защита от «спирали смерти» после лагов
+export const ZOOM_MIN = 0.5;            // G.5: было 0.6 — обзор шире, тайл 16px ещё читаем
+export const ZOOM_MAX = 2.0;            // G.5: было 1.6 — детализация для микроменеджмента
 
 // --- Экономика ---
 export const START_MINERALS = 150;    // минералы у каждой стороны на старте
@@ -165,6 +167,8 @@ export const UPGRADES = {
 
 // --- F.1: занятость кристаллов (прецедент BUILDERS_PER_SITE) ---
 export const WORKERS_PER_CRYSTAL = 2; // оптимум на кристалл; маржинальный 3-й — только когда свободных нет
+export const REPAIRERS_PER_TARGET = 2; // G.4: техников на цель (аналог лимита добычи)
+export const REPAIR_SPREAD_PX = 256;   // G.4: радиус сбора целей вокруг клика (8 тайлов)
 
 // --- F.2: грейды зданий Г1→Г2→Г3. GRADES[type][to] — цена/время/статы ЦЕЛЕВОГО уровня.
 export const GRADES = {

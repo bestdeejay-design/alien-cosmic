@@ -23,7 +23,7 @@ await page.waitForTimeout(1200);
 const openCampaign = async () => {
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForTimeout(900);
-  await page.locator('#btn-campaign').click();
+  await page.locator('#btn-season1').click();
   await page.waitForTimeout(350);
 };
 const startCard = async (idx) => {

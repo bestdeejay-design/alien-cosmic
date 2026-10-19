@@ -18,7 +18,7 @@ await page.goto(BASE + '/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Меню кампании: открыть список миссий, строки целей 3/4 (objectiveLabel)
-await page.locator('#btn-campaign').click();
+await page.locator('#btn-season1').click();
 await page.waitForTimeout(600);
 const menuObjs = await page.evaluate(() => {
   const els = [...document.querySelectorAll('.mc-obj')];

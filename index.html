@@ -42,10 +42,10 @@
       <div class="overlay-box menu-box">
         <h1>ALIEN COSMIC</h1>
         <p class="sub">Стратегия в реальном времени: война колонистов и аборигенов за эрг на Рубеже-64</p>
-        <div id="ver-badge" class="ver-badge">версия F · 20.10.2026</div>
+        <div id="ver-badge" class="ver-badge">версия G · 20.10.2026</div>
         <div class="menu-buttons">
-          <button id="btn-campaign" class="big-btn">Кампания</button>
-          <button id="btn-skirmish" class="big-btn ghost-btn">Быстрый бой</button>
+          <button id="btn-season1" class="big-btn">Сезон 1 · Кампания</button>
+          <button id="btn-season2" class="big-btn ghost-btn season-soon">Сезон 2 · СКОРО</button>
           <button id="btn-codex" class="big-btn ghost-btn">Легенда</button>
         </div>
         <div class="fac-teaser">
@@ -72,6 +72,7 @@
         <h1>Кампания «Alien Cosmic»</h1>
         <p class="sub">15 миссий · 3 акта + «Главы Хроники» после финала · Гелиос против роя и мятежников «Красного флага»</p>
         <div id="mission-list"></div>
+        <button id="btn-missions-skirmish" class="big-btn ghost-btn">Быстрый бой</button>
         <button id="btn-missions-back" class="big-btn ghost-btn">← Назад</button>
       </div>
     </div>
@@ -109,6 +110,11 @@
       <div class="overlay-box wide">
         <h1>Быстрый бой</h1>
         <p class="sub">Выберите сторону. Врагом всегда будет противоположная раса.</p>
+        <div class="sk-config">
+          <label>Размер <select id="sk-size"><option value="48">48</option><option value="64" selected>64</option><option value="80">80</option><option value="96">96</option></select></label>
+          <label>Форма <select id="sk-shape"><option value="square" selected>Квадрат</option><option value="wide">Широкая 3:2</option><option value="tall">Высокая 2:3</option></select></label>
+          <span id="sk-dims" class="sk-dims">64×64</span>
+        </div>
         <div class="fac-cards">
           <button id="btn-skirmish-human" class="fac-card fac-human">
             <div class="fc-title">ГЕЛИОС</div>
