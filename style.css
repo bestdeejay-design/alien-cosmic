@@ -119,12 +119,12 @@ html, body {
 body.panel-hidden #bottom-panel { display: none; }
 body.panel-hidden #panel-show { display: block; }
 body.panel-left #bottom-panel {
-  left: 0; right: auto; top: 0; bottom: 0; width: 236px; height: auto;
+  left: 0; right: auto; top: 44px; bottom: 0; width: 236px; height: auto;
   flex-direction: column; border-top: none; border-right: 1px solid rgba(118, 227, 215, .32);
   box-shadow: 8px 0 30px rgba(0,0,0,.35);
 }
 body.panel-right #bottom-panel {
-  right: 0; left: auto; top: 0; bottom: 0; width: 236px; height: auto;
+  right: 0; left: auto; top: 44px; bottom: 0; width: 236px; height: auto;
   flex-direction: column; border-top: none; border-left: 1px solid rgba(118, 227, 215, .32);
   box-shadow: -8px 0 30px rgba(0,0,0,.35);
 }
