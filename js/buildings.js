@@ -55,11 +55,23 @@ export function canPlace(map, tx, ty, w, h) {
   return true;
 }
 
+// M0: зона стройки игрока. Без зон в миссии — всё разрешено; иначе
+// футпринт обязан ЦЕЛИКОМ лежать внутри хотя бы одной зоны.
+export function zoneAllows(st, tx, ty, w, h) {
+  const zones = st.buildZone;
+  if (!zones || !zones.length) return true;
+  for (const z of zones) {
+    if (tx >= z.x && ty >= z.y && tx + w <= z.x + z.w && ty + h <= z.y + z.h) return true;
+  }
+  return false;
+}
+
 // Общая команда постройки (для игрока и ИИ): списывает минералы,
 // создаёт недострой, выселяет юнитов с площадки, раздаёт приказ рабочим.
 export function placeBuildingCmd(st, side, type, tx, ty, builders) {
   const cfg = BUILDINGS[type];
   if (!canPlace(st.map, tx, ty, cfg.w, cfg.h)) return null;
+  if (side === 'player' && !zoneAllows(st, tx, ty, cfg.w, cfg.h)) return null; // ИИ не ограничен
   if (st.minerals[side] < cfg.cost) return null;
   st.minerals[side] -= cfg.cost;
   const b = new Building(st, side, type, tx, ty, false);

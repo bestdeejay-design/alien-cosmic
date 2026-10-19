@@ -16,7 +16,7 @@ import { Sound } from './audio.js';
 import * as U from './units.js';
 import * as B from './buildings.js';
 import { AIController } from './ai.js';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress } from './missions.js';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel } from './missions.js';
 import * as ui from './ui.js';
 import { attachInput, updateCamera } from './input.js';
 import { tr } from './lore.js';
@@ -129,6 +129,13 @@ export class Game {
         enemy:  { infAtk: 0, infArm: 0, vehAtk: 0, vehArm: 0 },
       },
       noBase: !!m.noBase,           // стелс-миссия: отряд без базы
+      // M0: механическая цель (null = легаси: снеси всё / переживи таймер).
+      win: (m.objective && typeof m.objective === 'object') ? m.objective : null,
+      loseDeadline: m.loseDeadline || null, // { at, label, hard } — событие по таймеру
+      deadlineFired: false,
+      buildZone: m.buildZone || null,       // [{ x,y,w,h }] в тайлах — стройка игрока
+      evacuated: 0,                         // погружено в зону эвакуации
+      keyTotal: 0,                          // ключевых целей встречено (защита от мгновенной победы)
       shakeT: 0, shakeMag: 0,       // тряска экрана от взрывов
       lastAlertT: -99, lastSupplyToast: -99, lastRepairToast: -99,
       lastAlertPos: null, // точка последней тревоги — прыжок по H
@@ -229,7 +236,7 @@ export class Game {
     ui.hideMissions();
     ui.hideBrief();
     ui.hideEnd();
-    ui.toast(m.objective);
+    ui.toast(objectiveLabel(m));
   }
 
   startSkirmish(faction) {
@@ -253,7 +260,7 @@ export class Game {
     this.newGame();
     this.started = true;
     ui.hideStart();
-    ui.toast(this.mission.objective);
+    ui.toast(objectiveLabel(this.mission));
     this.sound.click();
   }
 
@@ -609,6 +616,9 @@ export class Game {
     if (!B.canPlace(st.map, tx, ty, cfg.w, cfg.h)) {
       ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return;
     }
+    if (!B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) {
+      ui.toast(tr(fac, 'outsideZone'), 'error'); this.sound.error(); return;
+    }
     if (st.minerals.player < cfg.cost) {
       ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); return;
     }
@@ -646,6 +656,7 @@ export class Game {
     U.updateProjectiles(st, LOGIC_DT);
     U.updateEffects(st, LOGIC_DT);
     st.ai.update(LOGIC_DT, st);
+    this.updateWin(st, LOGIC_DT);
 
     if (st.tick % 3 === 0) st.fog.recompute(st);
     calcSupply(st);
@@ -657,11 +668,56 @@ export class Game {
     this.checkEnd();
   }
 
+  // Механики победы M0: доводка эвакуации и дедлайн. Вызывается каждый
+  // тик; при отсутствии механик в миссии — дешёвые проверки и выход.
+  updateWin(st, dt) {
+    if (st.gameOver) return;
+    const w = st.win;
+    // Эвакуация: свой юнит стоит в зоне hold секунд подряд — погружается
+    // (исчезает, в потери не пишется). Выход из зоны сбрасывает таймер.
+    if (w && w.kind === 'evac') {
+      const cx = (w.x + 0.5) * TILE, cy = (w.y + 0.5) * TILE, r = w.r * TILE;
+      for (const u of st.units) {
+        if (u.dead || u.evacuated || u.side !== 'player' || u.kind !== 'unit') continue;
+        if (Math.hypot(u.x - cx, u.y - cy) <= r) {
+          u.evacT = (u.evacT || 0) + dt;
+          if (u.evacT >= w.hold) {
+            u.evacuated = true;
+            u.dead = true; // убирается чисткой тика, но в потери не попадает (см. killEntity)
+            u.selected = false;
+            st.evacuated++;
+            U.addEffect(st, { kind: 'spark', x: u.x, y: u.y, ang: -Math.PI / 2, t: 0, life: 0.3 });
+            U.addFloat(st, u.x, u.y - 16, tr(st.factions.player, 'evacOne'), '#9be29e');
+            this.sound.ready();
+          }
+        } else {
+          u.evacT = 0;
+        }
+      }
+      st.selection = st.selection.filter((e) => !e.evacuated);
+      // Чистка погружённых сразу: иначе кадр покажет их в зоне после победы.
+      if (st.evacuated > 0) st.units = st.units.filter((u) => !u.evacuated);
+    }
+    // Дедлайн: разовое событие по таймеру (волна усиления или поражение).
+    const dl = st.loseDeadline;
+    if (dl && !st.deadlineFired && st.time >= dl.at) {
+      st.deadlineFired = true;
+      if (dl.hard) {
+        this.lose(dl.label);
+      } else {
+        st.ai.raidWave(st, st.ai.p.waveMax);
+        ui.toast(dl.label, 'error');
+        this.sound.ping();
+      }
+    }
+  }
+
   // Текст цели миссии в верхней панели (с таймерами обороны).
   objectiveText() {
     const st = this.state;
     if (!st) return '';
-    const def = this.mission && this.mission.defense;
+    const m = this.mission;
+    const def = m && m.defense;
     if (def) {
       if (st.time < def.prep) {
         return 'Подготовка: ' + fmtTime(def.prep - st.time) + ' — стройте оборону';
@@ -669,14 +725,55 @@ export class Game {
       const left = Math.max(0, def.prep + def.total - st.time);
       return 'Оборона: ' + fmtTime(left) + ' · волн отбито: ' + st.defenseWave;
     }
-    return this.mission.objective;
+    const w = st.win;
+    const dl = st.loseDeadline && !st.deadlineFired
+      ? ' · ' + st.loseDeadline.label + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
+      : '';
+    if (w && w.kind === 'stockpile') {
+      return 'Накоплено ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
+        tr(st.factions.player, 'minedWord') + dl;
+    }
+    if (w && w.kind === 'evac') {
+      return 'Эвакуировано ' + st.evacuated + '/' + w.need + dl;
+    }
+    if (w && w.kind === 'key') {
+      return objectiveLabel(m) + dl;
+    }
+    return objectiveLabel(m) + dl;
   }
 
   checkEnd() {
     const st = this.state;
     if (st.gameOver) return;
     const def = this.mission && this.mission.defense;
+    const w = st.win;
+    const fac = st.factions.player;
+    // Ключевая цель: победа, когда все встреченные цели типа уничтожены.
+    // keyTotal защищает от мгновенной победы, если цели такого типа нет.
+    if (w && w.kind === 'key') {
+      let alive = 0;
+      for (const b of st.buildings) {
+        if (b.side !== 'enemy' || b.dead || b.type !== w.type) continue;
+        b.keyTarget = true; // маркер-ромб и точка на минимапе
+        alive++;
+      }
+      if (alive > 0) st.keyTotal = Math.max(st.keyTotal, alive);
+      if (st.keyTotal > 0 && alive === 0) {
+        this.win(tr(fac, 'winKey'));
+        return;
+      }
+    }
+    if (w && w.kind === 'stockpile' && st.stats.mined >= w.amount) {
+      this.win(tr(fac, 'winStock'));
+      return;
+    }
+    if (w && w.kind === 'evac' && st.evacuated >= w.need) {
+      this.win(tr(fac, 'winEvac'));
+      return;
+    }
     // Стелс-миссия: база отсутствует — проигрыш по гибели всего отряда.
+    // Снос всей базы врага остаётся запасным путём победы и в новых типах:
+    // уничтоживший угрозу игрок не должен упереться в софтлок.
     if (st.noBase) {
       const alive = st.units.some((u) => u.side === 'player' && !u.dead);
       if (st.bcount.enemy <= 0) {
@@ -686,7 +783,6 @@ export class Game {
       }
       return;
     }
-    const fac = st.factions.player;
     if (st.bcount.enemy <= 0) {
       this.win(tr(fac, 'winKill'));
     } else if (st.bcount.player <= 0) {
@@ -772,6 +868,21 @@ export class Game {
     const inView = (x, y, m) =>
       x > cam.x - m && x < cam.x + W + m && y > cam.y - m && y < cam.y + H + m;
 
+    // M0: пунктирные границы зоны стройки (всегда видны, в режиме
+    // размещения — ярче). Своя земля подсвечена бирюзой Рубежа.
+    if (st.buildZone) {
+      ctx.save();
+      ctx.setLineDash([8, 6]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = st.placing ? 'rgba(143,255,226,0.8)' : 'rgba(143,255,226,0.35)';
+      for (const z of st.buildZone) {
+        const zx = z.x * TILE - cam.x, zy = z.y * TILE - cam.y;
+        if (zx > W || zy > H || zx + z.w * TILE < 0 || zy + z.h * TILE < 0) continue;
+        ctx.strokeRect(zx, zy, z.w * TILE, z.h * TILE);
+      }
+      ctx.restore();
+    }
+
     // Кристаллы минералов (на разведанной территории).
     for (const c of st.map.crystals) {
       if (c.amount <= 0 || !inView(c.x, c.y, 40)) continue;
@@ -789,6 +900,38 @@ export class Game {
         st.fog.tileVisible(b.tx + (b.w >> 1), b.ty + (b.h >> 1));
       if (b.side === 'enemy' && !b.spotted && !visibleNow) continue;
       B.drawBuilding(ctx, b, b.side === 'enemy' && !visibleNow, cam.x, cam.y);
+      // M0: пульсирующий ромб над ключевой целью (обе расы, янтарь DS).
+      if (b.keyTarget && !b.dead) {
+        const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.005);
+        const dx = bx + (b.w * TILE) / 2 - cam.x, dy = by - 14 - cam.y;
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = '#f3c579';
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 8); ctx.lineTo(dx + 6, dy);
+        ctx.lineTo(dx, dy + 8); ctx.lineTo(dx - 6, dy);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#3a2a12'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // M0: круг зоны эвакуации на земле (пульс + пунктир).
+    if (st.win && st.win.kind === 'evac') {
+      const w = st.win;
+      const ex = (w.x + 0.5) * TILE - cam.x, ey = (w.y + 0.5) * TILE - cam.y;
+      if (inView((w.x + 0.5) * TILE, (w.y + 0.5) * TILE, w.r * TILE)) {
+        const pulse = 0.5 + 0.3 * Math.sin(performance.now() * 0.004);
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.strokeStyle = '#8ff5e2';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 7]);
+        ctx.beginPath();
+        ctx.arc(ex, ey, w.r * TILE, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // Юниты с интерполяцией между логическими тиками.
@@ -971,6 +1114,7 @@ export class Game {
     const tx = Math.max(0, Math.min(MAP_W - cfg.w, pl.tx));
     const ty = Math.max(0, Math.min(MAP_H - cfg.h, pl.ty));
     let ok = st.minerals.player >= cfg.cost;
+    if (ok && !B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) ok = false;
     for (let y = ty; y < ty + cfg.h && ok; y++)
       for (let x = tx; x < tx + cfg.w && ok; x++)
         if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) ok = false;

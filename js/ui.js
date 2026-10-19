@@ -8,7 +8,7 @@ import {
   TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, MAP_W, MAP_H, SUPPLY_MAX, COLORS,
   fname, fdesc,
 } from './config.js';
-import { MISSIONS, loadProgress } from './missions.js';
+import { MISSIONS, loadProgress, objectiveLabel } from './missions.js';
 import { CODEX, tr } from './lore.js';
 
 const $ = (id) => document.getElementById(id);
@@ -497,7 +497,7 @@ export function showMissions(game) {
       (m.id > unlocked ? '<span class="mc-lock">■ закрыто</span>' : '') + '</div>' +
       `<div class="mc-name">${m.name}</div>` +
       `<div class="mc-place">${m.place}</div>` +
-      `<div class="mc-obj">${m.objective}</div>` +
+      `<div class="mc-obj">${objectiveLabel(m)}</div>` +
       (m.intro ? `<div class="mc-intro">${m.intro}</div>` : '') +
       (m.defense ? '<div class="mc-def">◆ режим обороны: волны врага</div>' : '');
     if (m.id <= unlocked) {
@@ -521,7 +521,7 @@ export function showBrief(game, m) {
   els.briefPlace.textContent = m.place;
   els.briefText.innerHTML = m.brief.map((p) => `<p>${p}</p>`).join('') +
     (m.intro ? `<p class="brief-intro">${m.intro}</p>` : '');
-  els.briefObjective.textContent = 'Цель: ' + m.objective +
+  els.briefObjective.textContent = 'Цель: ' + objectiveLabel(m) +
     (m.defense ? ` · подготовка ${Math.round(m.defense.prep / 60)} мин, затем ${Math.round(m.defense.total / 60)} мин обороны` : '');
   els.briefOverlay.classList.remove('hidden');
 }
@@ -982,6 +982,25 @@ export function drawMinimap(game) {
   g.strokeStyle = 'rgba(255,255,255,0.85)';
   g.lineWidth = 1;
   g.strokeRect(st.camera.x * k, st.camera.y * k, game.cssW * k, game.cssH * k);
+  // M0: ключевая цель — янтарный ромб (если здание разведано).
+  for (const b of st.buildings) {
+    if (b.dead || !b.keyTarget || (b.side === 'enemy' && !b.spotted)) continue;
+    const dx = (b.tx + b.w / 2) * TILE * k, dy = (b.ty + b.h / 2) * TILE * k;
+    g.fillStyle = '#f3c579';
+    g.beginPath();
+    g.moveTo(dx, dy - 4); g.lineTo(dx + 4, dy);
+    g.lineTo(dx, dy + 4); g.lineTo(dx - 4, dy);
+    g.closePath(); g.fill();
+  }
+  // M0: зона эвакуации — кольцо (своя земля, видна всегда).
+  if (st.win && st.win.kind === 'evac') {
+    const w = st.win;
+    g.strokeStyle = '#8ff5e2';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc((w.x + 0.5) * TILE * k, (w.y + 0.5) * TILE * k, Math.max(3, w.r * TILE * k), 0, Math.PI * 2);
+    g.stroke();
+  }
   // Пинги тревоги.
   for (const p of st.pings) {
     const a = 1 - p.t / 2.5;

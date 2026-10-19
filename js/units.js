@@ -100,6 +100,8 @@ export class Unit {
     this.phase = null;                // подстадия добычи
     this.mineT = 0;
     this.flashT = 0;
+    this.evacT = 0;                   // секунд подряд в зоне эвакуации (M0)
+    this.evacuated = false;           // погружён: не считается погибшим
     this.garrison = null;             // бункер, в котором сидит юнит
     this.hidden = false;              // true — сидит в бункере (не рисуем)
     this.visible = side === 'player'; // для врагов считает туман войны

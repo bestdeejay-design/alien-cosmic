@@ -80,6 +80,14 @@ export class AIController {
     if (this.defWaveNum % 5 === 4 && this.p.arty > 0) {
       wave.push(spawnUnit(st, 'enemy', 'arty', cc.x + (srand(st) - 0.5) * TILE * 3, cc.y + TILE * 4));
     }
+    // М6: медики добираются до лимита профиля каждую чётную волну.
+    if (this.defWaveNum % 2 === 0 && this.p.medics > 0) {
+      let alive = 0;
+      for (const u of st.units) if (!u.dead && u.side === 'enemy' && u.type === 'medic') alive++;
+      for (let i = alive; i < this.p.medics; i++) {
+        wave.push(spawnUnit(st, 'enemy', 'medic', cc.x + (srand(st) - 0.5) * TILE * 4, cc.y + TILE * 2));
+      }
+    }
     const target = nearestPlayerBuilding(st, cc);
     for (const u of wave) if (target) orderAttack(st, u, target);
 
@@ -89,6 +97,31 @@ export class AIController {
     st.pings.push({ x: cc.x, y: cc.y, t: 0 });
     st.game.ui.toast(tr(st.factions.enemy, 'wave').replace('{n}', this.defWaveNum), 'error');
     st.game.sound.ping();
+  }
+
+  // М4: карательная волна по дедлайну — враг бросает резерв (размером
+  // с его обычную волну) на ближайшее здание игрока. Разовая.
+  raidWave(st, n) {
+    const cc = st.buildings.find((b) => b.side === 'enemy' && !b.dead && b.type === 'cc');
+    if (!cc) return 0;
+    const target = nearestPlayerBuilding(st, cc);
+    let sent = 0;
+    for (let i = 0; i < n; i++) {
+      const a = srand(st) * Math.PI * 2;
+      const r = TILE * (2.5 + srand(st) * 2);
+      const u = spawnUnit(st, 'enemy', 'marine', cc.x + Math.cos(a) * r, cc.y + Math.sin(a) * r);
+      if (target) orderAttack(st, u, target);
+      sent++;
+    }
+    if (this.p.flamers > 0) {
+      for (let i = 0; i < 2; i++) {
+        const u = spawnUnit(st, 'enemy', 'flamer', cc.x + (srand(st) - 0.5) * TILE * 4, cc.y + TILE * 2.5);
+        if (target) orderAttack(st, u, target);
+        sent++;
+      }
+    }
+    st.pings.push({ x: cc.x, y: cc.y, t: 0 });
+    return sent;
   }
 
   // ----------------------------------------------------------

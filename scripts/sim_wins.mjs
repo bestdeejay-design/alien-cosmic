@@ -1,0 +1,213 @@
+// ============================================================
+// sim_wins.mjs — сценарии win/lose для движковых условий M0.
+//
+// W1 keyTarget: снос помеченной цели = победа со строкой winKey.
+// W2 легаси: снос всей базы без новых механик = прежняя победа winKill.
+// W3 stockpile: счётчик добычи реален, порог = победа winStock.
+// W4 evacZone: N юнитов в зоне hold секунд = победа winEvac без потерь;
+//    выход из зоны сбрасывает hold.
+// W5 loseDeadline (мягкий): таймер = карательная волна, игра идёт.
+// W6 loseDeadline (жёсткий): таймер = поражение с label-причиной.
+// W7 buildZone: стройка игрока только внутри зон, ИИ не ограничен.
+// W8 М6: волны обороны добирают медиков до лимита профиля.
+//
+// Запуск: node scripts/sim_wins.mjs
+// ============================================================
+import './harness.mjs';
+import { el, endStatsHTML } from './harness.mjs';
+
+const failures = [];
+function fail(phase, err) {
+  failures.push(phase);
+  console.log(`FAIL  ${phase}: ${String((err && err.message) || err)}`);
+}
+function pass(msg) { console.log(`PASS  ${msg}`); }
+function assert(c, msg) { if (!c) throw new Error(msg); }
+
+await import('../js/game.js');
+const missionsMod = await import('../js/missions.js');
+const ui = await import('../js/ui.js');
+const U = await import('../js/units.js');
+const B = await import('../js/buildings.js');
+const game = globalThis.game;
+if (!game) { console.log('FAIL  boot: window.game не создан'); process.exit(1); }
+
+// Тестовая миссия поверх минимального каркаса (id:-1 — прогресс не трогаем).
+function testMission(over = {}) {
+  return {
+    id: -1, faction: 'human',
+    map: { seed: 424242, biome: 'mars', lakes: 'default', rocks: 6, rich: 1.0, base: { x: 8, y: 48 } },
+    ai: {}, defense: null,
+    objective: 'Тестовая цель',
+    ...over,
+  };
+}
+function ticks(n) { for (let i = 0; i < n; i++) game.tick(); }
+function paint() { game.render(1); ui.update(game); ui.drawMinimap(game); }
+function killAll(st, side) {
+  for (const e of [...st.units, ...st.buildings]) {
+    if (e.side === side && !e.dead) U.damageEntity(st, e, 1e9, null);
+  }
+}
+function endReason() { return el('end-reason').textContent; }
+
+// ---------- W1: ключевая цель ----------
+try {
+  game.startMission(testMission({ objective: { kind: 'key', type: 'cc', name: 'Сердце' } }));
+  ticks(5);
+  const st = game.state;
+  assert(!st.gameOver, 'победа до сноса цели');
+  assert(st.keyTotal === 1, 'ключевая цель не одна: ' + st.keyTotal);
+  paint(); // ромб-маркер + точка минимапа — без ошибок
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса цели');
+  assert(/Ключевая цель уничтожена/.test(endReason()), 'чужая победная строка: ' + endReason());
+  assert(!/NaN|undefined/.test(endStatsHTML()), 'битый финал');
+  pass('W1 keyTarget: снос цели = победа winKey, финал чистый');
+} catch (e) { fail('W1 keyTarget', e); }
+
+// ---------- W2: легаси-путь не тронут ----------
+try {
+  game.startMission(testMission());
+  ticks(5);
+  killAll(game.state, 'enemy');
+  ticks(5);
+  assert(game.state.gameOver === 'win', 'легаси-победа сломана');
+  assert(/Противник уничтожен/.test(endReason()), 'чужая строка: ' + endReason());
+  pass('W2 legacy: снос всей базы = прежняя победа winKill');
+} catch (e) { fail('W2 legacy', e); }
+
+// ---------- W3: накопление ----------
+try {
+  game.startMission(testMission({ objective: { kind: 'stockpile', amount: 500 } }));
+  ticks(600); // 20 игровых секунд реальной добычи
+  const st = game.state;
+  assert(st.stats.mined > 0, 'добыча не идёт, счётчик мёртв');
+  assert(!st.gameOver, 'преждевременная победа');
+  const honest = Math.floor(st.stats.mined);
+  assert(/Накоплено/.test(game.objectiveText()), 'нет прогресса в цели: ' + game.objectiveText());
+  st.stats.mined = 499;
+  ticks(2);
+  assert(!st.gameOver, 'победа до порога');
+  st.stats.mined = 500;
+  ticks(2);
+  assert(st.gameOver === 'win', 'нет победы на пороге');
+  assert(/Эрга достаточно/.test(endReason()), 'чужая строка: ' + endReason());
+  pass(`W3 stockpile: честно добыто ${honest}, порог 500 = победа winStock`);
+} catch (e) { fail('W3 stockpile', e); }
+
+// ---------- W4: эвакуация ----------
+try {
+  game.startMission(testMission({
+    noBase: true,
+    squad: [['marine', 4]],
+    ai: { workerTarget: 0, maxMarines: 0 },
+    objective: { kind: 'evac', x: 8, y: 48, r: 4, need: 3, hold: 2 },
+  }));
+  const st = game.state;
+  const squad = st.units.filter((u) => u.side === 'player');
+  assert(squad.length === 4, 'отряд не 4: ' + squad.length);
+  // Трое встают в зону (8.5, 48.5 в тайлах → пиксели), четвёртый ждёт снаружи.
+  for (let i = 0; i < 3; i++) {
+    squad[i].x = (8.5 + i * 0.3) * 32; squad[i].y = 48.5 * 32;
+    squad[i].prevX = squad[i].x; squad[i].prevY = squad[i].y;
+  }
+  squad[3].x = 20 * 32; squad[3].y = 20 * 32;
+  squad[3].prevX = squad[3].x; squad[3].prevY = squad[3].y;
+  ticks(90); // 3 секунды при hold 2
+  assert(st.evacuated === 3, 'погружено не 3: ' + st.evacuated);
+  assert(st.gameOver === 'win', 'нет победы эвакуацией');
+  assert(st.stats.losses === 0, 'погружённые записаны в потери: ' + st.stats.losses);
+  assert(/Эвакуация завершена/.test(endReason()), 'чужая строка: ' + endReason());
+  pass('W4 evac: 3 погружены за hold, победа winEvac, потерь 0');
+} catch (e) { fail('W4 evac', e); }
+
+// ---------- W4b: выход из зоны сбрасывает hold ----------
+try {
+  game.startMission(testMission({
+    noBase: true,
+    squad: [['marine', 2]],
+    ai: { workerTarget: 0, maxMarines: 0 },
+    objective: { kind: 'evac', x: 8, y: 48, r: 4, need: 2, hold: 3 },
+  }));
+  const st = game.state;
+  const squad = st.units.filter((u) => u.side === 'player');
+  for (const u of squad) { u.x = 8.5 * 32; u.y = 48.5 * 32; u.prevX = u.x; u.prevY = u.y; }
+  ticks(60); // 2 секунды из 3 — почти погрузились
+  assert(st.evacuated === 0, 'погружение раньше hold');
+  squad[0].x = 30 * 32; squad[0].y = 30 * 32; // один вышел
+  ticks(120);
+  assert(!st.gameOver, 'победа после выхода из зоны');
+  assert(st.evacuated <= 1, 'hold не сброшен у вышедшего');
+  pass('W4b evac: выход из зоны сбрасывает hold, победы нет');
+} catch (e) { fail('W4b evac-hold', e); }
+
+// ---------- W5: мягкий дедлайн = волна ----------
+try {
+  game.startMission(testMission({
+    objective: 'Держитесь',
+    loseDeadline: { at: 5, label: 'Карательная волна', hard: false },
+  }));
+  assert(/Карательная волна/.test(game.objectiveText()), 'таймер не виден: ' + game.objectiveText());
+  const before = game.state.units.filter((u) => u.side === 'enemy').length;
+  ticks(200); // >5 секунд
+  const st = game.state;
+  assert(st.deadlineFired, 'дедлайн не сработал');
+  assert(!st.gameOver, 'мягкий дедлайн завершил игру');
+  const after = st.units.filter((u) => u.side === 'enemy').length;
+  assert(after > before, `волна не пришла: ${before} → ${after}`);
+  pass(`W5 deadline: таймер виден, волна пришла (${before} → ${after}), игра идёт`);
+} catch (e) { fail('W5 deadline-soft', e); }
+
+// ---------- W6: жёсткий дедлайн = поражение ----------
+try {
+  game.startMission(testMission({
+    objective: 'Успейте',
+    loseDeadline: { at: 5, label: 'Глушитель включён — поля мертвы', hard: true },
+  }));
+  ticks(200);
+  const st = game.state;
+  assert(st.gameOver === 'lose', 'нет поражения по дедлайну');
+  assert(/Глушитель/.test(endReason()), 'причина не из label: ' + endReason());
+  pass('W6 deadline: жёсткий таймер = поражение с label-причиной');
+} catch (e) { fail('W6 deadline-hard', e); }
+
+// ---------- W7: зона стройки ----------
+try {
+  game.startMission(testMission({ buildZone: [{ x: 4, y: 44, w: 12, h: 12 }] }));
+  const st = game.state;
+  st.minerals.player = 99999;
+  st.minerals.enemy = 99999;
+  assert(B.zoneAllows(st, 5, 45, 2, 2), 'внутри зоны запрещено');
+  assert(!B.zoneAllows(st, 30, 30, 2, 2), 'вне зоны разрешено');
+  assert(!B.zoneAllows(st, 3, 44, 2, 2), 'торчащий футпринт разрешён');
+  const inside = B.placeBuildingCmd(st, 'player', 'depot', 5, 45, []);
+  assert(inside, 'постройка внутри зоны отклонена');
+  const outside = B.placeBuildingCmd(st, 'player', 'depot', 30, 30, []);
+  assert(!outside, 'постройка вне зоны принята');
+  const foe = B.placeBuildingCmd(st, 'enemy', 'depot', 40, 10, []);
+  assert(foe, 'ИИ ограничили зоной игрока');
+  st.placing = { type: 'turret', tx: 30, ty: 30 }; // призрак вне зоны
+  paint(); // граница зоны + красный призрак — без ошибок
+  st.placing = null;
+  pass('W7 buildZone: игрок внутри/вне, ИИ свободен, рендер без ошибок');
+} catch (e) { fail('W7 buildZone', e); }
+
+// ---------- W8: медики в волнах обороны (М6) ----------
+try {
+  game.startMission(testMission({
+    defense: { prep: 1, every: 1000, start: 2, grow: 0, max: 2, total: 9999, nests: 0 },
+    ai: { medics: 3 },
+  }));
+  ticks(120); // первая волна (чётная, №0) уже ушла
+  const medics = game.state.units.filter((u) => u.side === 'enemy' && u.type === 'medic' && !u.dead);
+  const marines = game.state.units.filter((u) => u.side === 'enemy' && u.type === 'marine' && !u.dead);
+  assert(marines.length >= 2, 'волна не пришла');
+  assert(medics.length >= 1 && medics.length <= 3, 'медиков не по профилю: ' + medics.length);
+  pass(`W8 medics: волна с медиками (${medics.length} при лимите 3)`);
+} catch (e) { fail('W8 medics', e); }
+
+console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
+process.exit(failures.length ? 1 : 0);
