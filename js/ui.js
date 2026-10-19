@@ -10,6 +10,7 @@ import {
 } from './config.js';
 import { MISSIONS, loadProgress, resetProgress, objectiveLabel } from './missions.js';
 import { CODEX, tr, codexEntryHTML } from './lore.js';
+import { crystalAt } from './units.js'; // F.1: тултип кристалла
 
 const $ = (id) => document.getElementById(id);
 
@@ -199,6 +200,14 @@ export function icon(type) {
       g.fillStyle = steel; g.fillRect(-9, -8, 10, 8);
       g.fillStyle = amber; g.fillRect(-2, -4, 12, 4);
       g.fillStyle = teal; g.fillRect(-11, 4, 22, 4);
+      break;
+    case 'grade': // F.2: двойной шеврон вверх
+      g.strokeStyle = '#ffd27f'; g.lineWidth = 2.5; g.lineJoin = 'round';
+      for (const oy of [-3, 3]) {
+        g.beginPath();
+        g.moveTo(-7, 2 + oy); g.lineTo(0, -4 + oy); g.lineTo(7, 2 + oy);
+        g.stroke();
+      }
       break;
     case 'stop':
       g.strokeStyle = '#ff806e'; g.lineWidth = 3;
@@ -932,6 +941,35 @@ function showTip(tip, btn) {
 }
 function hideTip() { if (tipEl) tipEl.classList.remove('show'); }
 
+// F.1: тултип в точке экрана (для остатков кристалла).
+function tipAt(html, x, y) {
+  if (!tipEl) return;
+  tipEl.innerHTML = html;
+  tipEl.style.left = Math.min(x + 14, window.innerWidth - 250) + 'px';
+  tipEl.style.top = Math.max(y - 10, 8) + 'px';
+  tipEl.classList.add('show');
+}
+
+// F.1: яркость точки миникарты по доле остатка (0.25 пустой → 1.0 полный).
+export function mineralDotAlpha(c) {
+  return c.max > 0 ? 0.25 + 0.75 * (c.amount / c.max) : 0.25;
+}
+
+// F.1: остатки кристалла под курсором + сумма месторождения.
+export function updateCrystalTip(game, wx, wy) {
+  const st = game.state;
+  if (!st || st.over || !st.map || !game.els || !game.els.tip) return;
+  const c = crystalAt(st, wx, wy);
+  if (!c || c.amount <= 0) { if (tipEl) tipEl.classList.remove('show'); return; }
+  let sum = 0;
+  for (const k of st.map.crystals) {
+    if (k.amount > 0 && k.fieldId === c.fieldId && k.fieldId !== 0) sum += k.amount;
+  }
+  if (!sum) sum = c.amount;
+  const mx = (game.mouse && game.mouse.x) || 0, my = (game.mouse && game.mouse.y) || 0;
+  tipAt('<b>Эрг ' + c.amount + '/' + c.max + '</b><br>Месторождение: ' + sum, mx, my);
+}
+
 function refreshDynamic(game, sel) {
   if (!dyn) return;
   const st = game.state;
@@ -1046,12 +1084,14 @@ export function drawMinimap(game) {
   g.imageSmoothingEnabled = false;
   g.drawImage(st.map.miniCanvas, 0, 0, S, S);
 
-  // Кристаллы (только разведанные).
+  // Кристаллы (только разведанные). F.1: яркость — по доле остатка.
   for (const c of st.map.crystals) {
     if (c.amount <= 0 || !st.fog.tileExplored(c.tx, c.ty)) continue;
+    g.globalAlpha = mineralDotAlpha(c);
     g.fillStyle = COLORS.mineral;
     g.fillRect(c.tx * TILE * k, c.ty * TILE * k, 3, 3);
   }
+  g.globalAlpha = 1;
   // Здания.
   for (const b of st.buildings) {
     if (b.dead) continue;

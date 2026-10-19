@@ -6,7 +6,7 @@
 // side:'player'|'enemy', x/y (px мира), hp, dead, cfg.
 // ============================================================
 import {
-  TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME,
+  TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar,
   REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { tr } from './lore.js';
@@ -340,22 +340,50 @@ export function spawnUnit(st, side, type, x, y, autoGather = false) {
   return u;
 }
 
-// Ближайший кристалл с «анти-толпой»: к дистанции добавляется штраф
-// за каждого своего рабочего, уже закреплённого за кристаллом. Так
-// новая смена распределяется по жилам, а не кучкуется на одном месте.
+// F.1: жёсткий выбор по месторождениям (была «анти-толпа» штрафом).
+// Свободный (crowd < 2) в ближайшем непустом поле → свободный в других →
+// маржинальный (< 3) → наименее людный. Занятость — производная из ордеров
+// (приём buildersOf); ремонтное resume не считаем — рабочий занят стройкой.
 export function nearestCrystal(st, u, exclude) {
-  let best = null, bd = Infinity;
+  const byField = new Map();
   for (const c of st.map.crystals) {
     if (c.amount <= 0 || c.dead || c === exclude) continue;
-    let crowd = 0;
+    const d = Math.hypot(c.x - u.x, c.y - u.y);
+    const fid = c.fieldId === undefined ? -1 : c.fieldId;
+    if (!byField.has(fid)) byField.set(fid, []);
+    byField.get(fid).push({ c, d });
+  }
+  if (!byField.size) return null;
+  const crowd = (c) => {
+    let n = 0;
     for (const w of st.units) {
       if (w === u || w.dead || w.side !== u.side || w.type !== 'worker') continue;
       const o = w.order;
       if ((o.kind === 'gather' && o.target === c) ||
-          (o.kind === 'build' && o.resume === c)) crowd++;
+          (o.kind === 'build' && o.resume === c)) n++;
     }
-    const d = Math.hypot(c.x - u.x, c.y - u.y) + crowd * TILE * 2.2;
-    if (d < bd) { bd = d; best = c; }
+    return n;
+  };
+  const fields = [...byField.values()]
+    .map((list) => ({ list, near: Math.min(...list.map((e) => e.d)) }))
+    .sort((a, b) => a.near - b.near);
+  for (const lim of [WORKERS_PER_CRYSTAL, WORKERS_PER_CRYSTAL + 1]) {
+    for (const f of fields) {
+      let best = null, bd = Infinity;
+      for (const { c, d } of f.list) {
+        const n = crowd(c);
+        if (n >= lim) continue;
+        const s = d + n * TILE * 2.2;
+        if (s < bd) { bd = s; best = c; }
+      }
+      if (best) return best;
+    }
+  }
+  // Фолбэк: наименее людный, при равной толпе — ближайший.
+  let best = null, bs = Infinity;
+  for (const f of fields) for (const { c, d } of f.list) {
+    const s = crowd(c) * 1e6 + d;
+    if (s < bs) { bs = s; best = c; }
   }
   return best;
 }
@@ -833,7 +861,8 @@ function updateAttack(st, u, dt, grid) {
 // Стрелять может и здание (турель) — важно, чтобы был cfg.projectile.
 export function shoot(st, u, t) {
   const cfg = u.cfg;
-  const dmg = cfg.dmg + atkBonus(st, u);   // исследования усиливают выстрел
+  const base = u.kind === 'building' ? gradeDmg(u.type, u.level || 1, cfg.dmg) : cfg.dmg; // F.2: грейд турели
+  const dmg = base + atkBonus(st, u);   // исследования усиливают выстрел
   const reach = u.r || Math.max(cfg.w, cfg.h) * TILE * 0.5;
   u.angle = Math.atan2(t.y - u.y, t.x - u.x);
   const muzzleX = u.x + Math.cos(u.angle) * (reach + 4);
@@ -1045,7 +1074,7 @@ function updateGarrison(st, u) {
   if (!b || b.dead || !b.done) { orderStop(u); return; }
   const rx = b.tx * TILE, ry = b.ty * TILE, rw = b.w * TILE, rh = b.h * TILE;
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.0) {
-    if (b.garrison.length >= b.cfg.garrisonCap) { orderStop(u); return; }
+    if (b.garrison.length >= gradeGar(b.type, b.level || 1, b.cfg.garrisonCap)) { orderStop(u); return; } // F.2
     // Заход внутрь: юнит исчезает с карты, живёт внутри бункера.
     u.garrison = b;
     b.garrison.push(u);
@@ -1071,6 +1100,7 @@ function updateGarrison(st, u) {
 // с учётом тумана войны). Юниты в приоритете, здания — если в зоне боя.
 export function acquireTarget(st, u, grid) {
   const R = u.cfg.sightTiles * TILE;
+  const rng = u.kind === 'building' ? gradeRange(u.type, u.level || 1, u.cfg.range) : u.cfg.range; // F.2
   let best = null, bd = Infinity;
   grid.query(u.x, u.y, R, (e) => {
     if (e.dead || e.side === u.side || e.garrison) return;
@@ -1084,14 +1114,14 @@ export function acquireTarget(st, u, grid) {
       if (b.dead || b.side === u.side) continue;
       if (!st.fog.tileVisible(b.tx + (b.w >> 1), b.ty + (b.h >> 1))) continue;
       const d = distToRectPx(u.x, u.y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE);
-      if (d <= u.cfg.range + Math.max(b.w, b.h) * TILE * 0.5) return b;
+      if (d <= rng + Math.max(b.w, b.h) * TILE * 0.5) return b;
     }
   } else {
     // ИИ видит всю карту (допустимое «читерство» простого ИИ).
     for (const b of st.buildings) {
       if (b.dead || b.side === u.side) continue;
       const d = distToRectPx(u.x, u.y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE);
-      if (d <= u.cfg.range + Math.max(b.w, b.h) * TILE * 0.5) return b;
+      if (d <= rng + Math.max(b.w, b.h) * TILE * 0.5) return b;
     }
   }
   return null;

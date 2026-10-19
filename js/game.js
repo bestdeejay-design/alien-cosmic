@@ -7,7 +7,7 @@
 // ============================================================
 import {
   TILE, LOGIC_DT, MAX_FRAME_DT,
-  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES,
+  START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar,
   fname, fdesc,
 } from './config.js';
 import { GameMap, CC_WORKER_OFFS } from './map.js';
@@ -32,6 +32,15 @@ const RESEARCH_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR'];
 const RESEARCH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm'];
 
 // ------------------------------------------------------------
+// F.2: тултип кнопки «Грейд» — что даст следующий уровень.
+function gradeTip(type, to, fac, g) {
+  const lines = [];
+  if (g.dmg) lines.push('Урон ' + g.dmg + ' · дальность ' + g.range);
+  if (g.rate) lines.push('Темп найма ×' + g.rate + ' · очередь до ' + g.queue);
+  if (g.gar) lines.push('Гарнизон до ' + g.gar + ' · прочность ×' + g.hpMul);
+  return { title: 'Грейд ' + GRADE_ROMAN[to] + ': ' + fname(BUILDINGS[type], fac), cost: g.cost, lines };
+}
+
 // Данные тултипов кнопок панели (подписи юнитов/зданий/улучшений).
 // ------------------------------------------------------------
 function buildingTip(type, fac) {
@@ -428,6 +437,24 @@ export class Game {
           on: () => { U.releaseGarrison(st, b); this.sound.click(); },
         });
       }
+      // F.2: грейд своего достроенного (Г1→Г2→Г3). Чужие/недострой/Г3 — мимо.
+      const gTo = (b.level || 1) + 1;
+      if (b.done && GRADES[b.type] && gTo <= 3 && !b.gradeUp) {
+        const g = GRADES[b.type][gTo];
+        cmds.push({
+          code: 'KeyR', icon: 'grade',
+          label: 'Грейд ' + GRADE_ROMAN[gTo], cost: g.cost,
+          tip: gradeTip(b.type, gTo, st.factions.player, g),
+          enabled: () => st.minerals.player >= g.cost,
+          on: () => this.hooks.startGrade(b),
+        });
+      }
+      if (b.done && b.gradeUp) {
+        cmds.push({
+          code: 'KeyX', icon: 'stop', label: 'Отменить',
+          on: () => this.hooks.cancelGrade(b),
+        });
+      }
       return cmds;
     }
     const units = sel.filter((e) => e.kind === 'unit' && e.side === 'player');
@@ -459,6 +486,11 @@ export class Game {
     return cmds;
   }
 
+  // F.1: тултип остатков кристалла под курсором (зовёт input.js).
+  updateCrystalTip(wx, wy) {
+    ui.updateCrystalTip(this, wx, wy);
+  }
+
   makeHooks() {
     const st = () => this.state;
     return {
@@ -481,6 +513,16 @@ export class Game {
         else if (r === 'queue') { ui.toast(tr(fac, 'queueFull'), 'warn'); this.sound.error(); }
         else this.sound.click();
       },
+
+      startGrade: (b) => {
+        const r = B.startGrade(st(), b);
+        const fac = st().factions.player;
+        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        else if (r === 'busy' || r === 'max' || r === 'wrong') { this.sound.error(); }
+        else this.sound.click();
+      },
+
+      cancelGrade: (b) => { B.cancelGrade(st(), b); this.sound.click(); },
 
       startResearch: (b, key) => {
         const r = B.startResearch(st(), b, key);
@@ -610,9 +652,13 @@ export class Game {
     // 2) Кристалл — добыча (рабочими), остальные идут за ним.
     const crystal = U.crystalAt(st, wx, wy);
     if (crystal) {
+      // F.1: первый — на кликнутый, остальные раскидываются цепочкой
+      // (приказы встают сразу — учёт толпы живой, стеков >2 нет).
+      let first = true;
       for (const u of units) {
-        if (u.type === 'worker') U.orderGather(st, u, crystal);
-        else U.orderMove(st, u, wx, wy);
+        if (u.type !== 'worker') { U.orderMove(st, u, wx, wy); continue; }
+        if (first) { U.orderGather(st, u, crystal); first = false; }
+        else U.orderGather(st, u, U.nearestCrystal(st, u) || crystal);
       }
       this.sound.ack();
       return;
@@ -622,7 +668,7 @@ export class Game {
     if (own) {
       const infantry = units.filter((u) => !u.cfg.canMine && !u.cfg.vehicle && !u.garrison);
       if (own.done && own.cfg.garrisonCap && infantry.length &&
-          own.garrison.length < own.cfg.garrisonCap) {
+          own.garrison.length < gradeGar(own.type, own.level || 1, own.cfg.garrisonCap)) { // F.2
         for (const u of infantry) U.orderGarrison(st, u, own);
         this.sound.ack();
         return;
