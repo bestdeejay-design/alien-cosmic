@@ -10,6 +10,9 @@
 // W6 loseDeadline (жёсткий): таймер = поражение с label-причиной.
 // W7 buildZone: стройка игрока только внутри зон, ИИ не ограничен.
 // W8 М6: волны обороны добирают медиков до лимита профиля.
+// W14 rep1: двухфазная оборона — таймер, затем эвакуация 6 (некого грузить = поражение).
+// W15 rep5: зона стройки священные поля, мортиры, оборонная победа, контратака текстом.
+// W16 rep13: диверсия noBase — «Око», затем отход 4 выживших.
 //
 // Запуск: node scripts/sim_wins.mjs
 // ============================================================
@@ -342,6 +345,204 @@ try {
   assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
   pass('W13 rep7: штаб = победа + эпилог, дедлайн = волна, снос = поражение');
 } catch (e) { fail('W13 rep7-siege', e); }
+
+
+// ---------- W14: №1 «Ночь штырей» — двухфазная Об→Эв ----------
+try {
+  game.startMission(missionsMod.MISSIONS[1]);
+  ticks(5);
+  let st = game.state;
+  assert(/Подготовка/.test(game.objectiveText()), 'фаза 1 без таймера: ' + game.objectiveText());
+  // Фаза 1: стоянка в зоне не грузит (погрузка только после таймера).
+  const early = U.spawnUnit(st, 'player', 'marine', 16.5 * 32, 8.5 * 32);
+  early.order = { kind: 'idle' }; early.moving = false;
+  ticks(120);
+  assert(st.evacuated === 0, 'погрузка в фазе 1: ' + st.evacuated);
+  assert(!st.gameOver, 'игра кончилась в фазе 1');
+  // Рубеж таймера: победы обороной нет, HUD переключается на счётчик.
+  st.time = 180 + 600;
+  ticks(5);
+  assert(!st.gameOver, 'истекший таймер дал победу обороной');
+  assert(st.phase2, 'флаг фазы 2 не встал');
+  assert(/Эвакуировано 0\/6/.test(game.objectiveText()), 'нет счётчика фазы 2: ' + game.objectiveText());
+  paint(); // круг зоны + счётчик — без ошибок
+  // Шестерых в круг огней (16.5, 8.5): 4 рабочих + 2 рейнджера.
+  const crew = st.units.filter((u) => u.side === 'player' && !u.dead && u.cfg && !u.cfg.canMine);
+  while (crew.length < 2) crew.push(U.spawnUnit(st, 'player', 'marine', 16.5 * 32, 8.5 * 32));
+  const gang = [...st.units.filter((u) => u.side === 'player' && !u.dead && u.cfg && u.cfg.canMine), ...crew].slice(0, 6);
+  assert(gang.length === 6, 'не набрать 6: ' + gang.length);
+  gang.forEach((u, i) => {
+    u.x = (16.5 + (i % 3) * 0.5) * 32; u.y = (8.5 + ((i / 3) | 0) * 0.5) * 32;
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  ticks(120);
+  assert(st.evacuated === 6, 'погружено не 6: ' + st.evacuated);
+  assert(st.gameOver === 'win', 'нет победы эвакуацией');
+  assert(/Эвакуация завершена/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Шаттлы ушли/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Фаза 2: грузить некого и взять неоткуда — поражение «Некого грузить».
+  game.startMission(missionsMod.MISSIONS[1]);
+  game.state.time = 180 + 600;
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при срыве погрузки');
+  assert(/Некого грузить/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W14 rep1: таймер→счётчик, 6 погружены = победа + эпилог, срыв = поражение');
+} catch (e) { fail('W14 rep1-twophase', e); }
+
+// ---------- W15: №5 «Кровь священных полей» — зона + мортиры + Н1 ----------
+try {
+  game.startMission(missionsMod.MISSIONS[5]);
+  ticks(5);
+  const st = game.state;
+  assert(game.mission.ai.arty === 2, 'мортиры не выданы');
+  assert(game.mission.defense.nests === 1, 'гнёзд не 1');
+  assert(/Подготовка/.test(game.objectiveText()), 'нет таймера обороны: ' + game.objectiveText());
+  assert(/священных полей/.test(game.mission.brief[2]), 'контратака не легализована');
+  st.minerals.player = 99999;
+  st.minerals.enemy = 99999;
+  // ЦК — внутри священных полей; ищем свободные 2×2 внутри и вне зоны.
+  assert(B.zoneAllows(st, 8, 9, 4, 3), 'ЦК вне зоны');
+  let inside = null, outside = null;
+  for (let ty = 2; ty < 54 && (!inside || !outside); ty += 1) {
+    for (let tx = 2; tx < 54 && (!inside || !outside); tx += 1) {
+      if (!B.canPlace(st.map, tx, ty, 2, 2)) continue;
+      if (B.zoneAllows(st, tx, ty, 2, 2)) inside = inside || [tx, ty];
+      else outside = outside || [tx, ty];
+    }
+  }
+  assert(inside, 'нет свободного места внутри зоны');
+  assert(outside, 'нет свободного места вне зоны');
+  const okIn = B.placeBuildingCmd(st, 'player', 'depot', inside[0], inside[1], []);
+  assert(okIn, 'постройка внутри зоны отклонена');
+  const noOut = B.placeBuildingCmd(st, 'player', 'depot', outside[0], outside[1], []);
+  assert(!noOut, 'постройка вне зоны принята');
+  const foe = B.placeBuildingCmd(st, 'enemy', 'depot', outside[0], outside[1], []);
+  assert(foe, 'ИИ ограничили зоной игрока');
+  st.placing = { type: 'turret', tx: outside[0], ty: outside[1] }; // призрак вне зоны
+  paint(); // граница зоны + красный призрак — без ошибок
+  st.placing = null;
+  // Победа — оборонная, по таймеру.
+  st.time = 200 + 660;
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы по таймеру обороны');
+  assert(/Волна разбилась о хитин/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Хребет удержан/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[5]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  pass('W15 rep5: зона держит, ИИ свободен, таймер = победа + эпилог, снос = поражение');
+} catch (e) { fail('W15 rep5-zone', e); }
+
+// ---------- W16: №13 «Око бури» — диверсия noBase: key → evac ----------
+try {
+  game.startMission(missionsMod.MISSIONS[13]);
+  ticks(5);
+  const st = game.state;
+  assert(st.noBase, 'база не отключена');
+  // Форт к моменту диверсии уже построен (иначе снос «Ока» — это снос
+  // вообще всех зданий врага и честная победа запасным путём).
+  function fortify(s) {
+    s.minerals.enemy = 99999;
+    const e = s.map.bases.enemy.cc;
+    let done = false;
+    for (let dy = -6; dy <= 6 && !done; dy++) {
+      for (let dx = -6; dx <= 6; dx++) {
+        if (B.canPlace(s.map, e.x + dx, e.y + dy, 3, 2)) {
+          B.placeBuildingCmd(s, 'enemy', 'barracks', e.x + dx, e.y + dy, []);
+          done = true;
+          break;
+        }
+      }
+    }
+    assert(done, 'форт не встал');
+  }
+  fortify(st);
+  const squad = st.units.filter((u) => u.side === 'player' && !u.dead);
+  assert(squad.length === 8, 'отряд не 8: ' + squad.length);
+  assert(/Снесите Око бури/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint(); // ромб-маркер «Ока» + точка минимапа — без ошибок
+  // Снос «Ока» — не победа, а переключение на отход.
+  const eye = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
+  U.damageEntity(st, eye, 1e9, null);
+  ticks(5);
+  assert(!st.gameOver, 'снос «Ока» сразу победил');
+  assert(st.win.kind === 'evac', 'цель не переключилась на отход');
+  assert(/Эвакуировано 0\/4/.test(game.objectiveText()), 'нет счётчика отхода: ' + game.objectiveText());
+  paint(); // круг зоны отхода — без ошибок
+  // Четверых в зону высадки (8.5, 48.5), остальных — подальше
+  // (часть отряда спавнится внутри круга зоны, их отводим).
+  squad.filter((u) => !u.dead).forEach((u, i) => {
+    if (i < 4) {
+      u.x = (8.5 + (i % 2) * 0.5) * 32; u.y = (48.5 + ((i / 2) | 0) * 0.5) * 32;
+    } else {
+      u.x = (30 + i) * 32; u.y = 30 * 32;
+    }
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  ticks(120);
+  assert(st.evacuated === 4, 'отошло не 4: ' + st.evacuated);
+  assert(st.gameOver === 'win', 'нет победы отходом');
+  assert(/Выводок уведён/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Око закрылось/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Фаза 2: выживших меньше need и взять неоткуда — поражение.
+  game.startMission(missionsMod.MISSIONS[13]);
+  ticks(5);
+  const st2 = game.state;
+  fortify(st2);
+  const eye2 = st2.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
+  U.damageEntity(st2, eye2, 1e9, null);
+  ticks(5);
+  for (const u of st2.units.filter((u) => u.side === 'player' && !u.dead).slice(0, 5)) {
+    U.damageEntity(st2, u, 1e9, null);
+  }
+  ticks(5);
+  assert(st2.gameOver === 'lose', 'нет поражения при недоборе отхода');
+  assert(/Грузить некого/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог показан на поражении');
+  // Фаза 1: гибель всего отряда — поражение стелса.
+  game.startMission(missionsMod.MISSIONS[13]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при гибели отряда');
+  assert(/Отряд погиб/.test(endReason()), 'чужая причина: ' + endReason());
+  // «Око» — последнее здание врага (снос на 2-й секунде): НЕ победа,
+  // фаза 2 началась, отход 4 = победа (блокер приёмки П5).
+  game.startMission(missionsMod.MISSIONS[13]);
+  ticks(5);
+  const st3 = game.state;
+  st3.minerals.enemy = 0; // ИИ не строится — форт не обрастает
+  const eye3 = st3.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
+  U.damageEntity(st3, eye3, 1e9, null);
+  ticks(5);
+  assert(st3.bcount.enemy <= 0, 'у врага остались здания — кейс не про «последнее»');
+  assert(!st3.gameOver, 'снос последнего «Ока» сразу победил');
+  assert(st3.win.kind === 'evac', 'фаза 2 не началась');
+  assert(/Эвакуировано 0\/4/.test(game.objectiveText()), 'нет счётчика отхода: ' + game.objectiveText());
+  st3.units.filter((u) => u.side === 'player' && !u.dead).forEach((u, i) => {
+    if (i < 4) {
+      u.x = (8.5 + (i % 2) * 0.5) * 32; u.y = (48.5 + ((i / 2) | 0) * 0.5) * 32;
+    } else {
+      u.x = (30 + i) * 32; u.y = 30 * 32;
+    }
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  ticks(120);
+  assert(st3.evacuated === 4, 'отошло не 4: ' + st3.evacuated);
+  assert(st3.gameOver === 'win', 'нет победы отходом');
+  assert(/Око закрылось/.test(el('end-epilogue').textContent), 'эпилога нет');
+  pass('W16 rep13: «Око»→отход, 4 отошли = победа + эпилог, недобор/гибель/Око-последнее = честно');
+} catch (e) { fail('W16 rep13-raid', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
