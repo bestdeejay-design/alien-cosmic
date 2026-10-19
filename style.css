@@ -107,6 +107,43 @@ html, body {
 }
 #minimap { display: block; width: 166px; height: 166px; cursor: pointer; }
 
+/* ---------- Пакет E.1: положения панели + скрытие ---------- */
+#panel-ctl { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-self: flex-start; }
+.mini-btn {
+  font-size: 11px; padding: 3px 8px; cursor: pointer;
+  color: var(--muted); background: rgba(4, 17, 22, .5);
+  border: 1px solid var(--line); border-radius: 5px; white-space: nowrap;
+}
+.mini-btn:hover { color: var(--cyan-light); border-color: var(--line-strong); }
+#panel-show { display: none; position: absolute; right: 10px; bottom: 10px; z-index: 15; }
+body.panel-hidden #bottom-panel { display: none; }
+body.panel-hidden #panel-show { display: block; }
+body.panel-left #bottom-panel {
+  left: 0; right: auto; top: 44px; bottom: 0; width: 236px; height: auto;
+  flex-direction: column; border-top: none; border-right: 1px solid rgba(118, 227, 215, .32);
+  box-shadow: 8px 0 30px rgba(0,0,0,.35);
+}
+body.panel-right #bottom-panel {
+  right: 0; left: auto; top: 44px; bottom: 0; width: 236px; height: auto;
+  flex-direction: column; border-top: none; border-left: 1px solid rgba(118, 227, 215, .32);
+  box-shadow: -8px 0 30px rgba(0,0,0,.35);
+}
+body.panel-top #bottom-panel {
+  top: 44px; bottom: auto; border-top: none;
+  border-bottom: 1px solid rgba(118, 227, 215, .32);
+  box-shadow: 0 8px 30px rgba(0,0,0,.35);
+}
+body.panel-left #minimap-box, body.panel-right #minimap-box { flex: 0 0 auto; align-self: center; }
+body.panel-left #sel-info, body.panel-right #sel-info { flex: 1 1 auto; min-height: 80px; }
+body.panel-left #cmd-grid, body.panel-right #cmd-grid {
+  flex: 0 0 auto; grid-template-columns: repeat(2, 1fr); grid-auto-rows: 64px; max-height: 300px;
+}
+body.panel-left #cmd-grid.compact, body.panel-right #cmd-grid.compact {
+  grid-template-columns: 1fr; grid-auto-rows: 32px; max-height: 320px;
+}
+body.panel-left #panel-ctl, body.panel-right #panel-ctl { flex-direction: row; align-self: stretch; }
+body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { flex: 1; }
+
 #sel-info {
   flex: 1;
   border: 1px solid var(--line);

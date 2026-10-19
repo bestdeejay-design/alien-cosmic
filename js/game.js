@@ -285,8 +285,13 @@ export class Game {
     this.canvas.style.height = this.cssH + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // Размеры панелей UI — чтобы краевой скролл не срабатывал над ними.
-    this.uiTop = document.getElementById('topbar')?.offsetHeight || 0;
-    this.uiBottom = document.getElementById('bottom-panel')?.offsetHeight || 0;
+    // Инсеты командной панели — из её положения E.1 (DOM-метрики врут
+    // при боковых положениях: offsetHeight там во весь экран).
+    const ins = ui.getPanelInsets();
+    this.uiTop = (document.getElementById('topbar')?.offsetHeight || 0) + ins.top;
+    this.uiBottom = ins.bottom;
+    this.uiLeft = ins.left;
+    this.uiRight = ins.right;
     this.clampCam();
   }
 
