@@ -7,6 +7,7 @@
 // G4 chain-fallback: все по 3 → выбор не null (наименее людный).
 // G5 exhaust: исчерпание → перевыбор внутри своего поля.
 // G6 rally: точка сбора на кристалле — новички сразу на тот же кристалл.
+// G7 crystal-tip: тултип остатков в свежей партии + гашение (Б1).
 //
 // Запуск: node scripts/sim_gather.mjs
 // ============================================================
@@ -186,6 +187,26 @@ try {
   paint();
   pass('G6 rally: точка сбора на кристалле — новичок сразу добывает его');
 } catch (e) { fail('G6 rally', e); }
+
+// ---------- G7: тултип кристалла в свежей партии (Б1) ----------
+try {
+  game.startMission(testMission());
+  ticks(3);
+  const st = game.state;
+  assert(!document.body.children.some((e) => e.id === 'cmd-tip'), 'тултип уже создан — партия не свежая');
+  const c = st.map.crystals.find((k) => k.amount > 0);
+  game.mouse = { x: 100, y: 100 };
+  ui.updateCrystalTip(game, c.x, c.y);
+  const tip = document.body.children.find((e) => e.id === 'cmd-tip');
+  assert(tip, 'элемент тултипа не создан');
+  assert(tip.classList.contains('show'), 'тултип не показан');
+  assert(new RegExp('Эрг ' + c.amount + '/' + c.max).test(tip.innerHTML), 'текст остатков: ' + tip.innerHTML);
+  assert(/Месторождение: [0-9]+/.test(tip.innerHTML), 'нет суммы месторождения');
+  assert(!U.crystalAt(st, 8, 8), 'точка (8,8) не пуста');
+  ui.updateCrystalTip(game, 8, 8); // пустая точка — тултип гаснет
+  assert(!tip.classList.contains('show'), 'тултип не погас');
+  pass('G7 crystal-tip: свежая партия → «Эрг N/M · Месторождение Σ», увод гасит');
+} catch (e) { fail('G7 crystal-tip', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_GATHER: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_GATHER: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);

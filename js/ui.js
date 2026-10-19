@@ -726,13 +726,14 @@ export function update(game) {
   els.time.textContent = fmtElapsed(st.time);
   els.canvas.style.cursor = st.placing ? 'crosshair' : 'default';
 
-  // Подпись панели: состав выделения + очередь/исследование выбранного здания —
-  // иначе «Очередь пуста» приклеивается после добавления первого юнита.
+  // Подпись панели: состав выделения + очередь/исследование/грейд выбранного
+  // здания — иначе «Очередь пуста» приклеивается после добавления первого юнита.
   const sel = st.selection.filter((e) => !e.dead);
   const firstB = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
   const newSig = sel.map((e) => e.id + (e.done === false ? 'c' : '')).join(',') +
     '|' + (st.buildMenu ? 'B' : '') + (st.placing ? 'P' + st.placing.type : '') +
     '|' + (firstB ? 'Q' + firstB.queue.length + (firstB.res ? 'R' + firstB.res.key : '') +
+      'G' + (firstB.gradeUp ? firstB.gradeUp.to : '') + 'L' + (firstB.level || 1) + // Б2: реакция на грейд
       'H' + Math.ceil((firstB.hp / firstB.maxHp) * 12) : '');
   if (newSig !== sig) {
     sig = newSig;
@@ -924,12 +925,17 @@ function rebuildPanel(game, sel) {
 // Тултип кнопки панели: имя, цена, описание и статы.
 // ------------------------------------------------------------
 let tipEl = null;
-function showTip(tip, btn) {
+// Б1: ленивое создание #cmd-tip — общее для кнопочных тултипов и кристалла.
+function ensureTipEl() {
   if (!tipEl) {
     tipEl = document.createElement('div');
     tipEl.id = 'cmd-tip';
     document.body.appendChild(tipEl);
   }
+  return tipEl;
+}
+function showTip(tip, btn) {
+  ensureTipEl();
   const rows = (tip.lines || []).map((l) => `<div class="tip-row">${l}</div>`).join('');
   tipEl.innerHTML = `<div class="tip-title">${tip.title}<span class="tip-cost">${tip.cost || ''}</span></div>` +
     (tip.desc ? `<div class="tip-desc">${tip.desc}</div>` : '') + rows;
@@ -943,7 +949,7 @@ function hideTip() { if (tipEl) tipEl.classList.remove('show'); }
 
 // F.1: тултип в точке экрана (для остатков кристалла).
 function tipAt(html, x, y) {
-  if (!tipEl) return;
+  ensureTipEl(); // Б1: работает и до первого наведения на кнопку
   tipEl.innerHTML = html;
   tipEl.style.left = Math.min(x + 14, window.innerWidth - 250) + 'px';
   tipEl.style.top = Math.max(y - 10, 8) + 'px';
@@ -958,7 +964,7 @@ export function mineralDotAlpha(c) {
 // F.1: остатки кристалла под курсором + сумма месторождения.
 export function updateCrystalTip(game, wx, wy) {
   const st = game.state;
-  if (!st || st.over || !st.map || !game.els || !game.els.tip) return;
+  if (!st || st.over || !st.map) return; // Б1: у Game нет els — старый гард гасил всё
   const c = crystalAt(st, wx, wy);
   if (!c || c.amount <= 0) { if (tipEl) tipEl.classList.remove('show'); return; }
   let sum = 0;

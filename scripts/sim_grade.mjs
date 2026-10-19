@@ -8,10 +8,12 @@
 // R5 cancel: отмена возвращает минералы, уровень не меняется.
 // R6 buttons: KeyR своим достроенным, KeyX во время грейда, чужим/Г3/лабе — нет.
 // R7 ai-idle: ИИ за 30с с казной не грейдит ничего.
+// R8 panel-live: сетка панели реагирует на грейд без перевыделения (Б2).
 //
 // Запуск: node scripts/sim_grade.mjs
 // ============================================================
 import './harness.mjs';
+import { el } from './harness.mjs';
 
 const failures = [];
 function fail(phase, err) {
@@ -262,6 +264,43 @@ try {
   }
   pass('R7 ai-idle: 30с с казной 99999 — у ИИ все здания Г1');
 } catch (e) { fail('R7 ai-idle', e); }
+
+// ---------- R8: панель реагирует на грейд без перевыделения (Б2) ----------
+try {
+  game.startMission(testMission());
+  ticks(3);
+  const st = game.state;
+  st.minerals.player = 99999;
+  const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc');
+  const bar = placeDone(st, 'player', 'barracks', cc.tx, cc.ty);
+  const gridCodes = () => el('cmd-grid').children.map((b) => b.dataset.code);
+  const gridLabel = (code) => {
+    const b = el('cmd-grid').children.find((x) => x.dataset.code === code);
+    if (!b) return null;
+    const l = b.children.find((x) => x.tag === 'span' && x.className === 'cmd-label');
+    return l ? l.textContent : null;
+  };
+  st.selection = [bar];
+  ui.update(game);
+  assert(gridCodes().includes('KeyR'), 'панель без Грейда на Г1: ' + gridCodes().join(' '));
+  assert(gridLabel('KeyR') === 'Грейд II', 'подпись: ' + gridLabel('KeyR'));
+  game.hooks.startGrade(bar); // UI-путь: R по казарме
+  ui.update(game);
+  assert(!gridCodes().includes('KeyR'), 'Грейд висит во время грейда');
+  assert(gridLabel('KeyX') === 'Отменить', 'Отмена не появилась сразу');
+  bar.gradeUp.t = 0.01; ticks(3); // завершение — тоже без перевыделения
+  ui.update(game);
+  assert(gridLabel('KeyR') === 'Грейд III', 'после Г2 панель не обновилась: ' + gridLabel('KeyR'));
+  game.hooks.startGrade(bar);
+  ui.update(game);
+  assert(gridCodes().includes('KeyX'), 'нет Отмены на грейде в Г3');
+  game.hooks.cancelGrade(bar);
+  ui.update(game);
+  assert(gridLabel('KeyR') === 'Грейд III', 'после отмены панель не вернулась: ' + gridLabel('KeyR'));
+  st.selection = [];
+  ui.update(game);
+  pass('R8 panel-live: R→Отменить сразу, завершение→Грейд III, отмена→назад, всё без перевыделения');
+} catch (e) { fail('R8 panel-live', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_GRADE: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_GRADE: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
