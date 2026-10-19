@@ -3,7 +3,7 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BULLET_SPEED, COLORS, UPGRADES, fname } from './config.js';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname } from './config.js';
 import { nearestFreeTileAround } from './pathfinding.js';
 import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
 import { distToRectPx } from './pathfinding.js';
@@ -97,8 +97,14 @@ export function placeBuildingCmd(st, side, type, tx, ty, builders) {
       }
     }
   }
-  // Рабочие получают приказ строить.
-  if (builders) for (const w of builders) if (!w.dead && !w.garrison) orderBuild(st, w, b);
+  // Рабочие получают приказ строить — не больше BUILDERS_PER_SITE
+  // (П3): из пула берём ближайших живых, остальные сохраняют приказы.
+  if (builders && builders.length) {
+    const crew = builders.filter((w) => !w.dead && !w.garrison && w.side === side)
+      .sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y))
+      .slice(0, BUILDERS_PER_SITE);
+    for (const w of crew) orderBuild(st, w, b);
+  }
   return b;
 }
 
