@@ -260,5 +260,88 @@ try {
   pass('W10 rep4: 8 погружены = победа + эпилог, снос = поражение без эпилога');
 } catch (e) { fail('W10 rep4-evac', e); }
 
+// ---------- W11: №2 «Пробуждение недр» — реальная ОСАДА ----------
+try {
+  game.startMission(missionsMod.MISSIONS[2]);
+  ticks(5);
+  const st = game.state;
+  assert(/Уничтожьте: Сердце лагеря/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(/Карательный корпус/.test(game.objectiveText()), 'нет таймера: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint(); // ромб над Сердцем + точка минимапа — без ошибок
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса Сердца');
+  assert(/Сердце чужаков вырвано/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Железные забыли/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Мягкий дедлайн: волна пришла, игра идёт.
+  game.startMission(missionsMod.MISSIONS[2]);
+  game.state.time = 419;
+  const before = game.state.units.filter((u) => u.side === 'enemy').length;
+  ticks(60);
+  assert(game.state.deadlineFired, 'дедлайн не сработал');
+  assert(!game.state.gameOver, 'мягкий дедлайн завершил игру');
+  assert(game.state.units.filter((u) => u.side === 'enemy').length > before, 'волны нет');
+  // Поражение: снос своей базы.
+  game.startMission(missionsMod.MISSIONS[2]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе гнезда');
+  pass('W11 rep2: Сердце = победа + эпилог, дедлайн = волна, снос = поражение');
+} catch (e) { fail('W11 rep2-siege', e); }
+
+// ---------- W12: №6 «Красный флаг» — реальная ЭКОНОМИКА ----------
+try {
+  game.startMission(missionsMod.MISSIONS[6]);
+  ticks(5);
+  assert(/Собрано 0\/2000/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
+  game.state.stats.mined = 1999;
+  ticks(2);
+  assert(!game.state.gameOver, 'победа до порога');
+  game.state.stats.mined = 2000;
+  ticks(2);
+  assert(game.state.gameOver === 'win', 'нет победы на 2000');
+  assert(/Эрга достаточно/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Флаги сорваны/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[6]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  pass('W12 rep6: 2000 = победа + эпилог, снос базы = поражение');
+} catch (e) { fail('W12 rep6-economy', e); }
+
+// ---------- W13: №7 «Стальной кулак» — реальная ОСАДА ----------
+try {
+  game.startMission(missionsMod.MISSIONS[7]);
+  ticks(5);
+  const st = game.state;
+  assert(/Уничтожьте: Штаб форта/.test(game.objectiveText()), 'нет цели: ' + game.objectiveText());
+  assert(/Контрудар/.test(game.objectiveText()), 'нет таймера: ' + game.objectiveText());
+  assert(st.keyTotal === 1, 'ключевых целей не 1: ' + st.keyTotal);
+  paint();
+  const cc = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, cc, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после сноса штаба');
+  assert(/Ключевая цель уничтожена/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Форт пал/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(missionsMod.MISSIONS[7]);
+  game.state.time = 479;
+  const before = game.state.units.filter((u) => u.side === 'enemy').length;
+  ticks(60);
+  assert(game.state.deadlineFired, 'дедлайн не сработал');
+  assert(!game.state.gameOver, 'мягкий дедлайн завершил игру');
+  assert(game.state.units.filter((u) => u.side === 'enemy').length > before, 'волны нет');
+  game.startMission(missionsMod.MISSIONS[7]);
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  pass('W13 rep7: штаб = победа + эпилог, дедлайн = волна, снос = поражение');
+} catch (e) { fail('W13 rep7-siege', e); }
+
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
