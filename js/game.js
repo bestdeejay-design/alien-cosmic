@@ -868,7 +868,7 @@ export class Game {
       ? ' · ' + st.loseDeadline.label + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
       : '';
     if (w && w.kind === 'stockpile') {
-      return 'Накоплено ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
+      return 'Собрано ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
         tr(st.factions.player, 'minedWord') + dl;
     }
     if (w && w.kind === 'evac') {
