@@ -157,7 +157,7 @@ export class AIController {
 
     // 3) Дом — если население на пределе (приоритет №1, иначе deadlock).
     const depotPending = st.buildings.some((b) => mine(b) && !b.done && b.type === 'depot');
-    if (cap < SUPPLY_MAX && cap - used <= 2 && !depotPending && money >= BUILDINGS.depot.cost) {
+    if (P.depots !== false && cap < SUPPLY_MAX && cap - used <= 2 && !depotPending && money >= BUILDINGS.depot.cost) { // П8: №17 запрещает дома
       this.tryPlace(st, 'depot');
     }
 

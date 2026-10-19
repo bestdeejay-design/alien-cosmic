@@ -512,6 +512,8 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 }
 .codex-tab:hover { border-color: var(--line-strong); color: var(--cyan-light); }
 .codex-tab.active { border-color: var(--cyan); color: var(--cyan-light); background: rgba(118,227,215,.09); }
+.codex-locked { opacity: .55; font-style: italic; }
+#codex-body h3 { margin: 14px 0 4px; font-size: 14px; color: var(--cyan-light); }
 #codex-body { margin-bottom: 16px; }
 #codex-body h2 { font-size: 19px; letter-spacing: 1px; color: var(--cyan-light); margin-bottom: 8px; }
 #codex-body p { font-size: 13.5px; color: #c3d8d1; line-height: 1.65; margin-bottom: 10px; }

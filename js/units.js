@@ -1408,6 +1408,8 @@ export function damageEntity(st, victim, dmg, attacker) {
 
 function killEntity(st, v, attacker) {
   v.dead = true;
+  // П8: №17 — гибель ключевого юнита игрока (цветня) взводит поражение.
+  if (v.side === 'player' && st.win && st.win.guardType && v.type === st.win.guardType) st.guardLost = true;
   v.selected = false;
   if (v.kind === 'unit') {
     addEffect(st, { kind: 'boom', x: v.x, y: v.y, t: 0, life: v.cfg.vehicle ? 0.6 : 0.4, big: !!v.cfg.vehicle, faction: v.faction });

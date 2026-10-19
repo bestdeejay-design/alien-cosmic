@@ -17,6 +17,10 @@
 // W18 rep11: ОСАДА — штаб до дедлайна = победа + эпилог, ветераны = волна.
 // W19 rep14: ЦЕЛЬ-финал — снос крепления = победа + campaignDone + эпилог.
 // W20 rep14-C3: стартовый tech 1 врага — исследования закрыты, иконки на лабе видны.
+// W21 rep16: ЭКОНОМИКА — волны с первых минут, порог 2500 = победа + эпилог, снос = поражение.
+// W22 rep17: ОТРЯД-зеркало — 3 склада = победа + эпилог, гибель цветня = «Выводок пал».
+// W23 rep18: ОБОРОНА → ЭВАКУАЦИЯ — таймер, фаза 2, 8 погружены = победа; ban казармы/завода.
+// W24 rep19: ЦЕЛЬ + жёсткий дедлайн — снос «Глушителя» = победа, время вышло = поражение.
 //
 // Запуск: node scripts/sim_wins.mjs
 // ============================================================
@@ -694,6 +698,150 @@ try {
   assert(cB === cB0, `бункер врага шумит: ${cB} vs ${cB0}`);
   pass('W20 rep14-C3: tech 1 закрыт, качается 2-й, 4 иконки на лабе, бункер молчит');
 } catch (e) { fail('W20 rep14-startTech', e); }
+
+// ---------- W21: №16 «Ржавый караван» — экономика под волнами ----------
+try {
+  const m = missionsMod.MISSIONS[15];
+  assert(m.id === 16 && m.bonus, 'не та миссия в слоте 15');
+  assert(m.ai.firstWave <= 2 && m.ai.minWaveInterval <= 45, 'волны не с первых минут');
+  game.startMission(m);
+  ticks(600); // 20 игровых секунд честной добычи под волнами
+  const st = game.state;
+  assert(st.stats.mined > 0, 'добыча не идёт');
+  assert(!st.gameOver, 'преждевременный финал');
+  assert(/Собрано/.test(game.objectiveText()), 'нет прогресса: ' + game.objectiveText());
+  st.stats.mined = 2499;
+  ticks(2);
+  assert(!st.gameOver, 'победа до порога');
+  st.stats.mined = 2500;
+  ticks(2);
+  assert(st.gameOver === 'win', 'нет победы на пороге');
+  assert(/Эрга достаточно/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Караван ушёл/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(m);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при сносе базы');
+  assert(/База потеряна/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог на поражении');
+  pass('W21 rep16: волны ранние, порог 2500 = победа + эпилог, снос = поражение');
+} catch (e) { fail('W21 rep16-economy', e); }
+
+// ---------- W22: №17 «Тихая грань» — зеркальный рейд ----------
+try {
+  const m = missionsMod.MISSIONS[16];
+  assert(m.id === 17 && m.noBase, 'не та миссия в слоте 16');
+  game.startMission(m);
+  ticks(5);
+  const st = game.state;
+  assert(st.factions.player === 'alien' && st.factions.enemy === 'alien', 'не зеркало');
+  assert(st.units.filter((u) => u.side === 'player' && u.type === 'marine').length === 6, 'не 6 бойцов');
+  assert(st.units.filter((u) => u.side === 'player' && u.type === 'medic').length === 2, 'не 2 цветня');
+  assert(st.units.every((u) => u.faction === 'alien'), 'чужой облик в зеркале');
+  const depots = st.buildings.filter((b) => b.side === 'enemy' && b.type === 'depot' && !b.dead);
+  assert(depots.length === 3, 'складов не 3: ' + depots.length);
+  assert(st.keyTotal === 3, 'keyTotal не 3: ' + st.keyTotal);
+  for (const d of depots) U.damageEntity(st, d, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы после 3 складов');
+  assert(/Сердце чужаков вырвано/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Склады горят/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Потеря цветня — поражение «Выводок пал» (жёстче №13).
+  game.startMission(m);
+  ticks(5);
+  const st2 = game.state;
+  const flo = st2.units.find((u) => u.side === 'player' && u.type === 'medic');
+  U.damageEntity(st2, flo, 1e9, null);
+  ticks(5);
+  assert(st2.gameOver === 'lose', 'нет поражения при гибели цветня');
+  assert(/Выводок пал/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог на поражении');
+  pass('W22 rep17: зеркало, 3 склада = победа + эпилог, цветень = «Выводок пал»');
+} catch (e) { fail('W22 rep17-mirror', e); }
+
+// ---------- W23: №18 «Долгая ночь» — оборона, фаза 2, ban стройки ----------
+try {
+  const m = missionsMod.MISSIONS[17];
+  assert(m.id === 18 && m.defense && m.banBuild.join() === 'barracks,factory', 'не та миссия в слоте 17');
+  game.startMission(m);
+  ticks(5);
+  const st = game.state;
+  // Ban в реальном меню: у рабочего с открытым меню нет казармы/завода, но есть лаба.
+  const w0 = st.units.find((u) => u.side === 'player' && u.cfg && u.cfg.canBuild);
+  st.selection = [w0]; st.buildMenu = true;
+  const codes = game.getCommands().map((c) => c.code);
+  assert(!codes.includes('KeyE') && !codes.includes('KeyU'), 'ban не сработал: ' + codes.join(','));
+  assert(codes.includes('KeyI'), 'лаборатория пропала из меню №18');
+  st.buildMenu = false; st.selection = [];
+  // Контраст: в №16 (база есть) казарма на месте.
+  game.startMission(missionsMod.MISSIONS[15]);
+  ticks(5);
+  const stB = game.state;
+  stB.selection = [stB.units.find((u) => u.side === 'player' && u.type === 'worker')];
+  stB.buildMenu = true;
+  assert(game.getCommands().some((c) => c.code === 'KeyE'), 'в №16 казармы нет');
+  // Двухфазность по прецеденту №1.
+  game.startMission(m);
+  ticks(5);
+  const st2 = game.state;
+  assert(/Подготовка|Оборона/.test(game.objectiveText()), 'фаза 1 без таймера: ' + game.objectiveText());
+  const early = U.spawnUnit(st2, 'player', 'marine', 34.5 * 32, 14.5 * 32);
+  early.order = { kind: 'idle' }; early.moving = false;
+  ticks(120);
+  assert(st2.evacuated === 0, 'погрузка в фазе 1');
+  st2.time = m.defense.prep + m.defense.total;
+  ticks(5);
+  assert(!st2.gameOver, 'таймер завершил игру');
+  assert(st2.phase2, 'фазы 2 нет');
+  assert(/Эвакуировано 0\/8/.test(game.objectiveText()), 'нет счётчика: ' + game.objectiveText());
+  paint();
+  const crew = st2.units.filter((u) => u.side === 'player' && !u.dead);
+  while (crew.length < 8) crew.push(U.spawnUnit(st2, 'player', 'marine', 34.5 * 32, 14.5 * 32));
+  crew.slice(0, 8).forEach((u, i) => {
+    u.x = (34.5 + (i % 4) * 0.5) * 32; u.y = (14.5 + ((i / 4) | 0) * 0.5) * 32;
+    u.prevX = u.x; u.prevY = u.y;
+    u.order = { kind: 'idle' }; u.moving = false;
+  });
+  ticks(150);
+  assert(st2.evacuated === 8, 'погружено не 8: ' + st2.evacuated);
+  assert(st2.gameOver === 'win', 'нет победы эвакуацией');
+  assert(/Эвакуация завершена/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Коридор открыт/.test(el('end-epilogue').textContent), 'эпилога нет');
+  game.startMission(m);
+  game.state.time = m.defense.prep + m.defense.total;
+  ticks(5);
+  killAll(game.state, 'player');
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения при срыве погрузки');
+  assert(/Некого грузить/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог на поражении');
+  pass('W23 rep18: ban держит, таймер→счётчик, 8 погружены = победа + эпилог, срыв = поражение');
+} catch (e) { fail('W23 rep18-twophase', e); }
+
+// ---------- W24: №19 «Глушитель молчит» — штурм против часов ----------
+try {
+  const m = missionsMod.MISSIONS[18];
+  assert(m.id === 19 && m.loseDeadline && m.loseDeadline.hard, 'не та миссия в слоте 18');
+  game.startMission(m);
+  ticks(5);
+  const st = game.state;
+  assert(st.factions.player === 'alien' && st.factions.enemy === 'human', 'не те фракции');
+  assert(/Глушитель запел/.test(game.objectiveText()), 'таймера в HUD нет: ' + game.objectiveText());
+  const dev = st.buildings.find((b) => b.side === 'enemy' && b.type === 'cc');
+  U.damageEntity(st, dev, 1e9, null);
+  ticks(5);
+  assert(st.gameOver === 'win', 'нет победы до дедлайна');
+  assert(/Сердце чужаков вырвано/.test(endReason()), 'чужая строка: ' + endReason());
+  assert(/Война кончилась/.test(el('end-epilogue').textContent), 'эпилога нет');
+  // Время вышло — поражение «Глушитель запел».
+  game.startMission(m);
+  game.state.time = 600;
+  ticks(5);
+  assert(game.state.gameOver === 'lose', 'нет поражения по жёсткому дедлайну');
+  assert(/Глушитель запел/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(el('end-epilogue').textContent === '', 'эпилог на поражении');
+  pass('W24 rep19: победа до дедлайна + эпилог, время вышло = «Глушитель запел»');
+} catch (e) { fail('W24 rep19-hard', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_WINS: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_WINS: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(failures.length ? 1 : 0);
