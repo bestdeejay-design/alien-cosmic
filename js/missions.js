@@ -265,6 +265,7 @@ export const MISSIONS = [
     intro: 'Новинка: Плазмер — залп выжигает группы. Враг теперь тоже люди!',
     epilogue: 'Флаги сорваны. Но мятеж — это идея, а идеи горят плохо.',
     objective: { kind: 'stockpile', amount: 2000 },
+    enemyFaction: 'human', // J: мятежники — люди, не рой («Враг теперь тоже люди!»)
     map: {
       seed: 20260107, biome: 'mars', w: 84, h: 84, rocks: 12, rich: 1.15, base: { x: 40, y: 8 },
       lakes: [[26, 30, 4, 3], [58, 30, 4, 3]],
@@ -293,6 +294,7 @@ export const MISSIONS = [
     epilogue: 'Форт пал. В сейфе — накладные гнезда «Сумрак». Тихо. Никому.',
     objective: { kind: 'key', type: 'cc', name: 'Штаб форта «Гвоздь»' },
     loseDeadline: { at: 480, label: 'Контрудар «Красного флага»', hard: false },
+    enemyFaction: 'human', // J: форт «Гвоздь» держат отступники-люди
     map: {
       seed: 20260108, biome: 'mars', w: 72, h: 72, rocks: 11, rich: 1.25, base: { x: 56, y: 56 },
       lakes: [[30, 44, 4, 3], [44, 30, 4, 3]],
@@ -399,6 +401,7 @@ export const MISSIONS = [
     objective: { kind: 'key', type: 'cc', name: 'Штаб «Кремня»' },
     loseDeadline: { at: 450, label: 'Ветераны «Кремня»', hard: false },
     epilogue: '«Кремень» молчит. «Глушитель» не найден. Он где-то рядом.',
+    enemyFaction: 'human', // J: «Кремень» — столица Сынов Песка (люди)
     map: {
       seed: 20260112, biome: 'mars', w: 76, h: 76, rocks: 12, rich: 1.3, base: { x: 56, y: 10 },
       lakes: [[28, 30, 4, 3], [48, 46, 3.5, 2.5]],
