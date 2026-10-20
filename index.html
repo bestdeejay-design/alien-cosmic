@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Alien Cosmic — RTS о войне корпорации и улья</title>
-  <meta name="description" content="Alien Cosmic — стратегия в реальном времени: корпорация «Гелиос» добывает кристаллы на чужих планетах, а кристаллорождённые кхарид защищают свой дом. Кампания, миссии-обороны, две расы, авто-режимы."/>
+  <title>Alien Cosmic</title>
+  <meta name="description" content="Alien Cosmic"/>
   <link rel="stylesheet" href="./style.css"/>
 </head>
 <body>
@@ -18,22 +18,22 @@
       <div class="res"><span id="res-time">00:00</span></div>
       <div class="res objective" id="res-objective"></div>
       <div class="spacer"></div>
-      <button id="btn-sound" class="tb-btn">Звук: вкл</button>
-      <button id="btn-pause" class="tb-btn">Пауза</button>
-      <button id="btn-restart" class="tb-btn">Заново</button>
-      <button id="btn-exit" class="tb-btn">Выход</button>
+      <button id="btn-sound" class="tb-btn"></button>
+      <button id="btn-pause" class="tb-btn" data-i18n="ui.topbar.pause"></button>
+      <button id="btn-restart" class="tb-btn" data-i18n="ui.topbar.restart"></button>
+      <button id="btn-exit" class="tb-btn" data-i18n="ui.topbar.exit"></button>
     </div>
 
     <div id="bottom-panel">
       <div id="minimap-box"><canvas id="minimap" width="176" height="176"></canvas></div>
-      <div id="sel-info"><div class="hint">Загрузка…</div></div>
+      <div id="sel-info"><div class="hint" data-i18n="ui.loading"></div></div>
       <div id="cmd-grid"></div>
       <div id="panel-ctl">
-        <button id="panel-pos" class="mini-btn" title="Положение панели: низ → слева → справа → верх">Панель: низ</button>
-        <button id="panel-hide" class="mini-btn" title="Скрыть панель (V)">Скрыть</button>
+        <button id="panel-pos" class="mini-btn" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
+        <button id="panel-hide" class="mini-btn" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
       </div>
     </div>
-    <button id="panel-show" class="mini-btn" title="Показать панель (V)">Панель</button>
+    <button id="panel-show" class="mini-btn" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
 
     <div id="toasts"></div>
 
@@ -41,39 +41,43 @@
     <div id="overlay" class="overlay">
       <div class="overlay-box menu-box">
         <h1>ALIEN COSMIC</h1>
-        <p class="sub">Стратегия в реальном времени: война колонистов и аборигенов за эрг на Рубеже-64</p>
-        <div id="ver-badge" class="ver-badge">версия H · 20.10.2026</div>
+        <p class="sub" data-i18n="ui.menu.sub"></p>
+        <div id="ver-badge" class="ver-badge"></div>
+        <div class="lang-row">
+          <label for="lang-select" data-i18n="ui.langLabel"></label>
+          <select id="lang-select"></select>
+        </div>
         <div class="menu-buttons">
-          <button id="btn-season1" class="big-btn">Сезон 1 · Кампания</button>
-          <button id="btn-season2" class="big-btn ghost-btn season-soon">Сезон 2 · СКОРО</button>
-          <button id="btn-codex" class="big-btn ghost-btn">Легенда</button>
+          <button id="btn-season1" class="big-btn" data-i18n="ui.menu.season1"></button>
+          <button id="btn-season2" class="big-btn ghost-btn season-soon" data-i18n="ui.menu.season2"></button>
+          <button id="btn-codex" class="big-btn ghost-btn" data-i18n="ui.menu.codex"></button>
         </div>
         <div class="fac-teaser">
-          <div class="fac-chip fac-human">ГЕЛИОС — ховер-техника и плазма</div>
-          <div class="fac-chip fac-alien">КХАРИД — кристаллическая органика</div>
+          <div class="fac-chip fac-human" data-i18n="ui.menu.facTeaserHuman"></div>
+          <div class="fac-chip fac-alien" data-i18n="ui.menu.facTeaserAlien"></div>
         </div>
         <div class="help">
-          <p><b>ЛКМ</b> — выделение, рамка &nbsp;·&nbsp; <b>двойной клик</b> — все такие же юниты на экране &nbsp;·&nbsp; <b>ПКМ</b> — идти / добывать / атаковать / ремонтировать</p>
-          <p><b>A + ЛКМ</b> — атака-движение: идти и бить всех по дороге &nbsp;·&nbsp; <b>колесо / два пальца</b> — двигать карту &nbsp;·&nbsp; <b>Стрелки / край экрана</b> — камера &nbsp;·&nbsp; <b>Пробел</b> — к базе &nbsp;·&nbsp; <b>+ / −</b> — зум &nbsp;·&nbsp; <b>V</b> — панель &nbsp;·&nbsp; <b>P</b> — пауза (Esc — снять/отменить)</p>
-          <p><b>Ctrl/Alt + 1…9</b> — отряд, <b>цифра</b> — выбрать, <b>дважды</b> — прыгнуть &nbsp;·&nbsp; <b>B</b> — стройка: все 8 зданий (КЦ, дом, казарма, турель, стена, бункер, завод, лаборатория) &nbsp;·&nbsp; <b>S</b> — стоп</p>
-          <p><b>.</b> — свободный рабочий &nbsp;·&nbsp; <b>,</b> — вся армия &nbsp;·&nbsp; <b>Tab</b> — перебор бойцов &nbsp;·&nbsp; <b>H</b> — к последней тревоге &nbsp;·&nbsp; на трекпаде ПКМ — тап двумя пальцами или Ctrl+тап</p>
-          <p><b>Лаборатория</b> — исследования: оружие и броня пехоты, орудия и плиты техники &nbsp;·&nbsp; точка сбора на кристалле — новые рабочие сразу добывают</p>
-          <p>Дроны-техники после стройки сами возвращаются к добыче · без приказа бойцы сами атакуют врага в радиусе обзора · наниты сами лечат ближайшую пехоту и останавливаются на лечении · наведите курсор на кнопку — полная справка</p>
-          <p>Добыча: рабочие сами распределяются по жилам (оптимум — 2 на кристалл) · достроенные турель, казарма, завод и бункер улучшаются: <b>R</b> — грейд, <b>X</b> — отмена</p>
+          <p data-i18n="ui.menu.help.0"></p>
+          <p data-i18n="ui.menu.help.1"></p>
+          <p data-i18n="ui.menu.help.2"></p>
+          <p data-i18n="ui.menu.help.3"></p>
+          <p data-i18n="ui.menu.help.4"></p>
+          <p data-i18n="ui.menu.help.5"></p>
+          <p data-i18n="ui.menu.help.6"></p>
         </div>
-        <button id="btn-start" class="big-btn ghost-btn small-start">Быстрый старт</button>
-        <button id="btn-reset" class="big-btn ghost-btn small-start">Сбросить прогресс</button>
+        <button id="btn-start" class="big-btn ghost-btn small-start"></button>
+        <button id="btn-reset" class="big-btn ghost-btn small-start" data-i18n="ui.menu.reset"></button>
       </div>
     </div>
 
     <!-- Выбор миссии -->
     <div id="mission-overlay" class="overlay hidden">
       <div class="overlay-box wide">
-        <h1>Кампания «Alien Cosmic»</h1>
-        <p class="sub">15 миссий · 3 акта + «Главы Хроники» после финала · Гелиос против роя и мятежников «Красного флага»</p>
+        <h1 data-i18n="ui.missionsScr.h1"></h1>
+        <p class="sub" data-i18n="ui.missionsScr.sub"></p>
         <div id="mission-list"></div>
-        <button id="btn-missions-skirmish" class="big-btn ghost-btn">Быстрый бой</button>
-        <button id="btn-missions-back" class="big-btn ghost-btn">← Назад</button>
+        <button id="btn-missions-skirmish" class="big-btn ghost-btn" data-i18n="ui.missionsScr.skirmishBtn"></button>
+        <button id="btn-missions-back" class="big-btn ghost-btn" data-i18n="ui.missionsScr.back"></button>
       </div>
     </div>
 
@@ -81,15 +85,15 @@
     <div id="brief-overlay" class="overlay hidden">
       <div class="overlay-box brief-box">
         <div class="brief-head">
-          <span class="badge" id="brief-badge">ГЕЛИОС</span>
-          <h1 id="brief-title">Миссия</h1>
+          <span class="badge" id="brief-badge"></span>
+          <h1 id="brief-title" data-i18n="ui.brief.title"></h1>
         </div>
         <p class="sub" id="brief-place"></p>
         <div id="brief-text"></div>
         <div class="objective-line" id="brief-objective"></div>
         <div class="menu-buttons">
-          <button id="btn-brief-go" class="big-btn">В бой!</button>
-          <button id="btn-brief-back" class="big-btn ghost-btn">← Миссии</button>
+          <button id="btn-brief-go" class="big-btn" data-i18n="ui.brief.go"></button>
+          <button id="btn-brief-back" class="big-btn ghost-btn" data-i18n="ui.missionsScr.backToMissions"></button>
         </div>
       </div>
     </div>
@@ -97,52 +101,52 @@
     <!-- Кодекс «Легенда» -->
     <div id="codex-overlay" class="overlay hidden">
       <div class="overlay-box wide codex-box">
-        <h1>Легенда</h1>
-        <p class="sub">Мир Рубежа-64: эрг, рой, мятеж и три планеты</p>
+        <h1 data-i18n="ui.codexScr.h1"></h1>
+        <p class="sub" data-i18n="ui.codexScr.sub"></p>
         <div id="codex-tabs"></div>
         <div id="codex-body"></div>
-        <button id="btn-codex-back" class="big-btn ghost-btn">← Назад</button>
+        <button id="btn-codex-back" class="big-btn ghost-btn" data-i18n="ui.codexScr.back"></button>
       </div>
     </div>
 
     <!-- Выбор фракции для быстрого боя -->
     <div id="skirmish-overlay" class="overlay hidden">
       <div class="overlay-box wide">
-        <h1>Быстрый бой</h1>
-        <p class="sub">Выберите сторону. Врагом всегда будет противоположная раса.</p>
+        <h1 data-i18n="ui.skirmish.h1"></h1>
+        <p class="sub" data-i18n="ui.skirmish.sub"></p>
         <div class="sk-config">
-          <label>Размер <select id="sk-size"><option value="48">48</option><option value="64" selected>64</option><option value="80">80</option><option value="96">96</option></select></label>
-          <label>Форма <select id="sk-shape"><option value="square" selected>Квадрат</option><option value="wide">Широкая 3:2</option><option value="tall">Высокая 2:3</option></select></label>
-          <span id="sk-dims" class="sk-dims">64×64</span>
+          <label><span data-i18n="ui.skirmish.size"></span> <select id="sk-size"><option value="48">48</option><option value="64" selected>64</option><option value="80">80</option><option value="96">96</option></select></label>
+          <label><span data-i18n="ui.skirmish.shape"></span> <select id="sk-shape"><option value="square" data-i18n="ui.skirmish.shapes.square"></option><option value="wide" data-i18n="ui.skirmish.shapes.wide"></option><option value="tall" data-i18n="ui.skirmish.shapes.tall"></option></select></label>
+          <span id="sk-dims" class="sk-dims"></span>
         </div>
         <div class="fac-cards">
           <button id="btn-skirmish-human" class="fac-card fac-human">
-            <div class="fc-title">ГЕЛИОС</div>
-            <div class="fc-sub">Экспедиционный корпус корпорации</div>
-            <div class="fc-list">Рейнджеры · Плазмеры · Наниты<br>Скифы · Бастионы · Мортиры «Нова»<br>Турели · Бункеры · Лаборатория</div>
+            <div class="fc-title" data-i18n="ui.skirmish.humanCard.title"></div>
+            <div class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></div>
+            <div class="fc-list" data-i18n="ui.skirmish.humanCard.list"></div>
           </button>
           <button id="btn-skirmish-alien" class="fac-card fac-alien">
-            <div class="fc-title">КХАРИД</div>
-            <div class="fc-sub">Кристаллорождённые аборигены</div>
-            <div class="fc-list">Кристожалы · Кислотники · Цветни<br>Скользни · Громилы · Спогромы<br>Жвала · Коконы · Узел эволюции</div>
+            <div class="fc-title" data-i18n="ui.skirmish.alienCard.title"></div>
+            <div class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></div>
+            <div class="fc-list" data-i18n="ui.skirmish.alienCard.list"></div>
           </button>
         </div>
-        <button id="btn-skirmish-back" class="big-btn ghost-btn">← Назад</button>
+        <button id="btn-skirmish-back" class="big-btn ghost-btn" data-i18n="ui.skirmish.back"></button>
       </div>
     </div>
 
     <!-- Финал -->
     <div id="end-overlay" class="overlay hidden">
       <div class="overlay-box">
-        <h1 id="end-title">Победа!</h1>
+        <h1 id="end-title"></h1>
         <div id="end-reason" class="end-reason"></div>
         <div id="end-stats"></div>
         <div id="end-epilogue" class="end-epilogue"></div>
-        <button id="btn-again" class="big-btn">Играть снова</button>
+        <button id="btn-again" class="big-btn" data-i18n="ui.end.again"></button>
       </div>
     </div>
 
-    <div id="pause-overlay" class="overlay thin hidden"><div class="pause-text">ПАУЗА</div></div>
+    <div id="pause-overlay" class="overlay thin hidden"><div class="pause-text" data-i18n="ui.pauseText"></div></div>
   </div>
 
   <script type="module" src="./js/game.js"></script>

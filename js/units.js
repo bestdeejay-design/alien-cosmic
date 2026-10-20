@@ -9,7 +9,7 @@ import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
-import { tr } from './lore.js';
+import { message } from './i18n.js';
 
 let nextId = 1;
 
@@ -432,7 +432,7 @@ function scoutThink(st, u, grid) {
     if (fields.has(key)) continue;
     fields.add(key);
     st.pings.push({ x: c.x, y: c.y, t: 0 });
-    st.game.ui.toast(tr(st.factions.player, 'veinFound'), 'info');
+    st.game.ui.toast(message('veinFound', st.factions.player), 'info');
   }
   // 3. Контакт: враг (юнит или строение) сейчас виден — пинг + тост, кд 10с.
   let contact = !!threat;
@@ -447,7 +447,7 @@ function scoutThink(st, u, grid) {
   if (contact && st.time - lastContact > CONTACT_COOLDOWN) {
     st.lastContactT = st.time;
     st.pings.push({ x: u.x, y: u.y, t: 0 });
-    st.game.ui.toast(tr(st.factions.player, 'contact'), 'warn');
+    st.game.ui.toast(message('contact', st.factions.player), 'warn');
   }
 }
 
@@ -477,7 +477,7 @@ function scoutPickTarget(st, u) {
     const lastDone = st.lastReconDoneT == null ? -99 : st.lastReconDoneT;
     if (u.side === 'player' && st.time - lastDone > 5) {
       st.lastReconDoneT = st.time;
-      st.game.ui.toast(tr(st.factions.player, 'reconDone'), 'info');
+      st.game.ui.toast(message('reconDone', st.factions.player), 'info');
     }
     return;
   }
@@ -1269,7 +1269,7 @@ function updateBuild(st, u, dt) {
       b.progress = 1; b.done = true; b.hp = b.maxHp;
       if (b.side === 'player') {
         st.game.sound.ready();
-        st.game.ui.toast(tr(st.factions.player, 'builtDone') + fname(b.cfg, b.faction));
+        st.game.ui.toast(message('builtDone', st.factions.player) + fname(b.cfg, b.faction));
       }
       chainBuild(st, u, b); // G.3: дальше по цепочке или к добыче
     }
@@ -1303,7 +1303,7 @@ function updateRepair(st, u, dt) {
       // Нет минералов — простой (игроку подсказка не чаще раза в 6 c).
       if (u.side === 'player' && st.time - (st.lastRepairToast || -99) > 6) {
         st.lastRepairToast = st.time;
-        st.game.ui.toast(tr(st.factions.player, 'repairStop') + tr(st.factions.player, 'noMinerals').toLowerCase(), 'error');
+        st.game.ui.toast(message('repairStop', st.factions.player) + message('noMinerals', st.factions.player).toLowerCase(), 'error');
       }
       return;
     }
@@ -1314,7 +1314,7 @@ function updateRepair(st, u, dt) {
     }
     if (Math.random() < dt * 2.5) st.game.sound.repair();
     if (t.hp >= t.maxHp && t.side === 'player') {
-      st.game.ui.toast(tr(st.factions.player, 'repairDone') + fname(t.cfg, t.faction));
+      st.game.ui.toast(message('repairDone', st.factions.player) + fname(t.cfg, t.faction));
     }
     return;
   }
@@ -1717,7 +1717,7 @@ export function damageEntity(st, victim, dmg, attacker) {
   if (victim.side === 'player' && !st.gameOver && st.time - st.lastAlertT > 8) {
     st.lastAlertT = st.time;
     st.lastAlertPos = { x: victim.x, y: victim.y };
-    st.game.ui.toast(tr(st.factions.player, 'underAttack'), 'error'); // H.2: строка одна на оба тира
+    st.game.ui.toast(message('underAttack', st.factions.player), 'error'); // H.2: строка одна на оба тира
     st.pings.push({ x: victim.x, y: victim.y, t: 0 });
     // H.2: базовый тир — сирена (свой КЦ Г2+ и урон в R15 от КЦ), иначе мягкий пинг.
     if (nearBaseCC(st, victim.x, victim.y)) st.game.sound.alarm();

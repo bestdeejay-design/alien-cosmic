@@ -303,7 +303,7 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
 
 // ---------- A11. Пресеты кампании (пакет C) ----------
 {
-  const { MISSIONS } = await import('../js/missions.js');
+  const { MISSIONS, missionText } = await import('../js/missions.js');
   const { CC_WORKER_OFFS } = await import('../js/map.js');
   for (const m of MISSIONS) {
     const gm = new GameMap(m.map.seed, m.map);
@@ -360,7 +360,7 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
     const side = Math.abs(dx) > Math.abs(dy) * 1.4 ? (dx > 0 ? 'В' : 'З')
       : Math.abs(dy) > Math.abs(dx) * 1.4 ? (dy > 0 ? 'Ю' : 'С')
       : (dy > 0 ? 'Ю' : 'С') + (dx > 0 ? 'В' : 'З');
-    ok(`A11. №${m.id} ${m.name}: ${gm.w}×${gm.h}, база ${side} (${pb.x},${pb.y})`,
+    ok(`A11. №${m.id} ${missionText(m, 'name')}: ${gm.w}×${gm.h}, база ${side} (${pb.x},${pb.y})`,
       errs.length === 0, errs.join('; ') || `путь ${tiles.length}, калиток 0, карманов ${pockets}, кристаллов ${gm.crystals.length}`);
   }
 }

@@ -6,10 +6,15 @@
 //   human — «Гелиос-Индастриз» (люди-корпоранты, техника);
 //   alien — «кхарид» (кристаллорождённые аборигены планет).
 // Ключи юнитов/зданий общие; облик и подписи зависят от фракции.
+// Весь видимый текст сущностей живёт в locales/*.js (пакет I):
+// здесь только баланс, ID и стабильные ключи (I18N.md §5.2).
 // ============================================================
 
+import { entityText } from './i18n.js';
+
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
-export const GAME_VERSION = 'H';
+export const GAME_VERSION = 'I';
+export const GAME_DATE = '21.10.2026'; // дата фактической поставки (правило V)
 
 // --- Мир ---
 export const TILE = 32;               // размер одного тайла, px мира
@@ -43,7 +48,7 @@ export const REPAIR_HP_PER_MINERAL = 6; // сколько HP ремонтиру�
 // осколками (splash), 'none' — удар в упор.
 // vehicle: true — «техника»: ремонтируется рабочими, взрывается крупнее
 // (у кхарид вместо техники — крупные существа, логика та же).
-// hname/aname — имя юнита у людей / у кхарид.
+// kind — раздел локали: имена/описания в locales/*.js (units.<key>.{human,alien}).
 //
 // РОСТЕР «ALIEN COSMIC» (обновлённая линейка, не из старой версии):
 //   Гелиос — ховер-технологии и плазма: Дрон-техник, Рейнджер, Скиф,
@@ -52,64 +57,48 @@ export const REPAIR_HP_PER_MINERAL = 6; // сколько HP ремонтиру�
 //   Скользень, Цветень, Кислотник, Громила, Спогром.
 export const UNITS = {
   worker: {
-    key: 'worker', hname: 'Дрон-техник', aname: 'Собиратель', hp: 60, dmg: 4, range: 26, cooldown: 1.0,
+    key: 'worker', hp: 60, dmg: 4, range: 26, cooldown: 1.0,
     sightTiles: 7, speed: 92, r: 10, supply: 1, cost: 50, trainTime: 12,
     canMine: true, canBuild: true, canRepair: true,
     projectile: 'none',
-    hdesc: 'Руки базы: добывает эрг, возводит и чинит постройки и технику; в простое сам бросается латать повреждённые машины',
-    adesc: 'Нянька полей: собирает спящие грани, взращивает гнёзда, а в простое латает раненых сородичей',
   },
   marine: {
-    key: 'marine', hname: 'Рейнджер', aname: 'Кристожал', hp: 52, dmg: 7, range: 134, cooldown: 0.85,
+    key: 'marine', hp: 52, dmg: 7, range: 134, cooldown: 0.85,
     sightTiles: 7, speed: 100, r: 10, supply: 1, cost: 50, trainTime: 13,
     canMine: false, canBuild: false, projectile: 'bullet',
-    hdesc: 'Штурмовик с плазменным карабином — костяк строя «Зари-9»; помещается в бункер',
-    adesc: 'Ползун с гребнем шипов: плюётся кристаллическими дротиками; прячется в коконе',
   },
   buggy: {
-    key: 'buggy', hname: 'Скиф', aname: 'Скользень', hp: 85, dmg: 8, range: 132, cooldown: 0.45,
+    key: 'buggy', hp: 85, dmg: 8, range: 132, cooldown: 0.45,
     sightTiles: 8, speed: 158, r: 11, supply: 2, cost: 100, trainTime: 16,
     canMine: false, canBuild: false, vehicle: true, projectile: 'bullet',
-    hdesc: 'Ховер-рейдер со спаркой импульсных пушек: бьёт с налёта и уходит на пределе',
-    adesc: 'Четырёхлапый хищник: жалит и растворяется в пустошах раньше, чем рой допоёт',
   },
   tank: {
-    key: 'tank', hname: 'Бастион', aname: 'Громила', hp: 260, dmg: 36, range: 200, cooldown: 2.4,
+    key: 'tank', hp: 260, dmg: 36, range: 200, cooldown: 2.4,
     sightTiles: 9, speed: 62, r: 14, supply: 3, cost: 180, trainTime: 28,
     canMine: false, canBuild: false, vehicle: true, projectile: 'shell',
     splash: { r: 46, frac: 0.6 },
-    hdesc: 'Тяжёлый ховер: осколочный залп накрывает группу целиком',
-    adesc: 'Исполин с кристаллическими рогами: плевок рвётся снопом осколков',
   },
   medic: {
-    key: 'medic', hname: 'Нанит', aname: 'Цветень', hp: 60, dmg: 2, range: 26, cooldown: 1.0,
+    key: 'medic', hp: 60, dmg: 2, range: 26, cooldown: 1.0,
     sightTiles: 7, speed: 104, r: 9, supply: 1, cost: 75, trainTime: 16,
     canMine: false, canBuild: false, projectile: 'none', canHeal: true, healRate: 7,
-    hdesc: 'Рой наномедиков: латают пехоту рядом (7 ОЗ/с); скальпель — лишь для самообороны',
-    adesc: 'Спора-нянька: заживляющая пыльца лечит сородичей (7 ОЗ/с)',
   },
   flamer: {
-    key: 'flamer', hname: 'Плазмер', aname: 'Кислотник', hp: 75, dmg: 14, range: 74, cooldown: 0.9,
+    key: 'flamer', hp: 75, dmg: 14, range: 74, cooldown: 0.9,
     sightTiles: 7, speed: 90, r: 10, supply: 1, cost: 75, trainTime: 15,
     canMine: false, canBuild: false, projectile: 'shell',
     splash: { r: 36, frac: 0.7 },
-    hdesc: 'Огнемётная команда: выжигает группы в упор; издали беззащитна',
-    adesc: 'Пузатый плевун: кислотный сноп разъедает даже панцири',
   },
   arty: {
-    key: 'arty', hname: 'Мортира «Нова»', aname: 'Спогром', hp: 160, dmg: 48, range: 400, cooldown: 3.4,
+    key: 'arty', hp: 160, dmg: 48, range: 400, cooldown: 3.4,
     sightTiles: 10, speed: 48, r: 13, supply: 3, cost: 220, trainTime: 34,
     canMine: false, canBuild: false, vehicle: true, projectile: 'shell',
     splash: { r: 62, frac: 0.65 },
-    hdesc: 'Самоходная мортира: бьёт на 12,5 тайла осколками по площади; держите позади строя',
-    adesc: 'Червь-мортира: мечет взрывы через полкарты; держите позади роя',
   },
   scout: {
-    key: 'scout', hname: 'Следопыт', aname: 'Слухач', hp: 50, dmg: 0, range: 0, cooldown: 1.0,
+    key: 'scout', hp: 50, dmg: 0, range: 0, cooldown: 1.0,
     sightTiles: 11, speed: 185, r: 9, supply: 1, cost: 60, trainTime: 12,
     canMine: false, canBuild: false, vehicle: true, projectile: 'none', scout: true,
-    hdesc: 'Лёгкий ховер с дроном-наводчиком: видит на 11 тайлов, уходит от любой погони. Безоружен — не ставьте в строй',
-    adesc: 'Юркий зверёк со спорой-спутницей: чует врага и грани за 11 переходов. Жалить не умеет — не гоните в бой',
   },
 };
 
@@ -119,34 +108,18 @@ export const UNITS = {
 // garrisonCap — сколько пехоты помещается (бункер/кокон); requires — какое
 // здание должно быть достроено, прежде чем это можно ставить.
 export const BUILDINGS = {
-  cc:       { key: 'cc',       hname: 'Командный центр', aname: 'Гнездо-улей', w: 4, h: 3, hp: 1500, cost: 400, buildTime: 30, supplyGain: 10, sightTiles: 9, produces: 'worker',
-    hdesc: 'Штаб рубежа: обучает дронов, принимает эрг, +10 населения',
-    adesc: 'Сердце улья: растит собирателей, принимает грани, +10 населения' },
-  depot:    { key: 'depot',    hname: 'Дом',             aname: 'Нарост-кладовая', w: 2, h: 2, hp: 500,  cost: 100, buildTime: 14, supplyGain: 8,  sightTiles: 5, produces: null,
-    hdesc: 'Жилые модули колонистов: +8 населения. Без домов армия не растёт',
-    adesc: 'Живой склад граней: расширяет улей, +8 населения' },
-  barracks: { key: 'barracks', hname: 'Казарма',         aname: 'Инкубатор', w: 3, h: 2, hp: 1000, cost: 150, buildTime: 20, supplyGain: 0,  sightTiles: 6, produces: ['marine', 'flamer', 'medic'],
-    hdesc: 'Учебка «Зари-9»: рейнджеры, плазмеры, наниты. Очередь — до 5',
-    adesc: 'Родильня: из икры выходят кристожалы, кислотники, цветни. Очередь — до 5' },
-  turret:   { key: 'turret',   hname: 'Турель «Гадюка»', aname: 'Жвала', w: 1, h: 1, hp: 380, cost: 100, buildTime: 12, supplyGain: 0, sightTiles: 9,
-              attack: true, dmg: 8, range: 150, cooldown: 0.65, projectile: 'bullet',
-    hdesc: 'Автоматический страж: спарка бьёт, как два клыка. Дальность 150',
-    adesc: 'Сторожевая пасть: плюётся шипами по всем чужакам. Дальность 150' },
-  wall:     { key: 'wall',     hname: 'Секция стены',    aname: 'Хитиновая стена', w: 1, h: 1, hp: 900,  cost: 30,  buildTime: 5,  supplyGain: 0,  sightTiles: 2,
-    hdesc: 'Пласталь рубежа: 900 прочности задержат и рой, и технику',
-    adesc: 'Живой хитин: стена улья, 900 прочности' },
-  bunker:   { key: 'bunker',   hname: 'Бункер',          aname: 'Кокон', w: 2, h: 2, hp: 1100, cost: 120, buildTime: 16, supplyGain: 0,  sightTiles: 8,
-              garrisonCap: 4, range: 140,
-    hdesc: 'Укрытие: до 4 пехотинцев неуязвимы внутри и стреляют сами. ПКМ — занять',
-    adesc: 'Кокон: 4 бойца неуязвимы внутри и жалят через щели. ПКМ — занять' },
-  factory:  { key: 'factory',  hname: 'Завод техники',   aname: 'Яма выводка', w: 3, h: 3, hp: 1300, cost: 250, buildTime: 35, supplyGain: 0,  sightTiles: 7,
-              produces: ['buggy', 'tank', 'arty', 'scout'], requires: 'barracks',
-    hdesc: 'Цех экспедиционного корпуса: скифы, бастионы, «Новы» и следопыты. Нужна казарма',
-    adesc: 'Яма выводка: скользни, громилы, спогромы и слухачи выползают на песню. Нужен инкубатор' },
-  lab:      { key: 'lab',      hname: 'Лаборатория',     aname: 'Узел эволюции', w: 3, h: 3, hp: 900,  cost: 200, buildTime: 32, supplyGain: 0,  sightTiles: 6,
-              requires: 'barracks', research: true,
-    hdesc: 'Полевая наука: оружие, броня, орудия и плиты. Исследуйте первым',
-    adesc: 'Место, где рой решает, кем стать завтра. Исследуйте первым' },
+  cc:       { key: 'cc',       w: 4, h: 3, hp: 1500, cost: 400, buildTime: 30, supplyGain: 10, sightTiles: 9, produces: 'worker' },
+  depot:    { key: 'depot',    w: 2, h: 2, hp: 500,  cost: 100, buildTime: 14, supplyGain: 8,  sightTiles: 5, produces: null },
+  barracks: { key: 'barracks', w: 3, h: 2, hp: 1000, cost: 150, buildTime: 20, supplyGain: 0,  sightTiles: 6, produces: ['marine', 'flamer', 'medic'] },
+  turret:   { key: 'turret',   w: 1, h: 1, hp: 380, cost: 100, buildTime: 12, supplyGain: 0, sightTiles: 9,
+              attack: true, dmg: 8, range: 150, cooldown: 0.65, projectile: 'bullet' },
+  wall:     { key: 'wall',     w: 1, h: 1, hp: 900,  cost: 30,  buildTime: 5,  supplyGain: 0,  sightTiles: 2 },
+  bunker:   { key: 'bunker',   w: 2, h: 2, hp: 1100, cost: 120, buildTime: 16, supplyGain: 0,  sightTiles: 8,
+              garrisonCap: 4, range: 140 },
+  factory:  { key: 'factory',  w: 3, h: 3, hp: 1300, cost: 250, buildTime: 35, supplyGain: 0,  sightTiles: 7,
+              produces: ['buggy', 'tank', 'arty', 'scout'], requires: 'barracks' },
+  lab:      { key: 'lab',      w: 3, h: 3, hp: 900,  cost: 200, buildTime: 32, supplyGain: 0,  sightTiles: 6,
+              requires: 'barracks', research: true },
 };
 
 // --- Улучшения (исследуются в Лаборатории / Узле эволюции) ---
@@ -154,27 +127,23 @@ export const BUILDINGS = {
 //   infAtk — +3 к урону пехоты за уровень; vehAtk — +5 к урону техники;
 //   infArm — −2 к получаемому урону пехоты;  vehArm — −3 у техники.
 export const UPGRADES = {
-  infAtk: { key: 'infAtk', hname: 'Оружие пехоты', aname: 'Заточка шипов', max: 3,
-    costs: [100, 175, 250], times: [40, 55, 70],
-    hdesc: 'Калибровка стволов и огнесмесей: +3 урона пехоте за уровень',
-    adesc: 'Заточка шипов и желёз: +3 урона пехоте за уровень' },
-  infArm: { key: 'infArm', hname: 'Броня пехоты', aname: 'Панцирь', max: 3,
-    costs: [100, 175, 250], times: [40, 55, 70],
-    hdesc: 'Композитные щитки «Зари-9»: −2 урона по пехоте за уровень',
-    adesc: 'Панцирь выводка: −2 урона по пехоте за уровень' },
-  vehAtk: { key: 'vehAtk', hname: 'Орудия техники', aname: 'Жвалы выводка', max: 3,
-    costs: [100, 175, 250], times: [45, 60, 75],
-    hdesc: 'Длиннее ствол — дальше смерть: +5 урона технике за уровень',
-    adesc: 'Крупнейшие жвала улья: +5 урона тяжёлым существам за уровень' },
-  vehArm: { key: 'vehArm', hname: 'Плиты техники', aname: 'Хитиновый панцирь', max: 3,
-    costs: [100, 175, 250], times: [45, 60, 75],
-    hdesc: 'Навесная броня: −3 урона по технике за уровень',
-    adesc: 'Многослойный хитин: −3 урона по тяжёлым за уровень' },
-  autoRepair: { key: 'autoRepair', hname: 'Авторемонт', aname: 'Песня починки', max: 1,
-    costs: [150], times: [60], requiresGrade: { type: 'cc', level: 2 }, // H.1: открывает КЦ Г2
-    hdesc: 'Протокол КЦ Г2: свободные техники сами чинят базу — здания и технику, по 2 на цель; починил — вернулся добывать',
-    adesc: 'Песня гнезда Г2: няньки сами латают гнёзда и выводок, по двое на рану; залатали — вернулись к граням' },
+  infAtk: { key: 'infAtk', max: 3,
+    costs: [100, 175, 250], times: [40, 55, 70] },
+  infArm: { key: 'infArm', max: 3,
+    costs: [100, 175, 250], times: [40, 55, 70] },
+  vehAtk: { key: 'vehAtk', max: 3,
+    costs: [100, 175, 250], times: [45, 60, 75] },
+  vehArm: { key: 'vehArm', max: 3,
+    costs: [100, 175, 250], times: [45, 60, 75] },
+  autoRepair: { key: 'autoRepair', max: 1,
+    costs: [150], times: [60], requiresGrade: { type: 'cc', level: 2 } }, // H.1: открывает КЦ Г2
 };
+
+// kind — маршрут в локаль: entityText(kind, key, faction, field).
+// Проставляется циклом, чтобы не шуметь в каждом литерале.
+for (const k of Object.keys(UNITS)) UNITS[k].kind = 'units';
+for (const k of Object.keys(BUILDINGS)) BUILDINGS[k].kind = 'buildings';
+for (const k of Object.keys(UPGRADES)) UPGRADES[k].kind = 'upgrades';
 
 // --- F.1: занятость кристаллов (прецедент BUILDERS_PER_SITE) ---
 export const WORKERS_PER_CRYSTAL = 2; // оптимум на кристалл; маржинальный 3-й — только когда свободных нет
@@ -252,12 +221,13 @@ export const COLORS = {
   amber: '#f3c579',
 };
 
-// --- Подписи по фракции: у людей и кхарид разные имена/описания ---
+// --- Подписи по фракции: у людей и кхарид разные имена/описания.
+// Тексты берутся из локали (units/buildings/upgrades.<key>.{human,alien}). ---
 export function fname(cfg, faction) {
-  return faction === 'alien' ? (cfg.aname || cfg.hname) : cfg.hname;
+  return entityText(cfg.kind, cfg.key, faction, 'name');
 }
 export function fdesc(cfg, faction) {
-  return faction === 'alien' ? (cfg.adesc || cfg.hdesc) : cfg.hdesc;
+  return entityText(cfg.kind, cfg.key, faction, 'description');
 }
 
 // --- Биомы планет (палитры генератора карт): тёмные, чтобы светящиеся

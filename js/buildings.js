@@ -8,7 +8,7 @@ import { nearestFreeTileAround } from './pathfinding.js';
 import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
 import { icon } from './ui.js'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
 import { distToRectPx } from './pathfinding.js';
-import { tr } from './lore.js';
+import { message } from './i18n.js';
 
 let nextBId = 1;
 
@@ -188,7 +188,7 @@ function completeGrade(st, b) {
     b.maxHp = nm;
   }
   if (b.side === 'player') {
-    st.game.ui.toast(tr(b.faction, 'gradeDone') + fname(b.cfg, b.faction) + ' · ' + GRADE_ROMAN[to]);
+    st.game.ui.toast(message('gradeDone', b.faction) + fname(b.cfg, b.faction) + ' · ' + GRADE_ROMAN[to]);
     st.game.sound.ready();
   }
 }
@@ -219,7 +219,7 @@ export function updateBuildings(st, dt, grid) {
         b.res = null;
         if (b.side === 'player') {
           const u = UPGRADES[key];
-          st.game.ui.toast(tr(b.faction, 'resDone') + fname(u, b.faction) + ' ур. ' + st.tech.player[key]);
+          st.game.ui.toast(message('resDone', b.faction) + fname(u, b.faction) + message('lvlWord', b.faction) + st.tech.player[key]);
           st.game.sound.ready();
         }
       }
@@ -242,7 +242,7 @@ export function updateBuildings(st, dt, grid) {
           q.t = 0;
           if (b.side === 'player' && st.time - st.lastSupplyToast > 6) {
             st.lastSupplyToast = st.time;
-            st.game.ui.toast(tr(b.faction, 'needSupply'), 'error');
+            st.game.ui.toast(message('needSupply', b.faction), 'error');
           }
         } else {
           q.hold = false;

@@ -14,7 +14,7 @@ await import('../js/game.js');
 const cfg = await import('../js/config.js');
 const B = await import('../js/buildings.js');
 const U = await import('../js/units.js');
-const { tr } = await import('../js/lore.js');
+const { message } = await import('../js/i18n.js');
 const missions = await import('../js/missions.js');
 const game = globalThis.game;
 
@@ -141,7 +141,7 @@ try {
   const locked = game.getCommands().find((c) => c.icon === 'u_autoRepair');
   assert(locked && locked.code === 'KeyT', 'нет 5-го слота Авторемонта (T)');
   assert(!locked.enabled(), 'Авторемонт активен до КЦ Г2');
-  assert(locked.tip.lines.includes(tr(st.factions.player, 'needCC2')), 'нет строки затвора Г2');
+  assert(locked.tip.lines.includes(message('needCC2', st.factions.player)), 'нет строки затвора Г2');
   assert(B.startResearch(st, lab, 'autoRepair') === 'grade', 'startResearch до Г2 не вернул grade');
 
   completeGrade(st, cc);
@@ -259,7 +259,7 @@ try {
     u.order.kind === beforeWorkers[i].kind && u.order.target === beforeWorkers[i].target),
     'тревога переместила или перекомандовала рабочего');
   const texts = el('toasts').children.map((c) => c.textContent || '').join('|');
-  assert(texts.includes(tr(st.factions.player, 'underAttack')), 'нет единой строки underAttack');
+  assert(texts.includes(message('underAttack', st.factions.player)), 'нет единой строки underAttack');
   pass('H2: 4 тревоги/пинга, сирена только у КЦ Г2+ в R15; рабочие стоят');
 } catch (e) { fail('H2 alarm', e); }
 
@@ -295,7 +295,7 @@ try {
   rally.on();
   assert(scout.order.kind === beforeNoRally, 'G без точки сбора изменил приказы');
   const texts = el('toasts').children.map((c) => c.textContent || '').join('|');
-  assert(texts.includes(tr(st.factions.player, 'noRally')), 'G без точки не показал noRally');
+  assert(texts.includes(message('noRally', st.factions.player)), 'G без точки не показал noRally');
 
   const exploredBefore = countExplored(st.fog);
   recon.on();
@@ -360,7 +360,7 @@ try {
   const alienFactory = nearDone(alienState, 'player', 'factory', alienCC.tx + 6, alienCC.ty);
   alienState.selection = [alienFactory];
   const alienTrain = game.getCommands().find((c) => c.code === 'KeyT');
-  assert(alienTrain && alienTrain.icon === 'a_scout' && alienTrain.label === cfg.UNITS.scout.aname,
+  assert(alienTrain && alienTrain.icon === 'a_scout' && alienTrain.label === cfg.fname(cfg.UNITS.scout, 'alien'),
     'нет зеркала Слухач/a_scout');
   alienTrain.on(); alienFactory.queue[0].t = 0.001; ticks(2);
   const alienScout = alienState.units.find((u) => !u.dead && u.side === 'player' && u.cfg.scout);
@@ -422,7 +422,7 @@ try {
   assert(idleBefore.every((u) => u.order.kind === 'idle') && held.every((u) => u.order === heldOrders.get(u)),
     'G без rally что-то сдвинул');
   const texts = el('toasts').children.map((c) => c.textContent || '').join('|');
-  assert(texts.includes(tr(st.factions.player, 'noRally')), 'нет noRally при null-точке');
+  assert(texts.includes(message('noRally', st.factions.player)), 'нет noRally при null-точке');
 
   cc.rally = open;
   rally = game.getCommands().find((c) => c.code === 'KeyG');

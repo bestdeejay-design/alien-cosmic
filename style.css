@@ -544,3 +544,9 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 #codex-body h2 { font-size: 19px; letter-spacing: 1px; color: var(--cyan-light); margin-bottom: 8px; }
 #codex-body p { font-size: 13.5px; color: #c3d8d1; line-height: 1.65; margin-bottom: 10px; }
 #codex-body p b { color: var(--amber); }
+
+/* I: переключатель языка на главном экране */
+.lang-row { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 12px 0 0; }
+.lang-row label { font-size: 11px; color: #7fa39c; text-transform: uppercase; letter-spacing: .12em; }
+.lang-row select { background: #0d1f22; color: var(--cyan-light); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.lang-row select:hover { border-color: var(--cyan); }

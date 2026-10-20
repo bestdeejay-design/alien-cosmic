@@ -12,7 +12,7 @@ import { AI, BUILDINGS, UNITS, UPGRADES, SUPPLY_MAX, TILE } from './config.js';
 import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit, srand } from './units.js';
 import { canPlace, placeBuildingCmd, enqueueUnit, startResearch } from './buildings.js';
 import { pathToRect } from './pathfinding.js';
-import { tr } from './lore.js';
+import { message } from './i18n.js';
 
 export class AIController {
   constructor(profile = {}) {
@@ -95,7 +95,7 @@ export class AIController {
     this.defNextWaveAt = st.time + D.every;
     st.defenseWave = this.defWaveNum;
     st.pings.push({ x: cc.x, y: cc.y, t: 0 });
-    st.game.ui.toast(tr(st.factions.enemy, 'wave').replace('{n}', this.defWaveNum), 'error');
+    st.game.ui.toast(message('wave', st.factions.enemy, { n: this.defWaveNum }), 'error');
     st.game.sound.ping();
   }
 

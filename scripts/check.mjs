@@ -92,29 +92,31 @@ else ok('заголовок ALIEN COSMIC на месте');
 
 // 6) Версия (V): бейдж на экране входа
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'H'")) err('config.js: нет GAME_VERSION === \'H\'');
-else ok("GAME_VERSION === 'H'");
-if (!html.includes('id="ver-badge"') || !html.includes('версия H · 20.10.2026')) err('index.html: нет бейджа версии');
-else ok('бейдж «версия H · 20.10.2026» на месте');
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'I'")) err('config.js: нет GAME_VERSION === \'I\'');
+else ok("GAME_VERSION === 'I'");
+if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
+else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 
 // 7) Штаб (H): КЦ Г2/Г3, авторемонт, разведчик
 console.log('\n[7] Штаб:');
 const has = (f, t) => src[f].includes(t);
-if (!has('config.js', "hname: 'Следопыт'") || !has('config.js', 'speed: 185') || !has('config.js', 'sightTiles: 11')) err('config.js: нет UNITS.scout (Следопыт/185/11)');
+if (!has('config.js', "key: 'scout'") || !has('config.js', 'speed: 185') || !has('config.js', 'sightTiles: 11')) err('config.js: нет UNITS.scout (ключ/185/11)');
 else ok('UNITS.scout на месте');
 if (!has('config.js', 'dmg: 0, range: 0')) err('config.js: разведчик не безоружен');
 else ok('разведчик безоружен (dmg/range 0)');
 if (!has('config.js', '{ cost: 240, time: 30 }') || !has('config.js', '{ cost: 400, time: 45 }')) err('config.js: нет GRADES.cc 240/30 + 400/45');
 else ok('GRADES.cc 240/30 + 400/45');
-if (!has('config.js', "hname: 'Авторемонт'") || !has('config.js', "requiresGrade: { type: 'cc', level: 2 }")) err('config.js: нет UPGRADES.autoRepair за КЦ Г2');
+if (!has('config.js', "requiresGrade: { type: 'cc', level: 2 }")) err('config.js: нет UPGRADES.autoRepair за КЦ Г2');
 else ok('UPGRADES.autoRepair за КЦ Г2');
 if (!has('missions.js', 'scout: 2')) err('missions.js: нет UNLOCK_AT.scout = 2');
 else ok('UNLOCK_AT.scout = 2');
 if (!has('audio.js', 'alarm()')) err('audio.js: нет sound.alarm()');
 else ok('sound.alarm() на месте');
-const strMiss = ['needCC2', 'noRally', 'reconDone', 'contact', 'veinFound', 'noScouts'].filter((k) => !has('lore.js', k + ':'));
-if (strMiss.length) err('lore.js: нет STR.' + strMiss.join(', '));
-else ok('STR ×6 на месте');
+// I: фракционные строки переехали из lore.js в locales/*.js (messages.*)
+const ruLoc = readFileSync(path.join(ROOT, 'locales', 'ru.js'), 'utf8');
+const strMiss = ['needCC2', 'noRally', 'reconDone', 'contact', 'veinFound', 'noScouts'].filter((k) => !ruLoc.includes(k + ':'));
+if (strMiss.length) err('locales/ru.js: нет messages.' + strMiss.join(', '));
+else ok('фракционные строки ×6 в locales/ru.js');
 if (!has('ui.js', "case 'scout'") || !has('ui.js', "case 'recon'") || !has('ui.js', "case 'rally'") || !has('ui.js', "case 'u_autoRepair'")) err('ui.js: нет иконок H');
 else ok('иконки H на месте');
 if (!has('units.js', 'updateScout') || !has('units.js', 'updateAutoRepair')) err('units.js: нет updateScout/updateAutoRepair');
@@ -132,8 +134,22 @@ if (has('ai.js', "'scout'") || has('ai.js', "'autoRepair'")) err('ai.js знае
 else ok('AIController не знает о scout/autoRepair');
 if (!has('ui.js', "case 'a_scout'") || !has('units.js', "u.type === 'scout'")) err('нет двух обликов разведчика');
 else ok('спрайты Следопыта/Слухача на месте');
-if (!has('lore.js', "title: 'Следопыт', unlockAfter: 2") || !has('lore.js', "title: 'Слухач', unlockAfter: 2")) err('lore.js: нет двух записей Арсенала');
-else ok('кодекс открывает оба облика с миссии №3');
+// I: кодекс — тексты в локалях, структура/unlockAfter в lore.js
+if (!has('lore.js', "id: 'arsenal'") || !has('lore.js', '{ unlockAfter: 2 }, { unlockAfter: 2 },')) err('lore.js: нет структуры Арсенала (разведчик с №3)');
+else ok('кодекс: арсенал открывает оба облика с миссии №3 (текст — в локалях)');
+if (!has('game.js', 'await initI18n()') || !has('game.js', 'setVersionBadge')) err('game.js: нет I-бута (await initI18n + бейдж)');
+else ok('I-бут: initI18n до меню + бейдж версии из локали');
+if (!has('ui.js', 'refreshLocale') || !has('i18n.js', 'applyStaticDOM') || !has('i18n.js', 'SUPPORTED_LOCALES')) err('нет каркаса смены языка (refreshLocale/applyStaticDOM/реестр)');
+else ok('каркас локалей: реестр + applyStaticDOM + refreshLocale');
+
+// 8) sim_i18n — обязательная вложенная проверка (I18N.md §6.1)
+console.log('\n[8] sim_i18n (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_i18n.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_i18n прошёл');
+} catch (e) {
+  err('sim_i18n упал (см. вывод выше)');
+}
 
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
 process.exit(failed);
