@@ -1361,10 +1361,24 @@ export class Game {
 
     ctx.restore(); // конец зоны мира (тряска + зум)
 
-    // Хотфикс L: индикатор краевых зон панорамирования — подсвечивает ту
-    // сторону игровой области, где курсор вызовет съезд камеры (после
-    // EDGE_PAN_GRACE). Над панелями зоны гаснут — игрок видит мёртвую зону.
+    // Хотфикс L → G.6: краевые зоны панорамирования. Постоянная слабая
+    // разметка кромок игровой области — игрок ВСЕГДА видит, где карта
+    // реагирует на курсор (владелец: зона должна быть видимой заранее,
+    // а не только в момент въезда в неё). Активная сторона пульсирует
+    // ярче — блок ниже.
     const ez = this.edgeZone;
+    {
+      const top = this.uiTop || 0, bot = this.uiBottom || 0;
+      const Lft = this.uiLeft || 0, Rgt = this.uiRight || 0;
+      const pw = W - Lft - Rgt, ph = H - top - bot;
+      if (this.started && !st.gameOver && pw > 0 && ph > 0) {
+        ctx.fillStyle = `rgba(${EDGE_ZONE_COLOR},0.07)`;
+        ctx.fillRect(Lft, top, pw, 2);
+        ctx.fillRect(Lft, H - bot - 2, pw, 2);
+        ctx.fillRect(Lft, top, 2, ph);
+        ctx.fillRect(W - Rgt - 2, top, 2, ph);
+      }
+    }
     if (ez && this.started && !st.gameOver) {
       const M = EDGE_MARGIN;
       const top = this.uiTop || 0, bot = this.uiBottom || 0;
