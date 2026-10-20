@@ -43,6 +43,7 @@ class FakeEl {
     this.children = [];
     this.style = {};
     this.dataset = {};
+    this.attributes = new Map();
     this.classList = new FakeClassList();
     this.textContent = '';
     this._html = '';
@@ -68,6 +69,27 @@ class FakeEl {
   set innerHTML(v) { this._html = v; this.children = []; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }
   removeEventListener() {}
+  setAttribute(name, value) {
+    this.attributes.set(String(name), String(value));
+    if (name === 'id') this.id = String(value);
+    if (name === 'title') this.title = String(value);
+    if (name === 'disabled') this.disabled = true;
+  }
+  getAttribute(name) { return this.attributes.has(String(name)) ? this.attributes.get(String(name)) : null; }
+  removeAttribute(name) {
+    this.attributes.delete(String(name));
+    if (name === 'disabled') this.disabled = false;
+  }
+  focus() {
+    const previous = globalThis.document && globalThis.document.activeElement;
+    if (previous && previous !== this && previous.blur) previous.blur();
+    if (globalThis.document) globalThis.document.activeElement = this;
+    (this._handlers.focus || []).forEach((fn) => fn({ type: 'focus', target: this }));
+  }
+  blur() {
+    if (globalThis.document && globalThis.document.activeElement === this) globalThis.document.activeElement = globalThis.document.body;
+    (this._handlers.blur || []).forEach((fn) => fn({ type: 'blur', target: this }));
+  }
   appendChild(c) { c.parent = this; this.children.push(c); return c; }
   remove() {
     if (this.parent) {
@@ -111,6 +133,7 @@ globalThis.document = {
   createTextNode: (text) => { const el = new FakeEl('#text'); el.textContent = String(text); return el; }, // I: setRich собирает переводы через DOM
   addEventListener: (ev, fn) => { (winHandlers['doc:' + ev] = winHandlers['doc:' + ev] || []).push(fn); },
 };
+globalThis.document.activeElement = globalThis.document.body;
 
 // Ручки поверх стабов.
 export function el(id) { return document.getElementById(id); }

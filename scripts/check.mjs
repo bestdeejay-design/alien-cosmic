@@ -92,8 +92,8 @@ else ok('заголовок ALIEN COSMIC на месте');
 
 // 6) Версия (V): бейдж на экране входа
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'I'")) err('config.js: нет GAME_VERSION === \'I\'');
-else ok("GAME_VERSION === 'I'");
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'K'")) err('config.js: нет GAME_VERSION === \'K\'');
+else ok("GAME_VERSION === 'K'");
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
 else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 
@@ -149,6 +149,15 @@ try {
   ok('sim_i18n прошёл');
 } catch (e) {
   err('sim_i18n упал (см. вывод выше)');
+}
+
+// 9) sim_p1 — UX-пакет: процессы, доступность команд, геометрия/фокус.
+console.log('\n[9] sim_p1 (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_p1.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_p1 прошёл');
+} catch (e) {
+  err('sim_p1 упал (см. вывод выше)');
 }
 
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
