@@ -8,7 +8,7 @@ import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
 } from './config.js';
-import { MISSIONS, SKIRMISH, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
 import { CODEX, codexTabLabel, codexEntryParts } from './lore.js';
 import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
 import { crystalAt } from './units.js'; // F.1: тултип кристалла
@@ -23,8 +23,43 @@ const FACTIONS = {
 };
 const facTitle = (f) => t('factions.' + f + '.title');
 
+const QUICK_BATTLE_PRESETS = Object.freeze([
+  Object.freeze({ id: 'square-48', w: 48, h: 48, nameKey: 'ui.menu.quickPresetNames.compact' }),
+  Object.freeze({ id: 'square-64', w: 64, h: 64, nameKey: 'ui.menu.quickPresetNames.standard' }),
+  Object.freeze({ id: 'square-80', w: 80, h: 80, nameKey: 'ui.menu.quickPresetNames.large' }),
+  Object.freeze({ id: 'square-96', w: 96, h: 96, nameKey: 'ui.menu.quickPresetNames.expanse' }),
+  Object.freeze({ id: 'wide-96x64', w: 96, h: 64, nameKey: 'ui.menu.quickPresetNames.wide' }),
+  Object.freeze({ id: 'tall-64x96', w: 64, h: 96, nameKey: 'ui.menu.quickPresetNames.tall' }),
+]);
+
+const QUICK_BATTLE_DEFAULT = 'square-64';
+const QUICK_BATTLE_STORAGE_KEY = 'terranrts.quickBattle';
+let quickBattleSelection = { presetId: QUICK_BATTLE_DEFAULT, faction: null };
+let quickBattleLastSaved = null;
+
+function quickBattlePresetDims(presetId) {
+  const preset = QUICK_BATTLE_PRESETS.find((item) => item.id === presetId)
+    || QUICK_BATTLE_PRESETS.find((item) => item.id === QUICK_BATTLE_DEFAULT);
+  return { w: preset.w, h: preset.h };
+}
+
+function parseQuickBattleConfig(raw) {
+  const fallback = { presetId: QUICK_BATTLE_DEFAULT, faction: null, isSaved: false };
+  if (typeof raw !== 'string' || !raw) return fallback;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+    if (Object.keys(value).some((key) => key !== 'presetId' && key !== 'faction')) return fallback;
+    if (!QUICK_BATTLE_PRESETS.some((item) => item.id === value.presetId)) return fallback;
+    if (value.faction !== 'human' && value.faction !== 'alien') return fallback;
+    return { presetId: value.presetId, faction: value.faction, isSaved: true };
+  } catch {
+    return fallback;
+  }
+}
+
 // ------------------------------------------------------------
-// Иконки команд: маленькие canvas 26×26, рисуются один раз.
+// Command icons: small canvases, drawn once.
 // ------------------------------------------------------------
 const iconCache = {};
 export function icon(type) {
@@ -417,8 +452,125 @@ function portraitEl(type) {
 let els = null;        // кэш DOM-элементов
 let dyn = null;        // динамические ссылки для апдейтов без перестройки
 let sig = '';          // «подпись» текущей панели
-let pendingMission = null; // миссия, выбранная в брифинге
-let pendingNext = null;    // следующая миссия после победы
+let pendingMission = null; // Миссия, выбранная в брифинге.
+let pendingNext = null;    // Следующая миссия после победы.
+
+function quickBattleDimsLabel(presetId) {
+  const dims = quickBattlePresetDims(presetId);
+  return `${dims.w}×${dims.h}`;
+}
+
+function safeStoredQuickBattleConfig() {
+  try { return parseQuickBattleConfig(localStorage.getItem(QUICK_BATTLE_STORAGE_KEY)); }
+  catch { return parseQuickBattleConfig(null); }
+}
+
+export function restoreQuickBattleConfig() {
+  const stored = safeStoredQuickBattleConfig();
+  quickBattleSelection = { presetId: stored.presetId, faction: stored.faction };
+  quickBattleLastSaved = stored.isSaved
+    ? { presetId: stored.presetId, faction: stored.faction }
+    : null;
+  renderQuickBattleMenu();
+  return { ...stored };
+}
+
+function saveQuickBattleConfig() {
+  const value = { presetId: quickBattleSelection.presetId, faction: quickBattleSelection.faction };
+  try {
+    localStorage.setItem(QUICK_BATTLE_STORAGE_KEY, JSON.stringify(value));
+    quickBattleLastSaved = value;
+  } catch {
+    quickBattleLastSaved = null;
+  }
+}
+
+function renderQuickBattleMenu() {
+  if (!els) return;
+  const dims = quickBattleDimsLabel(quickBattleSelection.presetId);
+  const selectedPreset = QUICK_BATTLE_PRESETS.find((item) => item.id === quickBattleSelection.presetId);
+  for (const preset of QUICK_BATTLE_PRESETS) {
+    const button = $('quick-preset-' + preset.id);
+    if (!button) continue;
+    const selected = preset.id === quickBattleSelection.presetId;
+    const name = t(preset.nameKey);
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-label', t('ui.menu.quickBattleMapAria', {
+      name,
+      dims: `${preset.w}×${preset.h}`,
+    }));
+  }
+  for (const faction of ['human', 'alien']) {
+    const button = $('quick-faction-' + faction);
+    if (!button) continue;
+    const selected = faction === quickBattleSelection.faction;
+    const side = t(`ui.skirmish.${faction}Card.title`);
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-label', t('ui.menu.quickBattleFactionAria', { side }));
+  }
+
+  const launch = els.quickBattleStart;
+  const status = els.quickBattleStatus;
+  if (!launch || !status || !selectedPreset) return;
+  if (quickBattleSelection.faction) {
+    const side = facTitle(quickBattleSelection.faction);
+    const caption = t('ui.menu.quickBattleStart', { dims, side });
+    launch.textContent = caption;
+    launch.setAttribute('aria-label', caption);
+    launch.setAttribute('aria-disabled', 'false');
+    launch.classList.remove('is-disabled');
+    const isLast = quickBattleLastSaved
+      && quickBattleLastSaved.presetId === quickBattleSelection.presetId
+      && quickBattleLastSaved.faction === quickBattleSelection.faction;
+    status.textContent = isLast
+      ? t('ui.menu.quickBattleLastConfig', { dims, side })
+      : t('ui.menu.quickBattleReady', { dims, side });
+  } else {
+    const prompt = t('ui.menu.quickBattleNeedFaction');
+    launch.textContent = prompt;
+    launch.setAttribute('aria-label', prompt);
+    launch.setAttribute('aria-disabled', 'true');
+    launch.classList.add('is-disabled');
+    status.textContent = t('ui.menu.quickBattleFirstVisit', { dims });
+  }
+  launch.setAttribute('aria-describedby', 'quick-battle-status');
+}
+
+function updateCampaignStartLabel() {
+  if (!els || !els.startBtn) return;
+  const progress = loadProgress();
+  const nextMission = progress + 1;
+  const key = progress === 0 ? 'ui.menu.campaignStartFirst' : 'ui.menu.campaignStartProgress';
+  const label = t(key, { n: nextMission });
+  els.startBtn.textContent = label;
+  els.startBtn.setAttribute('aria-label', label);
+}
+
+function initQuickBattleMenu(game) {
+  for (const preset of QUICK_BATTLE_PRESETS) {
+    $('quick-preset-' + preset.id).addEventListener('click', () => {
+      quickBattleSelection.presetId = preset.id;
+      renderQuickBattleMenu();
+    });
+  }
+  for (const faction of ['human', 'alien']) {
+    $('quick-faction-' + faction).addEventListener('click', () => {
+      quickBattleSelection.faction = faction;
+      renderQuickBattleMenu();
+    });
+  }
+  els.quickBattleStart.addEventListener('click', () => {
+    if (!quickBattleSelection.faction) {
+      els.quickBattleStatus.textContent = t('ui.menu.quickBattleSideNeeded');
+      return;
+    }
+    saveQuickBattleConfig();
+    game.startSkirmish(quickBattleSelection.faction, quickBattlePresetDims(quickBattleSelection.presetId));
+  });
+  restoreQuickBattleConfig();
+}
 
 export function initUI(game) {
   uiGame = game; // I: ручка для refreshLocale (перерисовка при смене языка)
@@ -449,7 +601,8 @@ export function initUI(game) {
     briefPlace: $('brief-place'),
     briefText: $('brief-text'),
     briefObjective: $('brief-objective'),
-    skirmishOverlay: $('skirmish-overlay'),
+    quickBattleStart: $('btn-quick-battle-start'),
+    quickBattleStatus: $('quick-battle-status'),
     endOverlay: $('end-overlay'),
     endTitle: $('end-title'),
     endReason: $('end-reason'),
@@ -464,23 +617,14 @@ export function initUI(game) {
     versionBadge: $('ver-badge'),
   };
 
-  // Главное меню: сезоны. G.6: Сезон 1 → миссии, Сезон 2 — заглушка с тостом.
+  // Main menu: quick battle is the primary path; campaign remains separate.
+  initQuickBattleMenu(game);
   $('btn-season1').addEventListener('click', () => showMissions(game));
   $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
-  // G.6: быстрый бой живёт внутри сезона 1 (миссии ⇄ скирмиш).
-  $('btn-missions-skirmish').addEventListener('click', () => {
-    els.missionOverlay.classList.add('hidden');
-    els.skirmishOverlay.classList.remove('hidden');
-  });
-  $('btn-skirmish-back').addEventListener('click', () => {
-    els.skirmishOverlay.classList.add('hidden');
-    els.missionOverlay.classList.remove('hidden');
-  });
-  // Кодекс «Легенда».
   $('btn-codex').addEventListener('click', () => {
     els.overlay.classList.add('hidden');
     showCodex();
@@ -490,21 +634,6 @@ export function initUI(game) {
     els.codexOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
   });
-  // Выбор фракции в быстром бою (G.5: с пресетом размера/формы).
-  const skDimsLabel = () => {
-    const d = skirmishDims($('sk-size').value, $('sk-shape').value);
-    $('sk-dims').textContent = d.w + '×' + d.h;
-  };
-  $('sk-size').addEventListener('change', skDimsLabel);
-  $('sk-shape').addEventListener('change', skDimsLabel);
-  skDimsLabel();
-  for (const fac of ['human', 'alien']) {
-    $(fac === 'human' ? 'btn-skirmish-human' : 'btn-skirmish-alien')
-      .addEventListener('click', () => {
-        els.skirmishOverlay.classList.add('hidden');
-        game.startSkirmish(fac, skirmishDims($('sk-size').value, $('sk-shape').value));
-      });
-  }
   // Брифинг: «В бой!».
   $('btn-brief-go').addEventListener('click', () => {
     if (pendingMission) game.startMission(pendingMission);
@@ -514,14 +643,13 @@ export function initUI(game) {
     els.missionOverlay.classList.remove('hidden');
   });
 
-  // Стартовая кнопка на фоне меню (старое поведение): запускаем первую миссию.
-  els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
+  updateCampaignStartLabel();
   els.startBtn.addEventListener('click', () => game.startMission(MISSIONS[loadProgress()]));
-  // П8: сброс прогресса — кодекс и главы закрываются сами (читают прогресс).
+  // Reset stays behind the secondary More disclosure.
   $('btn-reset').addEventListener('click', () => {
     if (!confirm(t('ui.menu.resetConfirm'))) return;
     resetProgress();
-    els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
+    updateCampaignStartLabel();
     game.sound.click();
   });
   els.againBtn.addEventListener('click', () => {
@@ -583,17 +711,6 @@ export function initUI(game) {
 // ------------------------------------------------------------
 // Меню: список миссий кампании с брифингами и замками.
 // ------------------------------------------------------------
-// G.5: габариты скирмиша из пресета — size (строка из select — ок) длинная
-// сторона, short чётная ≈ 2/3: 32/42/54/64 для 48/64/80/96.
-export function skirmishDims(size, shape) {
-  const n = Number(size);
-  const s = [48, 64, 80, 96].includes(n) ? n : 64;
-  const short = Math.round(s / 3) * 2;
-  if (shape === 'wide') return { w: s, h: short };
-  if (shape === 'tall') return { w: short, h: s };
-  return { w: s, h: s };
-}
-
 export function showMissions(game) {
   els.overlay.classList.add('hidden');
   els.missionOverlay.classList.remove('hidden');
@@ -743,8 +860,13 @@ export function showCodex() {
   render(CODEX[0]);
 }
 
-export function hideStart() { els.overlay.classList.add('hidden'); }
-export function showStart() { els.overlay.classList.remove('hidden'); }
+export function hideStart() { if (els) els.overlay.classList.add('hidden'); }
+export function showStart() {
+  if (!els) return;
+  updateCampaignStartLabel();
+  renderQuickBattleMenu();
+  els.overlay.classList.remove('hidden');
+}
 
 // I: бейдж версии (правило V) — текст приходит из game.js с параметрами локали.
 export function setVersionBadge(text) {
@@ -1675,9 +1797,10 @@ function infoStats(box, b) {
 let uiGame = null; // ручка для refreshLocale (ставится в initUI)
 export function refreshLocale() {
   if (!els) return;
-  applyStaticDOM(); // маркеры index.html (меню, экраны, кнопки)
+  applyStaticDOM(); // Маркеры index.html (меню, экраны, кнопки).
+  updateCampaignStartLabel();
+  renderQuickBattleMenu();
   if (uiGame) {
-    els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
     setPausedUI(!!uiGame.paused);
     if (uiGame.sound) setSoundUI(!!uiGame.sound.muted);
     applyPanelClass();

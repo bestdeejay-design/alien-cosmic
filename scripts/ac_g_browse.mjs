@@ -1,25 +1,19 @@
-// ac_g_browse.mjs — браузерная приёмка V (бейдж версии) + G «Комфорт и сезоны»
-// по чек-листу Арены и требованиям владельца.
-// Ш1 главное меню (H): #ver-badge «версия H · 20.10.2026», кнопки Сезон 1 / Сезон 2 · СКОРО.  g_main_seasons
-// Ш2 Сезон 2 → тост «Сезон 2 — сюжетные миссии. Скоро.»                                  g_season2_soon
-// Ш3 Сезон 1 → карточки миссий + «Быстрый бой».                                          g_missions
-// Ш4 скирмиш: #sk-size 48/64/80/96, #sk-shape 3 формы, #sk-dims 96×64, старт 96-wide.    g_skirmish_cfg, g_skirmish_96x64
-// Ш5 зум: клампы 0.5–2.0 (setZoom + живые клавиши +/−), обзор 96-карты целиком на 0.5.   g_zoom_min, g_zoom_max
-// Ш6 G.2 панель справа: base в центре ВИДИМОЙ области (панель обзор не ест).             g_panel_right_base
-// Ш7 G.4 ПКМ-ремонт: 4 техника на цель — чинят ≤2, излишек добывает.
-// Ш8 назад: скирмиш ↔ миссии ↔ меню.
-// pageerrors 0.
+// ac_g_browse.mjs — browser acceptance for the R2-C menu and retained G shell.
+// Covers six inline presets, one-action restore, campaign separation, focus,
+// touch, responsive widths, season teaser, zoom, panel geometry and repair.
 import { chromium } from 'playwright';
+import { mkdirSync } from 'node:fs';
 
-const BASE = 'http://localhost:8793';
-const OUT = '/home/z/my-project/ac-verify/tool-results';
+const BASE = process.env.BASE_URL || 'http://localhost:8000';
+const OUT = process.env.SCREENSHOT_DIR || '/tmp/ac-verify';
+mkdirSync(OUT, { recursive: true });
 
 const errors = [];
 const ok = (id, msg) => { console.log(`PASS  ${id}: ${msg}`); };
 const bad = (id, msg) => { console.log(`FAIL  ${id}: ${msg}`); process.exitCode = 1; };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1600, height: 1500 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: true });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
@@ -28,70 +22,132 @@ const ev = (fn, ...args) => page.evaluate(fn, ...args);
 const wait = (ms) => page.waitForTimeout(ms);
 
 try {
-  // ── Ш1 главное меню: бейдж версии + сезоны ─────────────────────────────
+  // ── R2-C: main menu, first-run guidance, campaign, and responsive shell ──
+  await page.addInitScript(() => {
+    localStorage.setItem('terranrts.language', 'ru');
+    localStorage.removeItem('terranrts.progress');
+  });
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await wait(1000);
 
   const badgeVisible = await page.locator('#ver-badge').isVisible();
   const badgeText = (await page.locator('#ver-badge').textContent() || '').trim();
-  if (badgeVisible && badgeText === 'версия H · 20.10.2026') ok('V1', `бейдж видим, текст «${badgeText}»`);
-  else bad('V1', `бейдж visible=${badgeVisible}, текст=«${badgeText}»`);
+  if (badgeVisible && badgeText === 'версия L · 21.10.2026') ok('V1', `badge: ${badgeText}`);
+  else bad('V1', `visible=${badgeVisible}, text="${badgeText}"`);
 
-  const s1 = (await page.locator('#btn-season1').textContent() || '').trim();
-  const s2 = (await page.locator('#btn-season2').textContent() || '').trim();
-  if (s1.includes('Сезон 1') && s2.includes('Сезон 2') && s2.includes('СКОРО')) ok('G6a', `кнопки: «${s1}» / «${s2}»`);
-  else bad('G6a', `кнопки: «${s1}» / «${s2}»`);
-  const s2Ghost = await page.locator('#btn-season2.ghost-btn.season-soon').count();
-  if (s2Ghost === 1) ok('G6b', 'Сезон 2 — ghost-кнопка season-soon (визуально заглушка)');
-  else bad('G6b', `season-soon ghost = ${s2Ghost}, ожидалась 1`);
-  await shot('g_main_seasons');
+  const quickVisible = await page.locator('#quick-battle').isVisible();
+  const presetCount = await page.locator('#quick-map-grid [data-preset-id]').count();
+  const campaignLabel = (await page.locator('#btn-start').textContent() || '').trim();
+  const s2Teaser = await page.locator('#btn-season2.season-teaser').count();
+  const universeLabel = (await page.locator('#btn-codex').textContent() || '').trim();
+  if (quickVisible && presetCount === 6 && campaignLabel.includes('Начать кампанию')) ok('R2a', `quick battle visible with ${presetCount} presets; campaign label is separate`);
+  else bad('R2a', `quick=${quickVisible}, presets=${presetCount}, campaign="${campaignLabel}"`);
+  if (s2Teaser === 1 && universeLabel === 'Вселенная') ok('R2b', `secondary links: Season 2 teaser / ${universeLabel}`);
+  else bad('R2b', `teaser=${s2Teaser}, universe="${universeLabel}"`);
 
-  // ── Ш2 Сезон 2 → тост «Скоро» ──────────────────────────────────────────
+  const blockedBeforeSide = await page.locator('#btn-quick-battle-start').getAttribute('aria-disabled');
+  const firstGuidance = (await page.locator('#quick-battle-status').textContent() || '').trim();
+  if (blockedBeforeSide === 'true' && firstGuidance.includes('64×64')) ok('R2c', 'first run recommends 64×64 and waits for an explicit side');
+  else bad('R2c', `aria-disabled=${blockedBeforeSide}, guidance="${firstGuidance}"`);
+  await page.locator('#btn-quick-battle-start').click();
+  const blockedStill = await ev(() => window.game.started === false);
+  if (blockedStill) ok('R2d', 'CTA does not start without a faction');
+  else bad('R2d', 'battle started with no faction');
+
   await page.locator('#btn-season2').click();
-  await wait(400);
-  const toast = await ev(() => {
-    const t = document.querySelector('#toasts') || document.body;
-    return (t.textContent || '');
-  });
-  if (/Сезон 2/.test(toast) && /Скоро/i.test(toast)) ok('G6c', `тост: «…${toast.match(/Сезон 2[^«"]*/i)?.[0]?.slice(0, 60)}…»`);
-  else bad('G6c', `тост не найден: «${toast.slice(-160)}»`);
-  await shot('g_season2_soon');
+  await wait(350);
+  const toast = await ev(() => (document.querySelector('#toasts') || document.body).textContent || '');
+  if (/Сезон 2/.test(toast) && /Скоро/i.test(toast)) ok('R2e', 'Season 2 teaser still shows its toast');
+  else bad('R2e', `toast not found: "${toast.slice(-120)}"`);
+  await shot('r2_home_1280');
 
-  // ── Ш3 Сезон 1 → миссии ────────────────────────────────────────────────
+  for (const [width, height] of [[320, 568], [720, 900], [1280, 800]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(() => { const box = document.querySelector('#overlay .menu-box'); if (box) box.scrollTop = 0; });
+    const metrics = await ev(() => {
+      const menu = document.querySelector('#overlay .menu-box');
+      const bounds = (node) => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+      return {
+        viewport: innerWidth,
+        docWidth: document.documentElement.scrollWidth,
+        menu: bounds(menu),
+        menuClient: menu.clientWidth,
+        menuScroll: menu.scrollWidth,
+        presets: [...document.querySelectorAll('#quick-map-grid button')].map(bounds),
+      };
+    });
+    const clipped = metrics.presets.some((r) => r.left < metrics.menu.left - 1 || r.right > metrics.menu.right + 1 || r.left < 0 || r.right > width + 1);
+    if (metrics.docWidth <= width + 1 && metrics.menuScroll <= metrics.menuClient + 1 && !clipped) ok(`R2-layout-${width}`, `no horizontal overflow; six preset cards fit`);
+    else bad(`R2-layout-${width}`, `doc=${metrics.docWidth}/${width}, menu=${metrics.menuScroll}/${metrics.menuClient}, clipped=${clipped}`);
+    await page.locator('#btn-quick-battle-start').scrollIntoViewIfNeeded();
+    const cta = await page.locator('#btn-quick-battle-start').boundingBox();
+    if (cta && cta.x >= -1 && cta.x + cta.width <= width + 1 && cta.y >= -1 && cta.y + cta.height <= height + 1) ok(`R2-cta-${width}`, 'CTA can be reached fully inside the viewport');
+    else bad(`R2-cta-${width}`, `CTA bounds: ${JSON.stringify(cta)}`);
+    if (width === 320) await shot('r2_home_320x568');
+    if (width === 720) await shot('r2_home_720');
+  }
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => { const box = document.querySelector('#overlay .menu-box'); if (box) box.scrollTop = 0; });
   await page.locator('#btn-season1').click();
   await wait(450);
   const cards = await page.locator('.mission-card').count();
-  const skBtnVisible = await page.locator('#btn-missions-skirmish').isVisible();
-  if (cards >= 15 && skBtnVisible) ok('G6d', `миссий ${cards}, «Быстрый бой» рядом`);
-  else bad('G6d', `миссий ${cards}, skirmish visible=${skBtnVisible}`);
-  await shot('g_missions');
+  const oldSkirmish = await page.locator('#btn-missions-skirmish').count();
+  if (cards >= 15 && oldSkirmish === 0) ok('R2f', `campaign archive has ${cards} missions; no competing battle entry`);
+  else bad('R2f', `missions=${cards}, old quick-battle entry=${oldSkirmish}`);
+  await shot('r2_campaign');
+  await page.locator('#btn-missions-back').click();
 
-  // ── Ш4 скирмиш: конфиг + старт 96-wide ─────────────────────────────────
-  await page.locator('#btn-missions-skirmish').click();
-  await wait(450);
-  const skVisible = await page.locator('#skirmish-overlay').isVisible();
-  const sizeOpts = await page.locator('#sk-size option').allTextContents();
-  const shapeOpts = await page.locator('#sk-shape option').allTextContents();
-  if (skVisible && sizeOpts.join(',') === '48,64,80,96' && shapeOpts.length === 3) ok('G5a', `размеры [${sizeOpts}], форм ${shapeOpts.length}`);
-  else bad('G5a', `skVisible=${skVisible} sizes=[${sizeOpts}] shapes=${shapeOpts.length}`);
+  // Keyboard activation, then actual touch taps on the native button cards.
+  await page.locator('#quick-preset-square-48').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#quick-faction-human').focus();
+  await page.keyboard.press('Enter');
+  const keyboardSelected = await ev(() => ({
+    map: document.querySelector('#quick-preset-square-48').getAttribute('aria-pressed'),
+    side: document.querySelector('#quick-faction-human').getAttribute('aria-pressed'),
+    focus: document.activeElement && document.activeElement.id,
+  }));
+  if (keyboardSelected.map === 'true' && keyboardSelected.side === 'true' && keyboardSelected.focus === 'quick-faction-human') ok('R2g', 'map and faction cards are keyboard-operable with visible focus');
+  else bad('R2g', `keyboard state: ${JSON.stringify(keyboardSelected)}`);
 
-  await page.locator('#sk-size').selectOption('96');
-  await page.locator('#sk-shape').selectOption('wide');
-  await wait(200);
-  const dims = (await page.locator('#sk-dims').textContent() || '').trim();
-  if (dims === '96×64') ok('G5b', `#sk-dims live: ${dims} (short = 96/3*2)`);
-  else bad('G5b', `#sk-dims = «${dims}», ждали «96×64»`);
-  await shot('g_skirmish_cfg');
-
-  await page.locator('#btn-skirmish-human').click();
+  await page.locator('#quick-preset-wide-96x64').tap();
+  await page.locator('#quick-faction-alien').tap();
+  const signature = (await page.locator('#btn-quick-battle-start').textContent() || '').trim();
+  if (signature.includes('96×64') && signature.includes('КХАРИД')) ok('R2h', `touch selection updates the signed CTA: ${signature}`);
+  else bad('R2h', `touch config missing from CTA: ${signature}`);
+  await page.locator('#btn-quick-battle-start').tap();
   await wait(1600);
-  const mapDims = await ev(() => { const st = window.game.state; return { w: st.map.w, h: st.map.h }; });
-  if (mapDims.w === 96 && mapDims.h === 64) ok('G5c', `карта скирмиша ${mapDims.w}×${mapDims.h} живая`);
-  else bad('G5c', `карта ${mapDims.w}×${mapDims.h}, ждали 96×64`);
-  await shot('g_skirmish_96x64');
+  const firstBattle = await ev(() => ({
+    id: window.game.mission.id,
+    faction: window.game.mission.faction,
+    w: window.game.state.map.w,
+    h: window.game.state.map.h,
+  }));
+  if (firstBattle.id === -1 && firstBattle.faction === 'alien' && firstBattle.w === 96 && firstBattle.h === 64) ok('R2i', 'touch-launched battle received the correct faction and 96×64 dimensions');
+  else bad('R2i', `wrong battle config: ${JSON.stringify(firstBattle)}`);
+  await shot('r2_quick_battle_96x64');
 
-  // ── Ш5 зум 0.5–2.0 ─────────────────────────────────────────────────────
-  // клампы setZoom напрямую
+  // Reload confirms that the last played setup is ready for a one-tap launch.
+  await page.reload({ waitUntil: 'load' });
+  await wait(850);
+  const restored = await ev(() => ({
+    map: document.querySelector('#quick-preset-wide-96x64').getAttribute('aria-pressed'),
+    side: document.querySelector('#quick-faction-alien').getAttribute('aria-pressed'),
+    status: document.querySelector('#quick-battle-status').textContent,
+  }));
+  if (restored.map === 'true' && restored.side === 'true' && /Последняя конфигурация/.test(restored.status)) ok('R2j', 'reload restores the last map and faction');
+  else bad('R2j', `restore state: ${JSON.stringify(restored)}`);
+  await page.locator('#btn-quick-battle-start').tap();
+  await wait(1500);
+  const repeatBattle = await ev(() => ({ id: window.game.mission.id, faction: window.game.mission.faction, w: window.game.state.map.w, h: window.game.state.map.h }));
+  if (repeatBattle.id === -1 && repeatBattle.faction === 'alien' && repeatBattle.w === 96 && repeatBattle.h === 64) ok('R2k', 'restored setup launches with one action');
+  else bad('R2k', `repeat config: ${JSON.stringify(repeatBattle)}`);
+  await shot('r2_repeat_battle');
+
+  await page.setViewportSize({ width: 1600, height: 1500 });
+  // ── G5 zoom 0.5–2.0 ────────────────────────────────────────────────────
+  // Clamp setZoom directly
   await ev(() => { window.game.setZoom(0.001); });
   const zMin = await ev(() => window.game.state.camera.z);
   await ev(() => { window.game.setZoom(99); });
@@ -108,7 +164,7 @@ try {
   if (Math.abs(zKeyMin - 0.5) < 1e-6 && Math.abs(zKeyMax - 2.0) < 1e-6) ok('G5e', `клавиши −/+: ${zKeyMin}…${zKeyMax}`);
   else bad('G5e', `клавиши: ${zKeyMin}…${zKeyMax}, ждали 0.5/2.0`);
 
-  // на 0.5 вся 96×64 влезает в обзор (96 тайлов * 32px = 3072px ≤ 1600/0.5 = 3200)
+  // At 0.5 the 96×64 world should fit the viewport when the 1280px wide layout allows it.
   await ev(() => { window.game.setZoom(0.5); });
   await wait(250);
   const coverage = await ev(() => {
@@ -226,9 +282,8 @@ try {
     }
   }
 
-  // ── Ш8 назад: скирмиш → миссии, выход → меню ──────────────────────────
+  // ── R2-C exit: return from quick battle; campaign remains a separate route ──
   await page.keyboard.press('Escape'); await wait(300);
-  // кнопка Выход в хедере — по тексту
   const exitBtn = page.locator('button', { hasText: 'Выход' }).first();
   if (await exitBtn.isVisible().catch(() => false)) {
     await exitBtn.click(); await wait(500);
@@ -236,16 +291,17 @@ try {
     await ev(() => { const b = [...document.querySelectorAll('button')].find((x) => /выход/i.test(x.textContent)); if (b) b.click(); });
     await wait(500);
   }
-  const backToMenu = await page.locator('#btn-season1').isVisible();
-  if (backToMenu) ok('G6e', 'Выход из скирмиша → меню с сезонами');
-  else bad('G6e', 'после Выхода меню с сезонами не показано');
+  const backToMenu = await page.locator('#quick-battle').isVisible();
+  if (backToMenu) ok('R2l', 'Exit from quick battle returns to the main menu');
+  else bad('R2l', 'main menu was not restored after Exit');
 
   await page.locator('#btn-season1').click(); await wait(400);
-  await page.locator('#btn-missions-skirmish').click(); await wait(400);
-  await page.locator('#btn-skirmish-back').click(); await wait(400);
   const cardsAgain = await page.locator('.mission-card').count();
-  if (cardsAgain >= 15) ok('G6f', 'миссии ⇄ скирмиш: «← Назад» возвращает к карточкам');
-  else bad('G6f', `после Назада карточек ${cardsAgain}`);
+  if (cardsAgain >= 15) ok('R2m', `campaign archive reopens independently (${cardsAgain} missions)`);
+  else bad('R2m', `campaign archive has only ${cardsAgain} missions`);
+  await page.locator('#btn-missions-back').click(); await wait(250);
+  if (await page.locator('#quick-battle').isVisible()) ok('R2n', 'campaign back button returns to quick-battle home');
+  else bad('R2n', 'campaign back button did not return home');
 
   // ── Ш9 pageerrors ──────────────────────────────────────────────────────
   if (errors.length === 0) ok('ERR', 'pageerrors/console-ошибок 0 за весь прогон');
