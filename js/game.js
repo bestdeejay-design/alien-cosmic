@@ -9,7 +9,7 @@ import {
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
-  fname, fdesc,
+  fname, fdesc, GAME_VERSION, GAME_DATE,
 } from './config.js';
 import { GameMap, CC_WORKER_OFFS } from './map.js';
 import { Fog } from './fog.js';
@@ -17,10 +17,10 @@ import { Sound } from './audio.js';
 import * as U from './units.js';
 import * as B from './buildings.js';
 import { AIController } from './ai.js';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked } from './missions.js';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js';
 import * as ui from './ui.js';
 import { attachInput, updateCamera } from './input.js';
-import { tr } from './lore.js';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -33,51 +33,51 @@ const RESEARCH_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT']; // H.1: 5-й с�
 const RESEARCH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm', 'autoRepair'];
 
 // ------------------------------------------------------------
-// F.2: тултип кнопки «Грейд» — что даст следующий уровень.
+// F.2: тултип кнопки «Грейд» — что даст следующий уровень (тексты — из локали).
 function gradeTip(type, to, fac, g) {
   const lines = [];
-  if (g.dmg) lines.push('Урон ' + g.dmg + ' · дальность ' + g.range);
-  if (g.rate) lines.push('Темп найма ×' + g.rate + ' · очередь до ' + g.queue);
-  if (g.gar) lines.push('Гарнизон до ' + g.gar + ' · прочность ×' + g.hpMul);
+  if (g.dmg) lines.push(t('ui.gradeTip.dmg', { d: g.dmg, r: g.range }));
+  if (g.rate) lines.push(t('ui.gradeTip.rate', { r: g.rate, q: g.queue }));
+  if (g.gar) lines.push(t('ui.gradeTip.gar', { n: g.gar, m: g.hpMul }));
   if (type === 'cc') lines.push(to === 2 // H.0: грейды-ключи — разблокировки, не статы
-    ? 'Открывает: ' + fname(UPGRADES.autoRepair, fac) + ' в лаборатории + сирена тревоги'
-    : 'Открывает: кнопки «Разведать» (T) и «Сбор» (G)');
-  return { title: 'Грейд ' + GRADE_ROMAN[to] + ': ' + fname(BUILDINGS[type], fac), cost: g.cost, lines };
+    ? t('ui.gradeTip.opensAuto', { u: fname(UPGRADES.autoRepair, fac) })
+    : t('ui.gradeTip.opensCmds'));
+  return { title: t('ui.gradeTip.title', { r: GRADE_ROMAN[to], name: fname(BUILDINGS[type], fac) }), cost: g.cost, lines };
 }
 
 // Данные тултипов кнопок панели (подписи юнитов/зданий/улучшений).
 // ------------------------------------------------------------
 function buildingTip(type, fac) {
   const cfg = BUILDINGS[type];
-  const lines = [`Прочность ${cfg.hp} · размер ${cfg.w}×${cfg.h} · стройка ${cfg.buildTime}с`];
-  if (cfg.supplyGain) lines.push('Население +' + cfg.supplyGain);
+  const lines = [t('ui.buildTip.stats', { hp: cfg.hp, w: cfg.w, h: cfg.h, t: cfg.buildTime })];
+  if (cfg.supplyGain) lines.push(t('ui.buildTip.supply', { n: cfg.supplyGain }));
   if (cfg.produces) {
     const list = Array.isArray(cfg.produces) ? cfg.produces : [cfg.produces];
-    lines.push('Обучает: ' + list.map((t) => fname(UNITS[t], fac)).join(', '));
+    lines.push(t('ui.buildTip.trains', { list: list.map((u) => fname(UNITS[u], fac)).join(', ') }));
   }
-  if (cfg.attack) lines.push('Атака ' + cfg.dmg + ' · дальность ' + cfg.range);
-  if (cfg.garrisonCap) lines.push('Гарнизон до ' + cfg.garrisonCap + ' пехотинцев');
-  if (cfg.research) lines.push('Исследует улучшения армии');
-  if (cfg.requires) lines.push('Требует: ' + fname(BUILDINGS[cfg.requires], fac));
+  if (cfg.attack) lines.push(t('ui.buildTip.attack', { d: cfg.dmg, r: cfg.range }));
+  if (cfg.garrisonCap) lines.push(t('ui.buildTip.garrison', { n: cfg.garrisonCap }));
+  if (cfg.research) lines.push(t('ui.buildTip.research'));
+  if (cfg.requires) lines.push(t('ui.buildTip.requires', { name: fname(BUILDINGS[cfg.requires], fac) }));
   return { title: fname(cfg, fac), cost: cfg.cost, desc: fdesc(cfg, fac), lines };
 }
 function unitTip(type, fac) {
   const cfg = UNITS[type];
   const lines = [
-    'ОЗ ' + cfg.hp + ' · урон ' + cfg.dmg + ' · дальность ' + cfg.range,
-    'Население ' + cfg.supply + ' · обучение ' + cfg.trainTime + 'с',
+    t('ui.unitTip.line1', { hp: cfg.hp, d: cfg.dmg, r: cfg.range }),
+    t('ui.unitTip.line2', { s: cfg.supply, t: cfg.trainTime }),
   ];
-  if (cfg.splash) lines.push('Осколки по площади');
-  if (cfg.canHeal) lines.push('Лечит пехоту: +' + cfg.healRate + ' ОЗ/с');
-  if (cfg.vehicle) lines.push('Техника: чинится рабочими');
+  if (cfg.splash) lines.push(t('ui.unitTip.splash'));
+  if (cfg.canHeal) lines.push(t('ui.unitTip.heal', { n: cfg.healRate }));
+  if (cfg.vehicle) lines.push(t('ui.unitTip.vehicle'));
   return { title: fname(cfg, fac), cost: cfg.cost, desc: fdesc(cfg, fac), lines };
 }
 function upgradeTip(key, fac, lvl) {
   const u = UPGRADES[key];
   return {
-    title: fname(u, fac) + ' ур.' + (lvl + 1), cost: u.costs[lvl],
+    title: t('ui.upgradeTip.title', { name: fname(u, fac), n: lvl + 1 }), cost: u.costs[lvl],
     desc: fdesc(u, fac),
-    lines: ['Время: ' + u.times[lvl] + 'с', 'Действует сразу на всю армию'],
+    lines: [t('ui.upgradeTip.time', { t: u.times[lvl] }), t('ui.upgradeTip.global')],
   };
 }
 
@@ -148,7 +148,7 @@ export class Game {
       noBase: !!m.noBase,           // стелс-миссия: отряд без базы
       // M0: механическая цель (null = легаси: снеси всё / переживи таймер).
       win: (m.objective && typeof m.objective === 'object') ? m.objective : null,
-      loseDeadline: m.loseDeadline || null, // { at, label, hard } — событие по таймеру
+      loseDeadline: m.loseDeadline ? Object.assign({}, m.loseDeadline, { labelKey: missionKey(m) + '.deadlineLabel' }) : null, // { at, hard, labelKey } — событие по таймеру (метка из локали)
       deadlineFired: false,
       buildZone: m.buildZone || null,       // [{ x,y,w,h }] в тайлах — стройка игрока
       evacuated: 0,                         // погружено в зону эвакуации
@@ -419,7 +419,7 @@ export class Game {
     const sel = st.selection.filter((e) => !e.dead);
     const cmds = [];
     if (st.placing) {
-      cmds.push({ code: 'Escape', icon: 'stop', label: 'Отмена', on: () => { st.placing = null; } });
+      cmds.push({ code: 'Escape', icon: 'stop', label: t('ui.cmds.cancel'), on: () => { st.placing = null; } });
       return cmds;
     }
     const b = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
@@ -447,10 +447,10 @@ export class Game {
           // H.1: ресерч за грейдом виден замком (кнопка неактивна + строка в типе).
           const locked = up.requiresGrade && B.bestCCLevel(st, 'player') < up.requiresGrade.level;
           const tip = upgradeTip(key, st.factions.player, lvl);
-          if (locked) tip.lines.push(tr(st.factions.player, 'needCC2'));
+          if (locked) tip.lines.push(message('needCC2', st.factions.player));
           cmds.push({
             code: RESEARCH_KEYS[i], icon: 'u_' + key,
-            label: fname(up, st.factions.player) + ' ур.' + (lvl + 1) + (locked ? ' 🔒' : ''), cost: up.costs[lvl],
+            label: fname(up, st.factions.player) + t('ui.upgradeTip.title', { name: '', n: lvl + 1 }).slice(2) + (locked ? t('ui.cmds.lockMark') : ''), cost: up.costs[lvl],
             tip,
             enabled: () => !locked && !b.res && st.minerals.player >= up.costs[lvl],
             on: () => this.hooks.startResearch(b, key),
@@ -458,7 +458,7 @@ export class Game {
         });
         if (b.res) {
           cmds.push({
-            code: 'KeyX', icon: 'stop', label: 'Отменить',
+            code: 'KeyX', icon: 'stop', label: t('ui.cmds.undo'),
             on: () => this.hooks.cancelResearch(b),
           });
         }
@@ -467,7 +467,7 @@ export class Game {
       if (b.done && b.cfg.garrisonCap && b.garrison.length) {
         cmds.push({
           code: 'KeyF', icon: 'exit',
-          label: 'Выпустить ×' + b.garrison.length,
+          label: t('ui.cmds.deploy', { n: b.garrison.length }),
           on: () => { U.releaseGarrison(st, b); this.sound.click(); },
         });
       }
@@ -477,7 +477,7 @@ export class Game {
         const g = GRADES[b.type][gTo];
         cmds.push({
           code: 'KeyR', icon: 'grade',
-          label: 'Грейд ' + GRADE_ROMAN[gTo], cost: g.cost,
+          label: t('ui.cmds.grade', { r: GRADE_ROMAN[gTo] }), cost: g.cost,
           tip: gradeTip(b.type, gTo, st.factions.player, g),
           enabled: () => st.minerals.player >= g.cost,
           on: () => this.hooks.startGrade(b),
@@ -486,19 +486,19 @@ export class Game {
       // H.3/H.4: командование КЦ Г3 — разведка и общий сбор.
       if (b.done && b.type === 'cc' && (b.level || 1) >= 3) {
         cmds.push({
-          code: 'KeyT', icon: 'recon', label: 'Разведать',
-          tip: { title: 'Разведать', lines: ['Все разведчики — по неразведанному туману', 'Огибают врага, докладывают о жилах и контактах'] },
+          code: 'KeyT', icon: 'recon', label: t('ui.cmds.recon'),
+          tip: { title: t('ui.cmds.recon'), lines: t('ui.cmds.reconTip') },
           on: () => this.hooks.orderRecon(),
         });
         cmds.push({
-          code: 'KeyG', icon: 'rally', label: 'Сбор',
-          tip: { title: 'Сбор', lines: ['Все юниты без приказа — к точке сбора', 'Нужна точка сбора (ПКМ по зданию)'] },
+          code: 'KeyG', icon: 'rally', label: t('ui.cmds.rally'),
+          tip: { title: t('ui.cmds.rally'), lines: t('ui.cmds.rallyTip') },
           on: () => this.hooks.orderMassRally(b),
         });
       }
       if (b.done && b.gradeUp) {
         cmds.push({
-          code: 'KeyX', icon: 'stop', label: 'Отменить',
+          code: 'KeyX', icon: 'stop', label: t('ui.cmds.undo'),
           on: () => this.hooks.cancelGrade(b),
         });
       }
@@ -510,7 +510,7 @@ export class Game {
       if (workers.length) {
         const fac = st.factions.player;
         if (!st.buildMenu) {
-          cmds.push({ code: 'KeyB', icon: 'build', label: 'Строить', on: () => { st.buildMenu = true; } });
+          cmds.push({ code: 'KeyB', icon: 'build', label: t('ui.cmds.build'), on: () => { st.buildMenu = true; } });
         } else {
           for (const [code, type] of BUILD_ORDER) {
             if (!isUnlocked(this.mission, type)) continue; // П8/С1 + banBuild
@@ -523,12 +523,12 @@ export class Game {
               on: () => this.hooks.beginPlace(type),
             });
           }
-          cmds.push({ code: 'KeyX', icon: 'stop', label: 'Назад', on: () => { st.buildMenu = false; } });
+          cmds.push({ code: 'KeyX', icon: 'stop', label: t('ui.cmds.back'), on: () => { st.buildMenu = false; } });
         }
       }
       // «Стоп» не показываем в открытом меню стройки: 7 зданий + «Назад»
       // заполняют компактную сетку 2×4 ровно целиком.
-      if (!st.buildMenu) cmds.push({ code: 'KeyS', icon: 'stop', label: 'Стоп', on: () => this.hooks.stopSelected() });
+      if (!st.buildMenu) cmds.push({ code: 'KeyS', icon: 'stop', label: t('ui.cmds.stop'), on: () => this.hooks.stopSelected() });
     }
     return cmds;
   }
@@ -556,15 +556,15 @@ export class Game {
       train: (b, type) => {
         const r = B.enqueueUnit(st(), b, type);
         const fac = st().factions.player;
-        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
-        else if (r === 'queue') { ui.toast(tr(fac, 'queueFull'), 'warn'); this.sound.error(); }
+        if (r === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
+        else if (r === 'queue') { ui.toast(message('queueFull', fac), 'warn'); this.sound.error(); }
         else this.sound.click();
       },
 
       startGrade: (b) => {
         const r = B.startGrade(st(), b);
         const fac = st().factions.player;
-        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
+        if (r === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
         else if (r === 'busy' || r === 'max' || r === 'wrong') { this.sound.error(); }
         else this.sound.click();
       },
@@ -574,10 +574,10 @@ export class Game {
       startResearch: (b, key) => {
         const r = B.startResearch(st(), b, key);
         const fac = st().factions.player;
-        if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
-        else if (r === 'busy') { ui.toast(tr(fac, 'labBusy'), 'warn'); this.sound.error(); }
-        else if (r === 'max') { ui.toast(tr(fac, 'maxed'), 'error'); }
-        else if (r === 'grade') { ui.toast(tr(fac, 'needCC2'), 'error'); this.sound.error(); }
+        if (r === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
+        else if (r === 'busy') { ui.toast(message('labBusy', fac), 'warn'); this.sound.error(); }
+        else if (r === 'max') { ui.toast(message('maxed', fac), 'error'); }
+        else if (r === 'grade') { ui.toast(message('needCC2', fac), 'error'); this.sound.error(); }
         else this.sound.click();
       },
 
@@ -612,7 +612,7 @@ export class Game {
           !u.dead && !u.garrison && u.cfg.scout && u.order.kind !== 'scout');
         if (!scouts.length) {
           const any = s.units.some((u) => u.kind === 'unit' && u.side === 'player' && !u.dead && u.cfg.scout);
-          if (!any) ui.toast(tr(s.factions.player, 'noScouts'), 'error');
+          if (!any) ui.toast(message('noScouts', s.factions.player), 'error');
           this.sound.error();
           return;
         }
@@ -622,7 +622,7 @@ export class Game {
       // H.4: «Сбор» — все свои без приказа (idle, вне гарнизона) к точке сбора КЦ.
       orderMassRally: (b) => {
         const s = st();
-        if (!b.rally) { ui.toast(tr(s.factions.player, 'noRally'), 'error'); this.sound.error(); return; }
+        if (!b.rally) { ui.toast(message('noRally', s.factions.player), 'error'); this.sound.error(); return; }
         let n = 0;
         for (const u of s.units) {
           if (u.kind !== 'unit' || u.side !== 'player' || u.dead || u.garrison) continue;
@@ -709,7 +709,7 @@ export class Game {
         sel[0].side === 'player') {
       const rc = U.crystalAt(st, wx, wy);
       sel[0].rally = rc ? { x: wx, y: wy, crystal: rc } : { x: wx, y: wy };
-      U.addFloat(st, wx, wy, rc ? tr(st.factions.player, 'rallyCrystal') : tr(st.factions.player, 'rallyPoint'), '#9be29e');
+      U.addFloat(st, wx, wy, rc ? message('rallyCrystal', st.factions.player) : message('rallyPoint', st.factions.player), '#9be29e');
       this.sound.ack();
       return;
     }
@@ -793,32 +793,32 @@ export class Game {
     for (let y = ty; y < ty + cfg.h; y++)
       for (let x = tx; x < tx + cfg.w; x++)
         if (!st.fog.tileExplored(x, y)) {
-          ui.toast(tr(fac, 'unexplored'), 'error'); this.sound.error(); return;
+          ui.toast(message('unexplored', fac), 'error'); this.sound.error(); return;
         }
     // Требование технологии: у завода нужна казарма/инкубатор.
     if (cfg.requires) {
       const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
         b.type === cfg.requires && b.done);
       if (!ok) {
-        ui.toast(tr(fac, 'requires') + fname(BUILDINGS[cfg.requires], fac), 'error');
+        ui.toast(message('requires', fac) + fname(BUILDINGS[cfg.requires], fac), 'error');
         this.sound.error(); return;
       }
     }
     if (!B.canPlace(st.map, tx, ty, cfg.w, cfg.h)) {
-      ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return;
+      ui.toast(message('cantBuild', fac), 'error'); this.sound.error(); return;
     }
     if (!B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) {
-      ui.toast(tr(fac, 'outsideZone'), 'error'); this.sound.error(); return;
+      ui.toast(message('outsideZone', fac), 'error'); this.sound.error(); return;
     }
     if (st.minerals.player < cfg.cost) {
-      ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); return;
+      ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); return;
     }
     const pool = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
       e.cfg.canBuild && !e.dead)
       .sort((p, q) => Math.hypot(p.x - tx * TILE, p.y - ty * TILE) -
         Math.hypot(q.x - tx * TILE, q.y - ty * TILE));
     if (!pool.length) {
-      ui.toast('Выделите ' + fname(UNITS.worker, fac).toLowerCase(), 'error');
+      ui.toast(t('ui.hints.selectWorker', { worker: fname(UNITS.worker, fac).toLowerCase() }), 'error');
       this.sound.error(); return;
     }
     const b = B.placeBuildingCmd(st, 'player', pl.type, tx, ty, pool);
@@ -878,7 +878,7 @@ export class Game {
       const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
         b.type === cfg.requires && b.done);
       if (!ok) {
-        ui.toast(tr(fac, 'requires') + fname(BUILDINGS[cfg.requires], fac), 'error');
+        ui.toast(message('requires', fac) + fname(BUILDINGS[cfg.requires], fac), 'error');
         this.sound.error(); return 0;
       }
     }
@@ -886,7 +886,7 @@ export class Game {
     const pool = st.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
       e.cfg.canBuild && !e.dead);
     if (!pool.length) {
-      ui.toast('Выделите ' + fname(UNITS.worker, fac).toLowerCase(), 'error');
+      ui.toast(t('ui.hints.selectWorker', { worker: fname(UNITS.worker, fac).toLowerCase() }), 'error');
       this.sound.error(); return 0;
     }
     const sites = [];
@@ -897,7 +897,7 @@ export class Game {
       if (b) sites.push(b);
     }
     if (!sites.length) {
-      ui.toast(tr(fac, 'cantBuild'), 'error'); this.sound.error(); return 0;
+      ui.toast(message('cantBuild', fac), 'error'); this.sound.error(); return 0;
     }
     // Бригада идёт вдоль линии по очереди: рабочие пула (от ближнего
     // к началу линии) разбирают стройки round-robin, кап 5 — как везде.
@@ -964,7 +964,7 @@ export class Game {
     const def = this.mission && this.mission.defense;
     if (def && w && w.kind === 'evac' && !st.phase2 && st.time >= def.prep + def.total) {
       st.phase2 = true;
-      ui.toast(this.mission.phaseToast || ('Новая цель: ' + objectiveLabel({ objective: w })), 'info');
+      ui.toast(missionText(this.mission, 'phaseToast') || t('messages.newObjective', { goal: objectiveLabel(this.mission, w) }), 'info');
       this.sound.ready();
     }
     if (w && w.kind === 'evac' && (!def || st.time >= def.prep + def.total)) {
@@ -979,7 +979,7 @@ export class Game {
             u.selected = false;
             st.evacuated++;
             U.addEffect(st, { kind: 'spark', x: u.x, y: u.y, ang: -Math.PI / 2, t: 0, life: 0.3 });
-            U.addFloat(st, u.x, u.y - 16, tr(st.factions.player, 'evacOne'), '#9be29e');
+            U.addFloat(st, u.x, u.y - 16, message('evacOne', st.factions.player), '#9be29e');
             this.sound.ready();
           }
         } else {
@@ -994,12 +994,13 @@ export class Game {
     const dl = st.loseDeadline;
     if (dl && !st.deadlineFired && st.time >= dl.at) {
       st.deadlineFired = true;
+      const dlLabel = dl.labelKey && has(dl.labelKey) ? t(dl.labelKey) : (dl.label || '');
       if (dl.hard) {
-        ui.toast(dl.label, 'error'); // П8: жёсткий дедлайн — тост + поражение
-        this.lose(dl.label);
+        ui.toast(dlLabel, 'error'); // П8: жёсткий дедлайн — тост + поражение
+        this.lose(dlLabel);
       } else {
         st.ai.raidWave(st, st.ai.p.waveMax);
-        ui.toast(dl.label, 'error');
+        ui.toast(dlLabel, 'error');
         this.sound.ping();
       }
     }
@@ -1017,20 +1018,22 @@ export class Game {
     const phase2 = def && w && w.kind === 'evac' && st.time >= def.prep + def.total;
     if (def && !phase2) {
       if (st.time < def.prep) {
-        return 'Подготовка: ' + fmtTime(def.prep - st.time) + ' — стройте оборону';
+        return t('ui.objective.prep', { t: fmtTime(def.prep - st.time) });
       }
       const left = Math.max(0, def.prep + def.total - st.time);
-      return 'Оборона: ' + fmtTime(left) + ' · волн отбито: ' + st.defenseWave;
+      return t('ui.objective.defense', { t: fmtTime(left), n: st.defenseWave });
     }
     const dl = st.loseDeadline && !st.deadlineFired
-      ? ' · ' + st.loseDeadline.label + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
+      ? ' · ' + (st.loseDeadline.labelKey && has(st.loseDeadline.labelKey) ? t(st.loseDeadline.labelKey) : (st.loseDeadline.label || '')) + ': ' + fmtTime(Math.max(0, st.loseDeadline.at - st.time))
       : '';
     if (w && w.kind === 'stockpile') {
-      return 'Собрано ' + Math.floor(st.stats.mined) + '/' + w.amount + ' ' +
-        tr(st.factions.player, 'minedWord') + dl;
+      return t('ui.objective.stockpile', {
+        n: Math.floor(st.stats.mined), m: w.amount,
+        word: message('minedWord', st.factions.player),
+      }) + dl;
     }
     if (w && w.kind === 'evac') {
-      return 'Эвакуировано ' + st.evacuated + '/' + w.need + dl;
+      return t('ui.objective.evac', { n: st.evacuated, m: w.need }) + dl;
     }
     if (w && w.kind === 'key') {
       return objectiveLabel(m) + dl;
@@ -1061,21 +1064,21 @@ export class Game {
           st.win = w.then;
           st.keyTotal = 0;
           st.phase2 = true;
-          ui.toast(this.mission.phaseToast || ('Новая цель: ' + objectiveLabel({ objective: st.win })), 'info');
+          ui.toast(missionText(this.mission, 'phaseToast') || t('messages.newObjective', { goal: objectiveLabel(this.mission, st.win) }), 'info');
           this.sound.ready();
           return;
         }
-        this.win(tr(fac, 'winKey'));
+        this.win(message('winKey', fac));
         return;
       }
     }
     if (w && w.kind === 'stockpile' && st.stats.mined >= w.amount) {
-      this.win(tr(fac, 'winStock'));
+      this.win(message('winStock', fac));
       return;
     }
     if (w && w.kind === 'evac') {
       if (st.evacuated >= w.need) {
-        this.win(tr(fac, 'winEvac'));
+        this.win(message('winEvac', fac));
         return;
       }
       // П5: «некого грузить» — погружено + живо + в очереди меньше need,
@@ -1095,7 +1098,7 @@ export class Game {
       }
       const canRecover = prod && (workers > 0 || queued > 0 || st.minerals.player >= UNITS.worker.cost);
       if (st.evacuated + aliveU + queued < w.need && !canRecover) {
-        this.lose(tr(fac, 'loseEmbark'));
+        this.lose(message('loseEmbark', fac));
         return;
       }
     }
@@ -1104,7 +1107,7 @@ export class Game {
     // уничтоживший угрозу игрок не должен упереться в софтлок.
     if (st.noBase) {
       // П8: №17 — потеря ключевого юнита раньше запасного пути (жёстче №13).
-      if (w && w.guardType && st.guardLost) { this.lose(w.guardLose || 'Отряд погиб — миссия провалена'); return; }
+      if (w && w.guardType && st.guardLost) { this.lose(missionText(this.mission, 'guardLose') || message('lostSquad', fac)); return; }
       const alive = st.units.some((u) => u.side === 'player' && !u.dead);
       // П5-фикс: запасной путь подавлен, пока висит evac-цель (фаза 2 №13):
       // «победа только после отхода», даже если «Око» — последнее здание.
@@ -1113,20 +1116,20 @@ export class Game {
         // П5: запасной путь победы — формулировка по фракции врага
         // (№8 — гнездо, №13 — форт людей); текст №8 не меняется.
         this.win(st.factions.enemy === 'human'
-          ? tr(fac, 'winNoBaseFort')
-          : 'Гнездо разорено — отряд выполнил задачу!');
+          ? message('winNoBaseFort', fac)
+          : message('winNoBaseNest', fac));
       } else if (!alive) {
-        this.lose('Отряд погиб — миссия провалена');
+        this.lose(message('lostSquad', fac));
       }
       return;
     }
     if (st.bcount.enemy <= 0) {
-      this.win(tr(fac, 'winKill'));
+      this.win(message('winKill', fac));
     } else if (st.bcount.player <= 0) {
-      this.lose(tr(fac, 'loseBase'));
+      this.lose(message('loseBase', fac));
     } else if (def && st.time >= def.prep + def.total && !(w && w.kind === 'evac')) {
       // П5: в двухфазной обороне истекший таймер — не победа, а фаза эвакуации.
-      this.win(tr(fac, 'winDefense'));
+      this.win(message('winDefense', fac));
     }
   }
 
@@ -1157,7 +1160,8 @@ export class Game {
       opts.next = MISSIONS[ni];
     }
     if (win && m.id === 14) opts.campaignDone = true; // П8: кампанию закрывает №14, не хвост массива
-    if (win && m.epilogue) opts.epilogue = m.epilogue;
+    const epi = missionText(m, 'epilogue');
+    if (win && epi) opts.epilogue = epi;
     return opts;
   }
 
@@ -1589,8 +1593,8 @@ export class Game {
       ctx.font = 'bold 13px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = skipped > 0 ? '#f3c579' : '#e8f4f1';
-      ctx.fillText(tiles.length + ' × ' + cfg.cost + ' = ' + total +
-        (skipped > 0 ? ' (не хватает на ' + skipped + ')' : ''),
+      ctx.fillText(t('ui.hints.wallCost', { n: tiles.length, cost: cfg.cost, total }) +
+        (skipped > 0 ? ' ' + t('ui.hints.wallCostShort', { n: skipped }) : ''),
         (last.x + 0.5) * TILE - cam.x, last.y * TILE - cam.y - 8);
       ctx.textAlign = 'left';
     }
@@ -1725,5 +1729,16 @@ function fmtTime(sec) {
 }
 
 // --- Запуск ---
+// I: локаль грузится ДО построения меню (top-level await — модульная
+// точка входа). Затем — статические маркеры index.html и бейдж версии.
+await initI18n();
 const game = new Game();
 window.game = game; // отладочная ручка: window.game.state в консоли
+
+// I: бейдж версии (правило V) — буква пакета + дата поставки;
+// смена языка переотрисовывает статические экраны и открытые оверлеи.
+ui.setVersionBadge(t('ui.versionBadge', { v: GAME_VERSION, date: GAME_DATE }));
+onLocaleChange(() => {
+  ui.setVersionBadge(t('ui.versionBadge', { v: GAME_VERSION, date: GAME_DATE }));
+  ui.refreshLocale();
+});

@@ -54,7 +54,17 @@ class FakeEl {
     this._ctx = tag === 'canvas' ? makeCtx() : null;
   }
   get firstChild() { return this.children[0] || null; }
-  get innerHTML() { return this._html; }
+  // I: innerHTML читается симами (end-stats и т.п.) — сериализуем поддерево,
+  // чтобы DOM-сборка (showEnd без innerHTML) оставалась проверяемой.
+  get innerHTML() {
+    const ser = (n) => {
+      if (!n || typeof n !== 'object') return '';
+      let own = n._html || '';
+      if (!n.children || !n.children.length) return own + (n.textContent || '');
+      return own + (n.textContent || '') + n.children.map(ser).join('');
+    };
+    return this._html + this.children.map(ser).join('');
+  }
   set innerHTML(v) { this._html = v; this.children = []; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }
   removeEventListener() {}
@@ -81,6 +91,7 @@ globalThis.removeEventListener = () => {};
 let rafCb = null;
 globalThis.requestAnimationFrame = (cb) => { rafCb = cb; return 1; };
 const store = new Map();
+store.set('terranrts.language', 'ru'); // I: симы всегда на RU — детерминизм (node navigator врёт про en-US)
 globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
@@ -97,6 +108,7 @@ globalThis.document = {
     return elCache[id];
   },
   createElement: (tag) => new FakeEl(tag),
+  createTextNode: (text) => { const el = new FakeEl('#text'); el.textContent = String(text); return el; }, // I: setRich собирает переводы через DOM
   addEventListener: (ev, fn) => { (winHandlers['doc:' + ev] = winHandlers['doc:' + ev] || []).push(fn); },
 };
 

@@ -415,7 +415,7 @@ try {
   assert(game.mission.ai.arty === 2, 'мортиры не выданы');
   assert(game.mission.defense.nests === 1, 'гнёзд не 1');
   assert(/Подготовка/.test(game.objectiveText()), 'нет таймера обороны: ' + game.objectiveText());
-  assert(/священных полей/.test(game.mission.brief[2]), 'контратака не легализована');
+  assert(/священных полей/.test(missionsMod.missionText(game.mission, 'brief')[2]), 'контратака не легализована');
   st.minerals.player = 99999;
   st.minerals.enemy = 99999;
   // ЦК — внутри священных полей; ищем свободные 2×2 внутри и вне зоны.
@@ -516,6 +516,9 @@ try {
   const eye2 = st2.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
   U.damageEntity(st2, eye2, 1e9, null);
   ticks(5);
+  // Робастность: гасим вражеских юнитов — огонь форта не должен добить
+  // выживших до проверки «некого грузить» (флейк регресса).
+  for (const e of st2.units.filter((u) => u.side === 'enemy' && !u.dead)) U.damageEntity(st2, e, 1e9, null);
   for (const u of st2.units.filter((u) => u.side === 'player' && !u.dead).slice(0, 5)) {
     U.damageEntity(st2, u, 1e9, null);
   }
@@ -529,7 +532,7 @@ try {
   killAll(game.state, 'player');
   ticks(5);
   assert(game.state.gameOver === 'lose', 'нет поражения при гибели отряда');
-  assert(/Отряд погиб/.test(endReason()), 'чужая причина: ' + endReason());
+  assert(/Выводок пал/.test(endReason()), 'чужая причина: ' + endReason()); // I: голос фракции (alien)
   // «Око» — последнее здание врага (снос на 2-й секунде): НЕ победа,
   // фаза 2 началась, отход 4 = победа (блокер приёмки П5).
   game.startMission(missionsMod.MISSIONS[13]);

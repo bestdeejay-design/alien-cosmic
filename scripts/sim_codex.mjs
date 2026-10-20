@@ -9,6 +9,7 @@
 // D6 меню: бонусные главы скрыты до финала, затем — по порядку массива.
 // D7 финал: campaignDone только №14; победа пишет индекс, а не id.
 // C1 честные «Новинки»: фильтр меню (данные + реальные команды).
+// I: текст вкладок — через codexEntryParts (структура, не HTML).
 //
 // Запуск: node scripts/sim_codex.mjs
 // ============================================================
@@ -30,6 +31,9 @@ const game = globalThis.game;
 if (!game) { console.log('FAIL  boot: window.game не создан'); process.exit(1); }
 
 const byId = (id) => L.CODEX.find((e) => e.id === id);
+// I: текст вкладки из структурных частей codexEntryParts (без DOM).
+const codexTxt = (id, progress) => L.codexEntryParts(byId(id), progress)
+  .map((p) => (p.type === 'item' ? p.title + ' — ' + p.body : p.text)).join('\n');
 const lockedCount = (html) => (html.match(/\?\?\?/g) || []).length;
 function ticks(n) { for (let i = 0; i < n; i++) game.tick(); }
 
@@ -37,18 +41,18 @@ function ticks(n) { for (let i = 0; i < n; i++) game.tick(); }
 try {
   M.resetProgress();
   assert(M.loadProgress() === 0, 'прогресс не 0');
-  const war = L.codexEntryHTML(byId('war'), 0);
+  const war = codexTxt('war', 0);
   assert(lockedCount(war) === 15, 'хроника не вся закрыта: ' + lockedCount(war));
   assert(!/Дельта-2 замолчала/.test(war), 'заголовок хроники виден до победы');
-  const heroes = L.codexEntryHTML(byId('heroes'), 0);
+  const heroes = codexTxt('heroes', 0);
   assert(lockedCount(heroes) === 11, 'герои не все закрыты');
-  const ars = L.codexEntryHTML(byId('arsenal'), 0);
+  const ars = codexTxt('arsenal', 0);
   assert(/Дрон-техник/.test(ars) && /Собиратель/.test(ars), 'рабочие скрыты');
   assert(!/Рейнджер/.test(ars), 'рейнджер виден до победы №0');
-  assert(/Мир|Рубеж-64/.test(L.codexEntryHTML(byId('world'), 0)), 'завязка закрыта');
-  assert(/\?\?\?/.test(L.codexEntryHTML(byId('kharid'), 0)), 'рой открыт раньше №1');
-  assert(/\?\?\?/.test(L.codexEntryHTML(byId('flag'), 0)), 'мятеж открыт раньше акта II');
-  assert(!/\?\?\?/.test(L.codexEntryHTML(byId('planets'), 0)), 'планеты закрыты');
+  assert(/Мир|Рубеж-64/.test(codexTxt('world', 0)), 'завязка закрыта');
+  assert(/\?\?\?/.test(codexTxt('kharid', 0)), 'рой открыт раньше №1');
+  assert(/\?\?\?/.test(codexTxt('flag', 0)), 'мятеж открыт раньше акта II');
+  assert(!/\?\?\?/.test(codexTxt('planets', 0)), 'планеты закрыты');
   pass('D1 unlockAfter: 15+11 ???, завязка и рабочие открыты');
 } catch (e) { fail('D1 locked-fresh', e); }
 
@@ -57,17 +61,17 @@ try {
   M.resetProgress();
   M.saveProgress(1); // победа в №0
   assert(M.loadProgress() === 1, 'прогресс не 1');
-  const war = L.codexEntryHTML(byId('war'), 1);
+  const war = codexTxt('war', 1);
   assert(/Дельта-2 замолчала/.test(war), 'запись №0 не открылась');
   assert(/дюны пели/.test(war), 'нет эпилога §3 в теле');
   assert(/молчания одной шахты/.test(war), 'нет строки контекста');
   assert(lockedCount(war) === 14, 'открылось не 1: ' + lockedCount(war));
-  assert(/дюны живые/.test(L.codexEntryHTML(byId('heroes'), 1)), 'герой №0 закрыт');
-  assert(/Рейнджер/.test(L.codexEntryHTML(byId('arsenal'), 1)), 'рейнджер закрыт после №0');
-  assert(!/Мортира/.test(L.codexEntryHTML(byId('arsenal'), 1)), 'мортира открылась раньше №7');
-  assert(/\?\?\?/.test(L.codexEntryHTML(byId('kharid'), 1)), 'рой открыт раньше победы №1');
+  assert(/дюны живые/.test(codexTxt('heroes', 1)), 'герой №0 закрыт');
+  assert(/Рейнджер/.test(codexTxt('arsenal', 1)), 'рейнджер закрыт после №0');
+  assert(!/Мортира/.test(codexTxt('arsenal', 1)), 'мортира открылась раньше №7');
+  assert(/\?\?\?/.test(codexTxt('kharid', 1)), 'рой открыт раньше победы №1');
   M.saveProgress(2); // победа в №1
-  assert(!/\?\?\?/.test(L.codexEntryHTML(byId('kharid'), 2)), 'рой закрыт после №1');
+  assert(!/\?\?\?/.test(codexTxt('kharid', 2)), 'рой закрыт после №1');
   pass('D2 победа №0: хроника-0 + герой + рейнджер открыты, остальное ???');
 } catch (e) { fail('D2 open-on-win', e); }
 
@@ -75,12 +79,12 @@ try {
 try {
   M.resetProgress();
   M.saveProgress(15); // победа в №14
-  const war = L.codexEntryHTML(byId('war'), 15);
+  const war = codexTxt('war', 15);
   assert(lockedCount(war) === 0, 'хроника неполна: ??? ' + lockedCount(war));
   assert(/Рубеж замкнут/.test(war) && /Дельта-2 замолчала/.test(war), 'краёв хроники нет');
-  assert(lockedCount(L.codexEntryHTML(byId('heroes'), 15)) === 0, 'герои неполны');
-  assert(lockedCount(L.codexEntryHTML(byId('arsenal'), 15)) === 0, 'арсенал неполон');
-  assert(!/\?\?\?/.test(L.codexEntryHTML(byId('flag'), 15)), 'мятеж закрыт после кампании');
+  assert(lockedCount(codexTxt('heroes', 15)) === 0, 'герои неполны');
+  assert(lockedCount(codexTxt('arsenal', 15)) === 0, 'арсенал неполон');
+  assert(!/\?\?\?/.test(codexTxt('flag', 15)), 'мятеж закрыт после кампании');
   pass('D3 финал: хроника 15/15, герои и арсенал полны');
 } catch (e) { fail('D3 full-after-14', e); }
 
@@ -89,8 +93,8 @@ try {
   M.saveProgress(15);
   M.resetProgress();
   assert(M.loadProgress() === 0, 'прогресс не сброшен');
-  assert(lockedCount(L.codexEntryHTML(byId('war'), 0)) === 15, 'хроника не закрылась');
-  assert(lockedCount(L.codexEntryHTML(byId('heroes'), 0)) === 11, 'герои не закрылись');
+  assert(lockedCount(codexTxt('war', 0)) === 15, 'хроника не закрылась');
+  assert(lockedCount(codexTxt('heroes', 0)) === 11, 'герои не закрылись');
   pass('D4 сброс: записи снова ???');
 } catch (e) { fail('D4 reset-closes', e); }
 

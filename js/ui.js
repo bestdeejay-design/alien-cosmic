@@ -8,16 +8,20 @@ import {
   TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, SUPPLY_MAX, COLORS,
   fname, fdesc,
 } from './config.js';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel } from './missions.js';
-import { CODEX, tr, codexEntryHTML } from './lore.js';
+import { MISSIONS, SKIRMISH, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js';
+import { t, message, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
 import { crystalAt } from './units.js'; // F.1: тултип кристалла
 
 const $ = (id) => document.getElementById(id);
 
+// cls — только классы оформления; подписи фракций — в локали
+// (factions.<side>.title/sub) — I: язык не пришивается к коду.
 const FACTIONS = {
-  human: { title: 'ГЕЛИОС', sub: 'Корпорация людей: техника, турели, танки', cls: 'fac-human' },
-  alien: { title: 'КХАРИД', sub: 'Кристаллорождённые: рой, шипы, органика улья', cls: 'fac-alien' },
+  human: { cls: 'fac-human' },
+  alien: { cls: 'fac-alien' },
 };
+const facTitle = (f) => t('factions.' + f + '.title');
 
 // ------------------------------------------------------------
 // Иконки команд: маленькие canvas 26×26, рисуются один раз.
@@ -417,6 +421,7 @@ let pendingMission = null; // миссия, выбранная в брифинг
 let pendingNext = null;    // следующая миссия после победы
 
 export function initUI(game) {
+  uiGame = game; // I: ручка для refreshLocale (перерисовка при смене языка)
   els = {
     canvas: $('game-canvas'),
     minimap: $('minimap'),
@@ -456,11 +461,12 @@ export function initUI(game) {
     pauseOverlay: $('pause-overlay'),
     startBtn: $('btn-start'),
     againBtn: $('btn-again'),
+    versionBadge: $('ver-badge'),
   };
 
   // Главное меню: сезоны. G.6: Сезон 1 → миссии, Сезон 2 — заглушка с тостом.
   $('btn-season1').addEventListener('click', () => showMissions(game));
-  $('btn-season2').addEventListener('click', () => toast('Сезон 2 — сюжетные миссии. Скоро.'));
+  $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
     els.overlay.classList.remove('hidden');
@@ -509,13 +515,13 @@ export function initUI(game) {
   });
 
   // Стартовая кнопка на фоне меню (старое поведение): запускаем первую миссию.
-  els.startBtn.textContent = 'Быстрый старт — миссия ' + (loadProgress() + 1);
+  els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
   els.startBtn.addEventListener('click', () => game.startMission(MISSIONS[loadProgress()]));
   // П8: сброс прогресса — кодекс и главы закрываются сами (читают прогресс).
   $('btn-reset').addEventListener('click', () => {
-    if (!confirm('Сбросить прогресс кампании? Кодекс закроется, главы Хроники скроются.')) return;
+    if (!confirm(t('ui.menu.resetConfirm'))) return;
     resetProgress();
-    els.startBtn.textContent = 'Быстрый старт — миссия ' + (loadProgress() + 1);
+    els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
     game.sound.click();
   });
   els.againBtn.addEventListener('click', () => {
@@ -531,6 +537,20 @@ export function initUI(game) {
   applyPanelPrefs();
   els.pause.addEventListener('click', () => game.togglePause());
   els.sound.addEventListener('click', () => game.toggleSound());
+
+  // I: переключатель языка на главном экране — только локали из
+  // реестра SUPPORTED_LOCALES (безопасные коды, не из localStorage).
+  const langSel = $('lang-select');
+  if (langSel) {
+    for (const entry of Object.values(SUPPORTED_LOCALES)) {
+      const o = document.createElement('option');
+      o.value = entry.code;
+      o.textContent = entry.label;
+      langSel.appendChild(o);
+    }
+    langSel.value = getLocale();
+    langSel.addEventListener('change', () => setLocale(langSel.value));
+  }
 
   // Миникарта: ЛКМ — прыжок/перетаскивание камеры, ПКМ — приказ.
   const mm = els.minimap;
@@ -573,32 +593,56 @@ export function showMissions(game) {
   els.overlay.classList.add('hidden');
   els.missionOverlay.classList.remove('hidden');
   const unlocked = loadProgress();
-  els.missionList.innerHTML = '';
+  els.missionList.innerHTML = ''; // очистка (переводы в карточки идут через DOM)
   let lastAct = null;
   // П8: бонусные главы видны только после финала (победа №14 → прогресс 15).
   // Разблокировка — по порядку массива (id бонусных идут с разрывом).
   MISSIONS.forEach((m, idx) => {
     if (m.bonus && unlocked <= 14) return;
-    // Заголовок акта перед первой миссией акта.
-    if (m.act !== lastAct) {
-      lastAct = m.act;
+    // Заголовок акта перед первой миссией акта (текст — из локали).
+    const act = missionText(m, 'act');
+    if (act !== lastAct) {
+      lastAct = act;
       const head = document.createElement('div');
       head.className = 'act-head';
-      head.textContent = m.act;
+      head.textContent = act;
       els.missionList.appendChild(head);
     }
+    // Карточка собирается через DOM (никаких innerHTML с переводом).
     const card = document.createElement('button');
     card.className = 'mission-card' + (idx > unlocked ? ' locked' : '');
-    const fac = FACTIONS[m.faction];
-    card.innerHTML =
-      `<div class="mc-top"><span class="badge ${fac.cls}">${fac.title}</span>` +
-      `<span class="mc-num">${m.bonus ? 'Глава ' + (idx - 14) : 'Миссия ' + (m.id + 1)}</span>` +
-      (idx > unlocked ? '<span class="mc-lock">■ закрыто</span>' : '') + '</div>' +
-      `<div class="mc-name">${m.name}</div>` +
-      `<div class="mc-place">${m.place}</div>` +
-      `<div class="mc-obj">${objectiveLabel(m)}</div>` +
-      (m.intro ? `<div class="mc-intro">${m.intro}</div>` : '') +
-      (m.defense ? '<div class="mc-def">◆ режим обороны: волны врага</div>' : '');
+    const top = document.createElement('div');
+    top.className = 'mc-top';
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + FACTIONS[m.faction].cls;
+    badge.textContent = facTitle(m.faction);
+    top.appendChild(badge);
+    const num = document.createElement('span');
+    num.className = 'mc-num';
+    num.textContent = m.bonus
+      ? t('ui.missionsScr.chapter', { n: idx - 14 })
+      : t('ui.missionsScr.missionN', { n: m.id + 1 });
+    top.appendChild(num);
+    if (idx > unlocked) {
+      const lock = document.createElement('span');
+      lock.className = 'mc-lock';
+      lock.textContent = t('ui.missionsScr.locked');
+      top.appendChild(lock);
+    }
+    card.appendChild(top);
+    const addLine = (cls, text) => {
+      const d = document.createElement('div');
+      d.className = cls;
+      setRich(d, text);
+      card.appendChild(d);
+      return d;
+    };
+    addLine('mc-name', missionText(m, 'name'));
+    addLine('mc-place', missionText(m, 'place'));
+    addLine('mc-obj', objectiveLabel(m));
+    const intro = missionText(m, 'intro');
+    if (intro) addLine('mc-intro', intro);
+    if (m.defense) addLine('mc-def', t('ui.missionsScr.defenseTag'));
     if (idx <= unlocked) {
       card.addEventListener('click', () => {
         els.missionOverlay.classList.add('hidden');
@@ -613,24 +657,72 @@ export function showMissions(game) {
 
 export function showBrief(game, m) {
   pendingMission = m;
-  const fac = FACTIONS[m.faction];
-  els.briefBadge.textContent = 'За: ' + fac.title;
-  els.briefBadge.className = 'badge ' + fac.cls;
-  els.briefTitle.textContent = m.name;
-  els.briefPlace.textContent = m.place;
-  els.briefText.innerHTML = m.brief.map((p) => `<p>${p}</p>`).join('') +
-    (m.intro ? `<p class="brief-intro">${m.intro}</p>` : '');
-  els.briefObjective.textContent = 'Цель: ' + objectiveLabel(m) +
-    (m.defense ? ` · подготовка ${Math.round(m.defense.prep / 60)} мин, затем ${Math.round(m.defense.total / 60)} мин обороны` : '');
+  els.briefBadge.textContent = t('ui.missionsScr.for') + facTitle(m.faction);
+  els.briefBadge.className = 'badge ' + FACTIONS[m.faction].cls;
+  els.briefTitle.textContent = missionText(m, 'name');
+  els.briefPlace.textContent = missionText(m, 'place');
+  // Бриф — абзацы через DOM (setRich: разрешены только <b>/<br>).
+  els.briefText.textContent = '';
+  for (const p of missionText(m, 'brief')) {
+    const pe = document.createElement('p');
+    setRich(pe, p);
+    els.briefText.appendChild(pe);
+  }
+  const intro = missionText(m, 'intro');
+  if (intro) {
+    const ie = document.createElement('p');
+    ie.className = 'brief-intro';
+    setRich(ie, intro);
+    els.briefText.appendChild(ie);
+  }
+  let objLine = t('ui.missionsScr.objective') + objectiveLabel(m);
+  if (m.defense) {
+    objLine += t('ui.missionsScr.prepNote', {
+      prep: Math.round(m.defense.prep / 60),
+      total: Math.round(m.defense.total / 60),
+    });
+  }
+  els.briefObjective.textContent = objLine;
   els.briefOverlay.classList.remove('hidden');
+}
+
+// Части кодекса → безопасный DOM (setRich: только <b>/<br> в переводах).
+function renderCodexParts(container, entry, progress) {
+  container.textContent = '';
+  for (const p of codexEntryParts(entry, progress)) {
+    if (p.type === 'h2' || p.type === 'h3') {
+      const h = document.createElement(p.type);
+      h.textContent = p.text;
+      container.appendChild(h);
+    } else if (p.type === 'locked') {
+      const el = document.createElement('p');
+      el.className = 'codex-locked';
+      el.textContent = p.text;
+      container.appendChild(el);
+    } else if (p.type === 'item') {
+      const el = document.createElement('p');
+      const b = document.createElement('b');
+      b.textContent = p.title;
+      el.appendChild(b);
+      el.appendChild(document.createTextNode(' — '));
+      const span = document.createElement('span');
+      setRich(span, p.body);
+      el.appendChild(span);
+      container.appendChild(el);
+    } else if (p.type === 'para') {
+      const el = document.createElement('p');
+      setRich(el, p.text);
+      container.appendChild(el);
+    }
+  }
 }
 
 // Кодекс: вкладки из CODEX (lore.js), тело — абзацы вкладки.
 export function showCodex() {
-  els.codexTabs.innerHTML = '';
+  els.codexTabs.textContent = '';
   const progress = loadProgress(); // П8: кодекс читает только прогресс кампании
   const render = (entry) => {
-    els.codexBody.innerHTML = codexEntryHTML(entry, progress);
+    renderCodexParts(els.codexBody, entry, progress);
     for (const b of els.codexTabs.children) {
       b.classList.toggle('active', b.dataset.id === entry.id);
     }
@@ -639,7 +731,7 @@ export function showCodex() {
     const b = document.createElement('button');
     b.className = 'codex-tab';
     b.dataset.id = entry.id;
-    b.textContent = entry.tab;
+    b.textContent = codexTabLabel(entry);
     b.addEventListener('click', () => render(entry));
     els.codexTabs.appendChild(b);
   }
@@ -649,6 +741,11 @@ export function showCodex() {
 export function hideStart() { els.overlay.classList.add('hidden'); }
 export function showStart() { els.overlay.classList.remove('hidden'); }
 
+// I: бейдж версии (правило V) — текст приходит из game.js с параметрами локали.
+export function setVersionBadge(text) {
+  if (els && els.versionBadge) els.versionBadge.textContent = text;
+}
+
 // ------------------------------------------------------------
 // Пакет E.1: положение командной панели + режим «скрыть».
 // Низ (как было) / слева / справа / верх; выбор в localStorage.
@@ -656,7 +753,6 @@ export function showStart() { els.overlay.classList.remove('hidden'); }
 // ------------------------------------------------------------
 const PANEL_KEY = 'terranrts.panel';
 const PANEL_POS = ['bottom', 'left', 'right', 'top'];
-const PANEL_NAMES = { bottom: 'низ', left: 'слева', right: 'справа', top: 'верх' };
 let panelPos = 'bottom', panelHidden = false;
 
 export function getPanelPos() { return panelPos; }
@@ -679,8 +775,8 @@ function applyPanelClass() {
   cl.remove('panel-left', 'panel-right', 'panel-top', 'panel-hidden');
   if (panelPos !== 'bottom') cl.add('panel-' + panelPos);
   if (panelHidden) cl.add('panel-hidden');
-  if (els && els.panelPosBtn) els.panelPosBtn.textContent = 'Панель: ' + PANEL_NAMES[panelPos];
-  if (els && els.panelShow) els.panelShow.textContent = 'Панель';
+  if (els && els.panelPosBtn) els.panelPosBtn.textContent = t('ui.panel.posState', { where: t('ui.panel.posNames.' + panelPos) });
+  if (els && els.panelShow) els.panelShow.textContent = t('ui.panel.show');
 }
 export function applyPanelPrefs() {
   try {
@@ -735,18 +831,30 @@ function fmtElapsed(sec) {
 }
 
 export function showEnd(win, stats, opts = {}) {
-  els.endTitle.textContent = win ? 'Победа!' : 'Поражение';
+  els.endTitle.textContent = win ? t('ui.end.win') : t('ui.end.lose');
   els.endTitle.className = win ? 'win' : 'lose';
   els.endReason.textContent = opts.reason || '';
   els.endEpilogue.textContent = win ? (opts.epilogue || '') : '';
-  if (opts.campaignDone) els.endReason.textContent = 'Кампания пройдена — поля кхарид свободны!';
-  els.endStats.innerHTML =
-    `<div class="row"><span>Время боя</span><b>${fmtElapsed(stats.time)}</b></div>` +
-    `<div class="row"><span>Уничтожено врагов</span><b>${stats.kills}</b></div>` +
-    `<div class="row"><span>Потери</span><b>${stats.losses}</b></div>` +
-    `<div class="row"><span>${tr(opts.faction, 'mined')}</span><b>${stats.mined}</b></div>`;
+  if (opts.campaignDone) els.endReason.textContent = t('ui.end.campaignDone');
+  // Статистика — через DOM (переведённые подписи из локали).
+  els.endStats.innerHTML = ''; // очистка (строки далее — через DOM)
+  const row = (label, val) => {
+    const d = document.createElement('div');
+    d.className = 'row';
+    const s = document.createElement('span');
+    s.textContent = label;
+    const b = document.createElement('b');
+    b.textContent = val;
+    d.appendChild(s);
+    d.appendChild(b);
+    els.endStats.appendChild(d);
+  };
+  row(t('ui.end.statsTime'), fmtElapsed(stats.time));
+  row(t('ui.end.statsKills'), stats.kills);
+  row(t('ui.end.statsLosses'), stats.losses);
+  row(message('mined', opts.faction), stats.mined);
   pendingNext = opts.next || null;
-  els.againBtn.textContent = opts.next ? 'Следующая миссия →' : 'Играть снова';
+  els.againBtn.textContent = opts.next ? t('ui.end.next') : t('ui.end.again');
   els.endOverlay.classList.remove('hidden');
 }
 
@@ -754,9 +862,9 @@ export function showEnd(win, stats, opts = {}) {
 export function resetPanel() { sig = ''; dyn = null; }
 export function setPausedUI(p) {
   els.pauseOverlay.classList.toggle('hidden', !p);
-  els.pause.textContent = p ? 'Продолжить' : 'Пауза';
+  els.pause.textContent = p ? t('ui.topbar.resume') : t('ui.topbar.pause');
 }
-export function setSoundUI(muted) { els.sound.textContent = muted ? 'Звук: выкл' : 'Звук: вкл'; }
+export function setSoundUI(muted) { els.sound.textContent = muted ? t('ui.topbar.soundOff') : t('ui.topbar.sound'); }
 
 // Клавиатурные хоткеи панели: нажимаем «виртуальную кнопку».
 export function handleHotkey(code) {
@@ -809,12 +917,17 @@ function rebuildPanel(game, sel) {
 
   // Режим размещения здания.
   if (st.placing) {
-    els.selInfo.innerHTML = '<div class="hint">Клик — поставить (серия: режим не сбрасывается).<br>' +
-    'Стена/турель: тяни ЛКМ — линия с ценой.<br>Стрелки — призрак, Enter — поставить.<br>ПКМ / ESC — отмена.</div>';
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    setRich(hint, t('ui.hints.buildMode'));
+    els.selInfo.appendChild(hint);
     return;
   }
   if (!sel.length) {
-    els.selInfo.innerHTML = '<div class="hint">Выделите юнита ЛКМ или рамкой.<br>ПКМ — идти / добывать / атаковать / ремонтировать.<br>ПКМ по бункеру — занять его.</div>';
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    setRich(hint, t('ui.hints.select'));
+    els.selInfo.appendChild(hint);
     return;
   }
 
@@ -828,7 +941,7 @@ function rebuildPanel(game, sel) {
     box.appendChild(portraitEl(b.faction === 'alien' ? 'a_' + b.type : b.type));
     const name = document.createElement('div');
     name.className = 'sel-name';
-    name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : ' — строится');
+    name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : t('ui.hints.buildWip'));
     box.appendChild(name);
     const bst = buildingStatus(b);
     box.appendChild(statusLine(bst.led, bst.text).el);
@@ -842,7 +955,7 @@ function rebuildPanel(game, sel) {
       dyn.progFill = p.fill;
       const hint = document.createElement('div');
       hint.className = 'small';
-      hint.textContent = 'Стройку ведёт назначенный рабочий.';
+      hint.textContent = t('ui.hints.construction');
       box.appendChild(hint);
     } else {
       // Описание здания — теперь подписано ВСЕГДА.
@@ -860,7 +973,7 @@ function rebuildPanel(game, sel) {
           b.queue.forEach((item, i) => {
             const chip = document.createElement('button');
             chip.className = 'chip';
-            chip.title = fname(UNITS[item.type], b.faction) + ' — клик: отмена (возврат минералов)';
+            chip.title = t('ui.hints.queueCancel', { name: fname(UNITS[item.type], b.faction) });
             chip.appendChild(iconEl(b.faction === 'alien' ? 'a_' + item.type : item.type));
             if (i === 0) {
               const pr = document.createElement('div');
@@ -878,7 +991,7 @@ function rebuildPanel(game, sel) {
         } else {
           const empty = document.createElement('div');
           empty.className = 'queue-empty';
-          empty.textContent = 'Очередь пуста — выберите юнита справа';
+          empty.textContent = t('ui.hints.queueEmpty');
           q.appendChild(empty);
         }
         box.appendChild(q);
@@ -890,7 +1003,7 @@ function rebuildPanel(game, sel) {
         const rl = document.createElement('div');
         rl.className = 'res-line';
         const t1 = document.createElement('div');
-        t1.textContent = fname(up, b.faction) + ' ур.' + b.res.lvl + ' — осталось ' + Math.ceil(b.res.t) + 'с';
+        t1.textContent = t('ui.hints.researchLeft', { name: fname(up, b.faction), lvl: b.res.lvl, sec: Math.ceil(b.res.t) });
         rl.appendChild(t1);
         const rp = bar(1 - b.res.t / b.res.total);
         rp.fill.classList.add('amber');
@@ -902,20 +1015,19 @@ function rebuildPanel(game, sel) {
       if (b.cfg.garrisonCap) {
         const hint = document.createElement('div');
         hint.className = 'small';
-        hint.textContent = 'Гарнизон: ' + b.garrison.length + '/' + b.cfg.garrisonCap +
-          ' · ПКМ бункера при выделенной пехоте — занять.';
+        hint.textContent = t('ui.hints.garrisonHint', { n: b.garrison.length, cap: b.cfg.garrisonCap });
         box.appendChild(hint);
       }
       if (b.cfg.attack) {
         const s = document.createElement('div');
         s.className = 'small';
-        s.textContent = `Урон ${b.cfg.dmg} · дальность ${b.cfg.range} · перезарядка ${b.cfg.cooldown}с`;
+        s.textContent = t('ui.hints.dmgLine', { d: b.cfg.dmg, r: b.cfg.range, cd: b.cfg.cooldown });
         box.appendChild(s);
       }
       if (b.cfg.produces && !b.queue.length) {
         const hint = document.createElement('div');
         hint.className = 'small';
-        hint.textContent = 'ПКМ по земле — точка сбора новых юнитов.';
+        hint.textContent = t('ui.hints.rallyHint');
         box.appendChild(hint);
       }
     }
@@ -940,7 +1052,7 @@ function rebuildPanel(game, sel) {
     dyn.unitLed = usl.led; dyn.unitText = usl.text;
     const sub = document.createElement('div');
     sub.className = 'small';
-    sub.textContent = `${fdesc(first.cfg, first.faction)} · урон ${first.cfg.dmg} · перезарядка ${first.cfg.cooldown}с`;
+    sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: first.cfg.dmg, cd: first.cfg.cooldown });
     box.appendChild(sub);
     els.selInfo.appendChild(box);
   }
@@ -995,9 +1107,28 @@ function ensureTipEl() {
 }
 function showTip(tip, btn) {
   ensureTipEl();
-  const rows = (tip.lines || []).map((l) => `<div class="tip-row">${l}</div>`).join('');
-  tipEl.innerHTML = `<div class="tip-title">${tip.title}<span class="tip-cost">${tip.cost || ''}</span></div>` +
-    (tip.desc ? `<div class="tip-desc">${tip.desc}</div>` : '') + rows;
+  // Переведённые строки — только через DOM (никаких innerHTML).
+  tipEl.textContent = '';
+  const title = document.createElement('div');
+  title.className = 'tip-title';
+  title.appendChild(document.createTextNode(tip.title || ''));
+  const cost = document.createElement('span');
+  cost.className = 'tip-cost';
+  cost.textContent = tip.cost || '';
+  title.appendChild(cost);
+  tipEl.appendChild(title);
+  if (tip.desc) {
+    const desc = document.createElement('div');
+    desc.className = 'tip-desc';
+    setRich(desc, tip.desc);
+    tipEl.appendChild(desc);
+  }
+  for (const l of tip.lines || []) {
+    const r = document.createElement('div');
+    r.className = 'tip-row';
+    setRich(r, l);
+    tipEl.appendChild(r);
+  }
   tipEl.classList.add('show');
   const r = btn.getBoundingClientRect();
   tipEl.style.left = Math.max(8, Math.min(window.innerWidth - 320, r.left + r.width / 2 - 150)) + 'px';
@@ -1006,10 +1137,10 @@ function showTip(tip, btn) {
 }
 function hideTip() { if (tipEl) tipEl.classList.remove('show'); }
 
-// F.1: тултип в точке экрана (для остатков кристалла).
-function tipAt(html, x, y) {
+// F.1: тултип в точке экрана (для остатков кристалла) — безопасно: setRich.
+function tipAt(text, x, y) {
   ensureTipEl(); // Б1: работает и до первого наведения на кнопку
-  tipEl.innerHTML = html;
+  setRich(tipEl, text);
   tipEl.style.left = Math.min(x + 14, window.innerWidth - 250) + 'px';
   tipEl.style.top = Math.max(y - 10, 8) + 'px';
   tipEl.classList.add('show');
@@ -1032,7 +1163,7 @@ export function updateCrystalTip(game, wx, wy) {
   }
   if (!sum) sum = c.amount;
   const mx = (game.mouse && game.mouse.x) || 0, my = (game.mouse && game.mouse.y) || 0;
-  tipAt('<b>Эрг ' + c.amount + '/' + c.max + '</b><br>Месторождение: ' + sum, mx, my);
+  tipAt(t('ui.hints.ergTip', { n: c.amount, max: c.max, sum }), mx, my);
 }
 
 function refreshDynamic(game, sel) {
@@ -1052,21 +1183,22 @@ function refreshDynamic(game, sel) {
       dyn.hpFill.classList.toggle('crit', f <= 0.28);
     }
     // Статус приказа юнита — живой, каждый кадр (приказы меняются часто).
+    // led — класс оформления; подпись — ui.states.<код> из локали.
     if (dyn.unitText && first.kind === 'unit') {
       const ORDL = {
-        idle: ['idle', 'Ожидает'], move: ['work', 'Марш'],
-        attack: ['err', 'Атака'], attackMove: ['err', 'Зачистка'],
-        gather: ['warn', 'Добыча'], build: ['warn', 'Стройка'],
-        repair: ['ok', 'Ремонт'], garrison: ['work', 'В гарнизон'],
-        heal: ['ok', 'Лечение'],
+        idle: ['idle', 'ui.states.idle'], move: ['work', 'ui.states.move'],
+        attack: ['err', 'ui.states.attack'], attackMove: ['err', 'ui.states.attackMove'],
+        gather: ['warn', 'ui.states.gather'], build: ['warn', 'ui.states.build'],
+        repair: ['ok', 'ui.states.repair'], garrison: ['work', 'ui.states.garrison'],
+        heal: ['ok', 'ui.states.heal'],
       };
       let led, text;
       if (first.idleReason === 'unreachable') {
-        led = 'err blink'; text = 'Путь закрыт!';
+        led = 'err blink'; text = t('ui.states.blocked');
       } else {
         const o = (first.order && ORDL[first.order.kind]) || ORDL.idle;
-        led = o[0]; text = o[1];
-        if (sel.length > 1) text += ' · отряд ' + sel.length;
+        led = o[0]; text = t(o[1]);
+        if (sel.length > 1) text += t('ui.states.squad', { n: sel.length });
       }
       dyn.unitLed.className = 'led ' + led;
       if (dyn.unitText.textContent !== text) dyn.unitText.textContent = text;
@@ -1076,7 +1208,7 @@ function refreshDynamic(game, sel) {
       const q = first.queue[0];
       dyn.chipFill.style.width = ((1 - q.t / q.total) * 100) + '%';
       if (dyn.timerEl) {
-        dyn.timerEl.textContent = q.hold ? 'ждёт' : Math.ceil(q.t) + 'с';
+        dyn.timerEl.textContent = q.hold ? t('ui.states.waiting') : t('ui.states.sec', { n: Math.ceil(q.t) });
         dyn.timerEl.classList.toggle('hold', !!q.hold);
       }
     }
@@ -1112,29 +1244,50 @@ function statusLine(led, text) {
 // Статус здания на момент перестройки панели (очередь/исследование/
 // ранение входят в подпись — панель пересоберётся при их смене).
 function buildingStatus(b) {
-  if (!b.done) return { led: 'warn blink', text: 'Строится — ' + Math.round((b.progress || 0) * 100) + '%' };
-  if (b.flashT > 0) return { led: 'err blink', text: 'Под огнём!' };
-  if (b.res) return { led: 'work', text: 'Исследование: ' + fname(UPGRADES[b.res.key], b.faction) };
+  if (!b.done) return { led: 'warn blink', text: t('ui.buildingState.wip', { p: Math.round((b.progress || 0) * 100) }) };
+  if (b.flashT > 0) return { led: 'err blink', text: t('ui.buildingState.underFire') };
+  if (b.res) return { led: 'work', text: t('ui.buildingState.researching', { name: fname(UPGRADES[b.res.key], b.faction) }) };
   if (b.queue && b.queue.length) {
-    if (b.queue[0].hold) return { led: 'warn', text: 'Производство ждёт (нет снабжения)' };
-    return { led: 'ok', text: 'Производство: ' + fname(UNITS[b.queue[0].type], b.faction) };
+    if (b.queue[0].hold) return { led: 'warn', text: t('ui.buildingState.prodWait') };
+    return { led: 'ok', text: t('ui.buildingState.producing', { name: fname(UNITS[b.queue[0].type], b.faction) }) };
   }
-  if (b.cfg.produces) return { led: 'warn', text: 'Ожидает приказа — очередь пуста' };
+  if (b.cfg.produces) return { led: 'warn', text: t('ui.buildingState.idleOrder') };
   if (b.cfg.garrisonCap) {
     return {
       led: b.garrison.length ? 'ok' : 'work',
-      text: 'Гарнизон: ' + b.garrison.length + '/' + b.cfg.garrisonCap,
+      text: t('ui.buildingState.garrison', { n: b.garrison.length, c: b.cfg.garrisonCap }),
     };
   }
-  if (b.cfg.attack) return { led: 'ok', text: 'На позиции' };
-  return { led: 'work', text: 'Активно' };
+  if (b.cfg.attack) return { led: 'ok', text: t('ui.buildingState.onPost') };
+  return { led: 'work', text: t('ui.buildingState.active') };
 }
 
 function infoStats(box, b) {
   const s = document.createElement('div');
   s.className = 'small';
-  s.textContent = `Прочность ${Math.ceil(b.hp)}/${b.maxHp}`;
+  s.textContent = t('ui.hints.hpLine', { hp: Math.ceil(b.hp), max: b.maxHp });
   box.appendChild(s);
+}
+
+// ------------------------------------------------------------
+// I: смена языка без перезагрузки — перерисовываем статические
+// экраны и открытые оверлеи; состояние партии не трогаем
+// (динамические строки панели/тостов перечитываются из t() сами).
+// ------------------------------------------------------------
+let uiGame = null; // ручка для refreshLocale (ставится в initUI)
+export function refreshLocale() {
+  if (!els) return;
+  applyStaticDOM(); // маркеры index.html (меню, экраны, кнопки)
+  if (uiGame) {
+    els.startBtn.textContent = t('ui.menu.quickStart', { n: loadProgress() + 1 });
+    setPausedUI(!!uiGame.paused);
+    if (uiGame.sound) setSoundUI(!!uiGame.sound.muted);
+    applyPanelClass();
+    resetPanel(); // панель команд пересоберётся на следующем кадре
+    if (!els.missionOverlay.classList.contains('hidden')) showMissions(uiGame);
+    if (!els.briefOverlay.classList.contains('hidden') && pendingMission) showBrief(uiGame, pendingMission);
+    if (!els.codexOverlay.classList.contains('hidden')) showCodex();
+  }
 }
 
 // ------------------------------------------------------------
