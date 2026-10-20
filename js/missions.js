@@ -588,7 +588,7 @@ export const MISSIONS = [
     },
     phaseToast: 'Рассвело — шаттлы сели! Погрузите 8 бойцов в круг огней!',
     enemyFaction: 'human', // свои против своих — мятежники
-    banBuild: ['barracks', 'factory'], // подкреплений нет
+    banBuild: ['barracks', 'factory', 'lab'], // подкреплений нет; лаба требует казарму — без запрета тупиковая кнопка в меню (K)
     buildZone: [{ x: 24, y: 2, w: 24, h: 18 }], // только плато «Вала»
     map: {
       seed: 20260119, biome: 'moon', w: 72, h: 72, rocks: 10, rich: 1.15, base: { x: 32, y: 8 },

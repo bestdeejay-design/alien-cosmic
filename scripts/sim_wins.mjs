@@ -762,16 +762,16 @@ try {
 // ---------- W23: №18 «Долгая ночь» — оборона, фаза 2, ban стройки ----------
 try {
   const m = missionsMod.MISSIONS[17];
-  assert(m.id === 18 && m.defense && m.banBuild.join() === 'barracks,factory', 'не та миссия в слоте 17');
+  assert(m.id === 18 && m.defense && m.banBuild.join() === 'barracks,factory,lab', 'не та миссия в слоте 17');
   game.startMission(m);
   ticks(5);
   const st = game.state;
-  // Ban в реальном меню: у рабочего с открытым меню нет казармы/завода, но есть лаба.
+  // Ban в реальном меню: у рабочего с открытым меню нет казармы/завода и лабы (hotfix K).
   const w0 = st.units.find((u) => u.side === 'player' && u.cfg && u.cfg.canBuild);
   st.selection = [w0]; st.buildMenu = true;
   const codes = game.getCommands().map((c) => c.code);
-  assert(!codes.includes('KeyE') && !codes.includes('KeyU'), 'ban не сработал: ' + codes.join(','));
-  assert(codes.includes('KeyI'), 'лаборатория пропала из меню №18');
+  assert(!codes.includes('KeyE') && !codes.includes('KeyU') && !codes.includes('KeyI'), 'ban не сработал: ' + codes.join(','));
+  assert(codes.includes('KeyQ') && codes.includes('KeyR') && codes.includes('KeyY') && codes.includes('KeyT'), 'меню №18 обеднило: ' + codes.join(','));
   st.buildMenu = false; st.selection = [];
   // Контраст: в №16 (база есть) казарма на месте.
   game.startMission(missionsMod.MISSIONS[15]);
