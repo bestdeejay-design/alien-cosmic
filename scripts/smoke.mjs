@@ -35,37 +35,33 @@ pass('boot: игра загрузилась, меню построено');
 // ---------- Фаза 1: клики по меню ----------
 try {
   const $ = (id) => document.getElementById(id);
-  $('btn-season1').click();               // список миссий
-  const cards = $('mission-list').children.length;
+  $('btn-quick-battle-start').click(); // первый запуск объясняет, что ещё не выбрана сторона
+  if (game.started || $('quick-battle-status').textContent === '') throw new Error('быстрый бой запустился без стороны / нет пояснения');
+  $('quick-preset-square-80').click();
+  $('quick-faction-human').click();
+  const signature = $('btn-quick-battle-start').textContent;
+  if (!signature.includes('80×80') || !signature.includes('ГЕЛИОС')) throw new Error('CTA не показывает размер и сторону: ' + signature);
+  $('btn-quick-battle-start').click();
+  if (!game.started || game.mission.id !== -1 || game.mission.faction !== 'human') throw new Error('быстрый бой не запустился за HELIOS');
+  if (game.state.map.w !== 80 || game.state.map.h !== 80) throw new Error('быстрый бой стартовал на неверной карте');
+  game.toMenu();
+
+  $('btn-season1').click();
+  const cards = $('mission-list').children.filter((c) => c.tag === 'button').length;
   if (!cards) throw new Error('список миссий пуст');
-  // Первый доступный брифинг: кликаем первую незаблокированную карточку.
-  const list = $('mission-list').children;
-  let opened = false;
-  for (const card of list) {
-    if (!card.disabled) {
-      // карточка может быть обёрткой; ищем кнопку внутри
-      const btn = card.children.find((c) => c.tag === 'button') || card;
-      btn.click();
-      opened = true;
-      break;
-    }
-  }
-  if (!opened) throw new Error('нет доступных миссий в списке');
+  const first = $('mission-list').children.find((c) => c.tag === 'button' && !c.disabled);
+  if (!first) throw new Error('нет доступных миссий в списке');
+  first.click();
   if ($('brief-overlay').classList.contains('hidden')) throw new Error('брифинг не открылся');
-  // Кодекс: вкладки.
+  $('btn-brief-go').click();
+  if (!game.started || game.mission.id !== 0) throw new Error('путь кампании не запустил миссию 1');
+  game.toMenu();
+
   $('btn-codex').click();
   for (const tab of $('codex-tabs').children) tab.click();
   $('btn-codex-back').click();
-  $('btn-missions-skirmish').click(); // G.6: скирмиш внутри сезона 1
-  if ($('skirmish-overlay').classList.contains('hidden')) throw new Error('оверлей скирмиша не открылся');
-  $('btn-skirmish-back').click();
-  if ($('mission-overlay').classList.contains('hidden')) throw new Error('назад из скирмиша не в миссии');
-  $('btn-missions-skirmish').click();
-  $('btn-skirmish-human').click(); // стартует быстрый бой за людей
-  if (!game.started) throw new Error('скирмиш не стартовал по клику');
-  $('btn-brief-back').click();
-  $('btn-missions-back').click();
-  pass(`menu: кампания (${cards} карточек), брифинг, кодекс, скирмиш — клики без ошибок`);
+  $('btn-season2').click();
+  pass(`menu: быстрый бой (80×80, HELIOS), кампания (${cards} карточек), брифинг, Вселенная и Сезон 2`);
 } catch (e) { fail('menu', e); }
 
 // ---------- Хелперы прогона ----------
