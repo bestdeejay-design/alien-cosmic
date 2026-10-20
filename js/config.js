@@ -9,7 +9,7 @@
 // ============================================================
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
-export const GAME_VERSION = 'G';
+export const GAME_VERSION = 'H';
 
 // --- Мир ---
 export const TILE = 32;               // размер одного тайла, px мира
@@ -104,6 +104,13 @@ export const UNITS = {
     hdesc: 'Самоходная мортира: бьёт на 12 тайлов осколками по площади; держите позади строя',
     adesc: 'Червь-мортира: мечет взрывы через полкарты; держите позади роя',
   },
+  scout: {
+    key: 'scout', hname: 'Следопыт', aname: 'Слухач', hp: 50, dmg: 0, range: 0, cooldown: 1.0,
+    sightTiles: 11, speed: 185, r: 9, supply: 1, cost: 60, trainTime: 12,
+    canMine: false, canBuild: false, vehicle: true, projectile: 'none', scout: true,
+    hdesc: 'Лёгкий ховер с дроном-наводчиком: видит на 11 тайлов, уходит от любой погони. Безоружен — не ставьте в строй',
+    adesc: 'Юркий зверёк со спорой-спутницей: чует врага и грани за 11 переходов. Жалить не умеет — не гоните в бой',
+  },
 };
 
 // --- Здания ---
@@ -133,9 +140,9 @@ export const BUILDINGS = {
     hdesc: 'Укрытие: до 4 пехотинцев неуязвимы внутри и стреляют сами. ПКМ — занять',
     adesc: 'Кокон: 4 бойца неуязвимы внутри и жалят через щели. ПКМ — занять' },
   factory:  { key: 'factory',  hname: 'Завод техники',   aname: 'Яма выводка', w: 3, h: 3, hp: 1300, cost: 250, buildTime: 35, supplyGain: 0,  sightTiles: 7,
-              produces: ['buggy', 'tank', 'arty'], requires: 'barracks',
-    hdesc: 'Цех экспедиционного корпуса: скифы, бастионы, «Новы». Нужна казарма',
-    adesc: 'Яма выводка: скользни, громилы, спогромы выползают на песню. Нужен инкубатор' },
+              produces: ['buggy', 'tank', 'arty', 'scout'], requires: 'barracks',
+    hdesc: 'Цех экспедиционного корпуса: скифы, бастионы, «Новы» и следопыты. Нужна казарма',
+    adesc: 'Яма выводка: скользни, громилы, спогромы и слухачи выползают на песню. Нужен инкубатор' },
   lab:      { key: 'lab',      hname: 'Лаборатория',     aname: 'Узел эволюции', w: 3, h: 3, hp: 900,  cost: 200, buildTime: 32, supplyGain: 0,  sightTiles: 6,
               requires: 'barracks', research: true,
     hdesc: 'Полевая наука: оружие, броня, орудия и плиты. Исследуйте первым',
@@ -163,12 +170,23 @@ export const UPGRADES = {
     costs: [100, 175, 250], times: [45, 60, 75],
     hdesc: 'Навесная броня: −3 урона по технике за уровень',
     adesc: 'Многослойный хитин: −3 урона по тяжёлым за уровень' },
+  autoRepair: { key: 'autoRepair', hname: 'Авторемонт', aname: 'Песня починки', max: 1,
+    costs: [150], times: [60], requiresGrade: { type: 'cc', level: 2 }, // H.1: открывает КЦ Г2
+    hdesc: 'Протокол КЦ Г2: свободные техники сами чинят базу — здания и технику, по 2 на цель; починил — вернулся добывать',
+    adesc: 'Песня гнезда Г2: няньки сами латают гнёзда и выводок, по двое на рану; залатали — вернулись к граням' },
 };
 
 // --- F.1: занятость кристаллов (прецедент BUILDERS_PER_SITE) ---
 export const WORKERS_PER_CRYSTAL = 2; // оптимум на кристалл; маржинальный 3-й — только когда свободных нет
 export const REPAIRERS_PER_TARGET = 2; // G.4: техников на цель (аналог лимита добычи)
 export const REPAIR_SPREAD_PX = 256;   // G.4: радиус сбора целей вокруг клика (8 тайлов)
+export const AUTOREPAIR_RADIUS = 480;  // H.1: радиус диспетчера от КЦ (15 тайлов)
+export const AUTOREPAIR_TICK = 0.5;    // H.1: тик диспетчера, сек
+export const ALARM_BASE_RADIUS = 480;  // H.2: базовый тир тревоги (15 тайлов от КЦ)
+export const RECON_TICK = 0.4;         // H.3: тик разведки, сек
+export const RECON_FLEE_TILES = 6;     // H.3: отход от угрозы, тайлов
+export const RECON_SAMPLES = 12;       // H.3: сэмплов неразведанного за выбор
+export const CONTACT_COOLDOWN = 10;    // H.3: кулдаун доклада «контакт», сек
 
 // --- F.2: грейды зданий Г1→Г2→Г3. GRADES[type][to] — цена/время/статы ЦЕЛЕВОГО уровня.
 export const GRADES = {
@@ -184,6 +202,9 @@ export const GRADES = {
   bunker: [null, null, // F.2: индекс = целевой уровень (2, 3)
     { cost: 72, time: 30, gar: 6, hpMul: 1.25 },
     { cost: 120, time: 45, gar: 8, hpMul: 1.5 }],
+  cc: [null, null, // H.0: грейды-ключи без статов (только разблокировки)
+    { cost: 240, time: 30 },
+    { cost: 400, time: 45 }],
 };
 export const GRADE_ROMAN = ['', 'I', 'II', 'III'];
 export function glevel(type, level) { const g = GRADES[type]; return g ? g[level] || null : null; }

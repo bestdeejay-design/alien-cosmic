@@ -27,9 +27,9 @@ const BUILD_ORDER = [
   ['KeyR', 'turret'], ['KeyT', 'bunker'], ['KeyY', 'wall'], ['KeyU', 'factory'],
   ['KeyI', 'lab'],
 ];
-const PRODUCE_KEYS = ['KeyQ', 'KeyW', 'KeyE'];
-const RESEARCH_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR'];
-const RESEARCH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm'];
+const PRODUCE_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyT']; // H.3: 4-й продукт завода — разведчик
+const RESEARCH_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT']; // H.1: 5-й слот лабы — авторемонт
+const RESEARCH_ORDER = ['infAtk', 'vehAtk', 'infArm', 'vehArm', 'autoRepair'];
 
 // ------------------------------------------------------------
 // F.2: тултип кнопки «Грейд» — что даст следующий уровень.
@@ -38,6 +38,9 @@ function gradeTip(type, to, fac, g) {
   if (g.dmg) lines.push('Урон ' + g.dmg + ' · дальность ' + g.range);
   if (g.rate) lines.push('Темп найма ×' + g.rate + ' · очередь до ' + g.queue);
   if (g.gar) lines.push('Гарнизон до ' + g.gar + ' · прочность ×' + g.hpMul);
+  if (type === 'cc') lines.push(to === 2 // H.0: грейды-ключи — разблокировки, не статы
+    ? 'Открывает: ' + fname(UPGRADES.autoRepair, fac) + ' в лаборатории + сирена тревоги'
+    : 'Открывает: кнопки «Разведать» (T) и «Сбор» (G)');
   return { title: 'Грейд ' + GRADE_ROMAN[to] + ': ' + fname(BUILDINGS[type], fac), cost: g.cost, lines };
 }
 
@@ -126,6 +129,7 @@ export class Game {
       minerals: { player: START_MINERALS, enemy: START_MINERALS },
       supply: { player: { used: 0, cap: 0 }, enemy: { used: 0, cap: 0 } },
       units: [], buildings: [], projectiles: [], effects: [], floats: [], pings: [],
+      reportedFields: new Set(), lastContactT: -99, lastReconDoneT: -99, autoRepairT: 0,
       selection: [], groups: {}, placing: null, wallDrag: null, buildMenu: false,
       camera: { x: 0, y: 0, z: 1 }, mouseWorld: { x: 0, y: 0 },
       gameOver: null,
@@ -134,8 +138,8 @@ export class Game {
       defenseWave: 0,
       // Уровни улучшений обеих сторон (растут исследованиями лаборатории).
       tech: {
-        player: { infAtk: 0, infArm: 0, vehAtk: 0, vehArm: 0 },
-        enemy:  { infAtk: 0, infArm: 0, vehAtk: 0, vehArm: 0 },
+        player: { infAtk: 0, infArm: 0, vehAtk: 0, vehArm: 0, autoRepair: 0 },
+        enemy:  { infAtk: 0, infArm: 0, vehAtk: 0, vehArm: 0, autoRepair: 0 },
       },
       noBase: !!m.noBase,           // стелс-миссия: отряд без базы
       // M0: механическая цель (null = легаси: снеси всё / переживи таймер).
@@ -155,7 +159,9 @@ export class Game {
     st.fog = new Fog(st.map.w, st.map.h);
     // С3/П7: стартовый tech врага — исследования 1-го уровня закрыты сразу.
     const startTech = (m.ai && m.ai.startTech) || 0;
-    if (startTech > 0) for (const key of Object.keys(st.tech.enemy)) st.tech.enemy[key] = startTech;
+    // H: scenario startTech seeds only the four army upgrades; keep new
+    // HQ research (autoRepair) outside the AI's fixed research vocabulary.
+    if (startTech > 0) for (const key of ['infAtk', 'infArm', 'vehAtk', 'vehArm']) st.tech.enemy[key] = startTech;
     st.game = this;
     this.state = st;
     this.box = null;
@@ -434,11 +440,15 @@ export class Game {
           const up = UPGRADES[key];
           const lvl = st.tech.player[key] || 0;
           if (lvl >= up.max) return; // изучено до максимума
+          // H.1: ресерч за грейдом виден замком (кнопка неактивна + строка в типе).
+          const locked = up.requiresGrade && B.bestCCLevel(st, 'player') < up.requiresGrade.level;
+          const tip = upgradeTip(key, st.factions.player, lvl);
+          if (locked) tip.lines.push(tr(st.factions.player, 'needCC2'));
           cmds.push({
             code: RESEARCH_KEYS[i], icon: 'u_' + key,
-            label: fname(up, st.factions.player) + ' ур.' + (lvl + 1), cost: up.costs[lvl],
-            tip: upgradeTip(key, st.factions.player, lvl),
-            enabled: () => !b.res && st.minerals.player >= up.costs[lvl],
+            label: fname(up, st.factions.player) + ' ур.' + (lvl + 1) + (locked ? ' 🔒' : ''), cost: up.costs[lvl],
+            tip,
+            enabled: () => !locked && !b.res && st.minerals.player >= up.costs[lvl],
             on: () => this.hooks.startResearch(b, key),
           });
         });
@@ -467,6 +477,19 @@ export class Game {
           tip: gradeTip(b.type, gTo, st.factions.player, g),
           enabled: () => st.minerals.player >= g.cost,
           on: () => this.hooks.startGrade(b),
+        });
+      }
+      // H.3/H.4: командование КЦ Г3 — разведка и общий сбор.
+      if (b.done && b.type === 'cc' && (b.level || 1) >= 3) {
+        cmds.push({
+          code: 'KeyT', icon: 'recon', label: 'Разведать',
+          tip: { title: 'Разведать', lines: ['Все разведчики — по неразведанному туману', 'Огибают врага, докладывают о жилах и контактах'] },
+          on: () => this.hooks.orderRecon(),
+        });
+        cmds.push({
+          code: 'KeyG', icon: 'rally', label: 'Сбор',
+          tip: { title: 'Сбор', lines: ['Все юниты без приказа — к точке сбора', 'Нужна точка сбора (ПКМ по зданию)'] },
+          on: () => this.hooks.orderMassRally(b),
         });
       }
       if (b.done && b.gradeUp) {
@@ -550,6 +573,7 @@ export class Game {
         if (r === 'money') { ui.toast(tr(fac, 'noMinerals'), 'error'); this.sound.error(); }
         else if (r === 'busy') { ui.toast(tr(fac, 'labBusy'), 'warn'); this.sound.error(); }
         else if (r === 'max') { ui.toast(tr(fac, 'maxed'), 'error'); }
+        else if (r === 'grade') { ui.toast(tr(fac, 'needCC2'), 'error'); this.sound.error(); }
         else this.sound.click();
       },
 
@@ -577,6 +601,34 @@ export class Game {
         this.sound.ack();
       },
 
+      // H.3: «Разведать» — все свои разведчики (кроме уже разведывающих) в туман.
+      orderRecon: () => {
+        const s = st();
+        const scouts = s.units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
+          !u.dead && !u.garrison && u.cfg.scout && u.order.kind !== 'scout');
+        if (!scouts.length) {
+          const any = s.units.some((u) => u.kind === 'unit' && u.side === 'player' && !u.dead && u.cfg.scout);
+          if (!any) ui.toast(tr(s.factions.player, 'noScouts'), 'error');
+          this.sound.error();
+          return;
+        }
+        for (const u of scouts) U.orderScout(s, u);
+        this.sound.ack();
+      },
+      // H.4: «Сбор» — все свои без приказа (idle, вне гарнизона) к точке сбора КЦ.
+      orderMassRally: (b) => {
+        const s = st();
+        if (!b.rally) { ui.toast(tr(s.factions.player, 'noRally'), 'error'); this.sound.error(); return; }
+        let n = 0;
+        for (const u of s.units) {
+          if (u.kind !== 'unit' || u.side !== 'player' || u.dead || u.garrison) continue;
+          if (u.order.kind !== 'idle') continue;
+          const spot = B.rallySpot(s, b);
+          U.orderMove(s, u, spot.x, spot.y);
+          n++;
+        }
+        if (n) this.sound.ack(); else this.sound.error();
+      },
       assignGroup: (n) => {
         // Только свои: осмотренный враг (inspect) в отряд не пишется.
         const g = st().selection.filter((e) => e.kind === 'unit' && e.side === 'player' && !e.dead);
@@ -613,14 +665,14 @@ export class Game {
       // Запятая: выделить всю армию (всех своих бойцов).
       selectArmy: () => {
         const army = st().units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
-          !u.dead && !u.garrison && !u.cfg.canBuild);
+          !u.dead && !u.garrison && !u.cfg.canBuild && !u.cfg.scout); // H.3: затвор №3
         if (army.length) { st().selection = army; st().buildMenu = false; this.sound.click(); }
       },
 
       // Tab: перебор бойцов по одному + камера следом.
       cycleCombat: () => {
         const list = st().units.filter((u) => u.kind === 'unit' && u.side === 'player' &&
-          !u.dead && !u.garrison && !u.cfg.canBuild);
+          !u.dead && !u.garrison && !u.cfg.canBuild && !u.cfg.scout); // H.3: затвор №3
         if (!list.length) return;
         const cur = st().selection.length === 1 ? list.indexOf(st().selection[0]) : -1;
         const u = list[(cur + 1) % list.length];
@@ -665,7 +717,7 @@ export class Game {
     const bld = B.buildingAt(st, wx, wy);
     if ((enemyU || (bld && bld.side === 'enemy'))) {
       const target = enemyU || bld;
-      for (const u of units) U.orderAttack(st, u, target);
+      for (const u of units) if (!u.cfg.scout) U.orderAttack(st, u, target); // H.3: затвор №4
       this.sound.ack();
       return;
     }
