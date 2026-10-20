@@ -101,7 +101,7 @@ export const UNITS = {
     sightTiles: 10, speed: 48, r: 13, supply: 3, cost: 220, trainTime: 34,
     canMine: false, canBuild: false, vehicle: true, projectile: 'shell',
     splash: { r: 62, frac: 0.65 },
-    hdesc: 'Самоходная мортира: бьёт на 12 тайлов осколками по площади; держите позади строя',
+    hdesc: 'Самоходная мортира: бьёт на 12,5 тайла осколками по площади; держите позади строя',
     adesc: 'Червь-мортира: мечет взрывы через полкарты; держите позади роя',
   },
   scout: {
