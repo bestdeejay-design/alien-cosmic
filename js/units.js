@@ -7,7 +7,7 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE} from './config.js';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { tr } from './lore.js';
 
@@ -39,6 +39,7 @@ function clearanceOf(u) { return u.r * 0.8; }
 // ----------------------------------------------------------
 export function atkBonus(st, attacker) {
   if (!st || !st.tech || !attacker || !attacker.side) return 0;
+  if (attacker.kind === 'unit' && !(attacker.cfg.dmg > 0)) return 0; // H.3: затвор №1 — безоружный не вооружается ресерчами
   const t = st.tech[attacker.side];
   if (!t) return 0;
   const veh = attacker.kind === 'unit' && attacker.cfg.vehicle;
@@ -218,6 +219,7 @@ function freeSlotNear(map, tx, ty, used, maxR) {
 }
 
 export function orderAttack(st, u, target) {
+  if (u.cfg.scout) return; // H.3: затвор №4 — разведчик игнорирует приказы атаковать
   if (u.garrison) return;
   u.order = { kind: 'attack', target, auto: false };
   u.path = null; u.pathI = 0; u.repathT = 0;
@@ -340,6 +342,145 @@ export function orderRepairSpread(st, repairers, x, y, primary) {
       else orderStop(u);
     } else orderStop(u);
   }
+}
+
+// H.3: разведка — приказ «Разведать» (КЦ Г3): расходятся по туману,
+// огибают врага (в бой не вступают), докладывают о жилах и контактах.
+export function orderScout(st, u) {
+  if (u.garrison) return;
+  u.order = { kind: 'scout', failed: [], evading: false };
+  u.path = null; u.pathI = 0; u.scanT = 0;
+  u.moveDir = null; u.moving = false;
+  resetStuck(u);
+}
+
+function updateScout(st, u, dt, grid) {
+  u.scanT -= dt;
+  if (u.scanT <= 0) {
+    u.scanT = RECON_TICK;
+    scoutThink(st, u, grid);
+    if (u.order.kind !== 'scout') return; // карта разведана
+  }
+  if (!u.path && !u.order.evading) scoutPickTarget(st, u);
+  if (u.path && followPath(st, u)) {
+    // Частичный/непроходимый путь: не зацикливаемся на том же тайле.
+    const o = u.order;
+    if (o.kind === 'scout' && !o.evading && o.tx !== undefined &&
+        !st.fog.tileExplored(o.tx, o.ty)) {
+      const k = o.tx + ',' + o.ty;
+      o.failed = o.failed || [];
+      if (!o.failed.includes(k)) { o.failed.push(k); if (o.failed.length > 64) o.failed.shift(); }
+    }
+    u.path = null;
+    u.pathI = 0;
+    u.moveDir = null; u.moving = false;
+  }
+}
+
+function scoutThink(st, u, grid) {
+  const R = u.cfg.sightTiles * TILE;
+  // 1. Угрозы: ближайший видимый вражеский юнит — отход на 6 тайлов.
+  let threat = null, td = Infinity;
+  grid.query(u.x, u.y, R, (e) => {
+    if (e.dead || e.side === u.side || e.kind !== 'unit' || e.garrison) return;
+    if (u.side === 'player' && !e.visible) return;
+    const d = Math.hypot(e.x - u.x, e.y - u.y);
+    if (d < td) { td = d; threat = e; }
+  });
+  if (threat) {
+    const o = u.order;
+    o.evading = true; o.tx = undefined; o.ty = undefined;
+    const dx = u.x - threat.x, dy = u.y - threat.y;
+    const len = Math.hypot(dx, dy) || 1, ax = dx / len, ay = dy / len;
+    const L = RECON_FLEE_TILES * TILE;
+    // Прямо от врага; если там стена — боковой шаг, затем диагонали.
+    const dirs = [
+      [ax, ay], [ax + 0.7 * -ay, ay + 0.7 * ax], [ax - 0.7 * -ay, ay - 0.7 * ax],
+      [-ay, ax], [ay, -ax], [1, 0], [-1, 0], [0, 1], [0, -1],
+    ];
+    let bestPath = null, bestScore = td;
+    for (const [vx, vy] of dirs) {
+      const vl = Math.hypot(vx, vy) || 1;
+      const fx = Math.max(TILE, Math.min(st.map.pxW - TILE, u.x + (vx / vl) * L));
+      const fy = Math.max(TILE, Math.min(st.map.pxH - TILE, u.y + (vy / vl) * L));
+      if (st.map.blockedAt((fx / TILE) | 0, (fy / TILE) | 0)) continue;
+      const path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, fx, fy, { clearance: clearanceOf(u) });
+      if (!path || !path.length) continue;
+      const end = path[path.length - 1];
+      const score = Math.hypot(end.x - threat.x, end.y - threat.y);
+      if (score > bestScore + 8) { bestScore = score; bestPath = path; }
+    }
+    u.path = bestPath;
+    u.pathI = 0;
+    u.moveDir = null; u.moving = false;
+  } else {
+    u.order.evading = false;
+  }
+
+  if (u.side !== 'player') return; // ИИ не строит разведчиков; доклады только игроку.
+  // 2. Жилы: впервые увиденное месторождение поля — тост + пинг.
+  // F.1 даёт fieldId; fallback на координаты для старых/тестовых карт.
+  const fields = st.reportedFields || (st.reportedFields = new Set());
+  for (const c of st.map.crystals) {
+    if (c.amount <= 0 || Math.hypot(c.x - u.x, c.y - u.y) > R) continue;
+    if (!st.fog.tileExplored(c.tx, c.ty)) continue;
+    const key = c.fieldId ? 'f' + c.fieldId : 'c' + c.tx + ',' + c.ty;
+    if (fields.has(key)) continue;
+    fields.add(key);
+    st.pings.push({ x: c.x, y: c.y, t: 0 });
+    st.game.ui.toast(tr(st.factions.player, 'veinFound'), 'info');
+  }
+  // 3. Контакт: враг (юнит или строение) сейчас виден — пинг + тост, кд 10с.
+  let contact = !!threat;
+  if (!contact) {
+    for (const b of st.buildings) {
+      if (b.dead || b.side === u.side) continue;
+      const tx = b.tx + (b.w >> 1), ty = b.ty + (b.h >> 1);
+      if (st.fog.tileVisible(tx, ty) && Math.hypot(b.x - u.x, b.y - u.y) <= R) { contact = true; break; }
+    }
+  }
+  const lastContact = st.lastContactT == null ? -99 : st.lastContactT;
+  if (contact && st.time - lastContact > CONTACT_COOLDOWN) {
+    st.lastContactT = st.time;
+    st.pings.push({ x: u.x, y: u.y, t: 0 });
+    st.game.ui.toast(tr(st.factions.player, 'contact'), 'warn');
+  }
+}
+
+function scoutPickTarget(st, u) {
+  const W = st.map.w, H = st.map.h, failed = u.order.failed || [];
+  let best = null, bdd = Infinity;
+  const consider = (tx, ty, allowFailed = false) => {
+    if (tx < 0 || ty < 0 || tx >= W || ty >= H || st.fog.tileExplored(tx, ty) || st.map.blockedAt(tx, ty)) return;
+    if (!allowFailed && failed.includes(tx + ',' + ty)) return;
+    const d = Math.hypot((tx + 0.5) * TILE - u.x, (ty + 0.5) * TILE - u.y);
+    if (d < bdd) { bdd = d; best = { tx, ty }; }
+  };
+  // K=12 deterministic samples; per-scout update order advances srand(st), so groups spread.
+  for (let i = 0; i < RECON_SAMPLES; i++) consider((srand(st) * W) | 0, (srand(st) * H) | 0);
+  if (!best) {
+    // Exhaustive fallback: don't miss a lone unexplored tile between samples.
+    for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) consider(tx, ty);
+  }
+  if (!best && failed.length) {
+    // Every remaining passable tile failed pathing: permit a retry, but don't
+    // falsely report the world fully explored.
+    u.order.failed = [];
+    for (let ty = 0; ty < H && !best; ty++) for (let tx = 0; tx < W && !best; tx++) consider(tx, ty, true);
+  }
+  if (!best) {
+    orderStop(u);
+    const lastDone = st.lastReconDoneT == null ? -99 : st.lastReconDoneT;
+    if (u.side === 'player' && st.time - lastDone > 5) {
+      st.lastReconDoneT = st.time;
+      st.game.ui.toast(tr(st.factions.player, 'reconDone'), 'info');
+    }
+    return;
+  }
+  u.order.tx = best.tx; u.order.ty = best.ty;
+  u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0,
+    (best.tx + 0.5) * TILE, (best.ty + 0.5) * TILE, { clearance: clearanceOf(u) });
+  u.pathI = 0;
 }
 
 // Гарнизон: пехота заходит в бункер.
@@ -474,6 +615,60 @@ export function updateUnits(st, dt, grid) {
   for (const u of st.units) {
     if (!u.dead && !u.garrison) resolveBuildings(st, u);
   }
+  updateAutoRepair(st, dt); // H.1
+}
+
+// H.1: диспетчер авторемонта — тик AUTOREPAIR_TICK; цели (здания + техника)
+// в радиусе от своих КЦ; чинят свободные (idle, потом gather), кап 2/цель
+// живым учётом; приказы attack/move/build/garrison святы. По готовности —
+// resumeGather (встроен в updateRepair).
+function updateAutoRepair(st, dt) {
+  st.autoRepairT = (st.autoRepairT || 0) + dt;
+  if (st.autoRepairT < AUTOREPAIR_TICK) return;
+  st.autoRepairT = 0;
+  for (const side of ['player', 'enemy']) {
+    if (!((st.tech[side] && st.tech[side].autoRepair) > 0)) continue;
+    const ccs = [];
+    for (const b of st.buildings) if (!b.dead && b.side === side && b.type === 'cc') ccs.push(b);
+    if (!ccs.length) continue;
+    const near = (x, y) => ccs.some((cc) => Math.hypot(x - cc.x, y - cc.y) <= AUTOREPAIR_RADIUS);
+    const targets = [];
+    for (const b of st.buildings) {
+      if (b.dead || b.side !== side || !b.done || b.hp >= b.maxHp) continue;
+      if (near(b.x, b.y)) targets.push(b);
+    }
+    for (const u of st.units) {
+      if (u.dead || u.garrison || u.side !== side || !u.cfg.vehicle || u.hp >= u.maxHp) continue;
+      if (near(u.x, u.y)) targets.push(u);
+    }
+    if (!targets.length) continue;
+    targets.sort((p, q) => (p.hp / p.maxHp) - (q.hp / q.maxHp)); // триаж: сначала самые битые
+    const idlePool = [], minePool = [];
+    for (const u of st.units) {
+      if (u.dead || u.garrison || u.side !== side || !u.cfg.canRepair) continue;
+      if (u.order.kind === 'idle') idlePool.push(u);
+      else if (u.order.kind === 'gather') minePool.push(u);
+    }
+    const take = (t) => {
+      for (const arr of [idlePool, minePool]) {
+        if (!arr.length) continue;
+        let bi = 0, bdd = Infinity;
+        for (let i = 0; i < arr.length; i++) {
+          const d = Math.hypot(arr[i].x - t.x, arr[i].y - t.y);
+          if (d < bdd) { bdd = d; bi = i; }
+        }
+        return arr.splice(bi, 1)[0];
+      }
+      return null;
+    };
+    for (const t of targets) {
+      while (repairersOf(st, t) < REPAIRERS_PER_TARGET) {
+        const w = take(t);
+        if (!w) return;
+        orderRepair(st, w, t, true);
+      }
+    }
+  }
 }
 
 function updateOrderByKind(st, u, dt, grid) {
@@ -509,7 +704,7 @@ function updateOrderByKind(st, u, dt, grid) {
         }
       }
       // Бойцы без приказа сами ищут цель в радиусе обзора.
-      if (!u.cfg.canMine && !u.cfg.canHeal) {
+      if (!u.cfg.canMine && !u.cfg.canHeal && !u.cfg.scout) { // H.3: затвор №2
         u.scanT -= dt;
         if (u.scanT <= 0) {
           u.scanT = 0.25 + srand(st) * 0.15;
@@ -541,6 +736,7 @@ function updateOrderByKind(st, u, dt, grid) {
       }
       break;
     }
+    case 'scout': updateScout(st, u, dt, grid); break; // H.3
     case 'attack': updateAttack(st, u, dt, grid); break;
     case 'attackMove': updateAttackMove(st, u, dt, grid); break;
     case 'gather': updateGather(st, u, dt); break;
@@ -1493,6 +1689,16 @@ export function updateProjectiles(st, dt) {
 // ------------------------------------------------------------
 // Урон и смерть. Смерть помечает объект — массивы чистятся в тике.
 // ------------------------------------------------------------
+// H.2: точка под присмотром своего КЦ Г2+ (уровень и дистанция — одним проходом)?
+function nearBaseCC(st, x, y) {
+  for (const b of st.buildings) {
+    if (b.dead || b.side !== 'player' || b.type !== 'cc') continue;
+    if ((b.level || 1) < 2) continue;
+    if (Math.hypot(x - b.x, y - b.y) <= ALARM_BASE_RADIUS) return true;
+  }
+  return false;
+}
+
 export function damageEntity(st, victim, dmg, attacker) {
   if (!victim || victim.dead) return;
   // Неуязвима в бункере только пехота. У зданий garrison — это массив
@@ -1507,9 +1713,11 @@ export function damageEntity(st, victim, dmg, attacker) {
   if (victim.side === 'player' && !st.gameOver && st.time - st.lastAlertT > 8) {
     st.lastAlertT = st.time;
     st.lastAlertPos = { x: victim.x, y: victim.y };
-    st.game.ui.toast(tr(st.factions.player, 'underAttack'), 'error');
+    st.game.ui.toast(tr(st.factions.player, 'underAttack'), 'error'); // H.2: строка одна на оба тира
     st.pings.push({ x: victim.x, y: victim.y, t: 0 });
-    st.game.sound.ping();
+    // H.2: базовый тир — сирена (свой КЦ Г2+ и урон в R15 от КЦ), иначе мягкий пинг.
+    if (nearBaseCC(st, victim.x, victim.y)) st.game.sound.alarm();
+    else st.game.sound.ping();
   }
   if (victim.hp <= 0) killEntity(st, victim, attacker);
 }
@@ -1896,6 +2104,34 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = heat;
       ctx.beginPath(); ctx.arc(16.5, 0, 1.8 + heatGlow * 2.2, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+    } else if (u.type === 'scout') {
+      // Слухач: юркий зверёк — уши-локаторы, тройка глаз, спора-спутник.
+      ctx.strokeStyle = dark; ctx.lineWidth = 2.2;
+      const f = step * 2.4;
+      ctx.beginPath(); ctx.moveTo(4, -3); ctx.lineTo(10, -8 - f); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(4, 3); ctx.lineTo(10, 8 + f); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(-11, -7 + f); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5, 3); ctx.lineTo(-11, 7 - f); ctx.stroke();
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.ellipse(0, 0, 8, 5, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = flesh;
+      poly(ctx, [2, -4, 5, -11, 7, -3]); ctx.fill();
+      poly(ctx, [-3, -4, -1, -11, 1, -3]); ctx.fill();
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(5, -11, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-1, -11, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = bio; ctx.shadowBlur = 5;
+      ctx.beginPath(); ctx.arc(6, -2, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(7.4, 0, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(6, 2, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      const sx = -9 + Math.sin(t * 2.6) * 1.8, sy = -6 + Math.cos(t * 3.4) * 1.6;
+      ctx.shadowColor = bio; ctx.shadowBlur = 5;
+      ctx.fillStyle = bio;
+      ctx.beginPath(); ctx.arc(sx, sy, 1.7, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
     } else {
       // Спогром: червь из 4 сегментов, мортира на спине, споровые мешки.
       const segX = [-12, -5, 2, 9], segR = [7.5, 9, 9, 7];
@@ -2166,6 +2402,30 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = heat;
       ctx.beginPath(); ctx.arc(18.5, 0, 1.6 + heatGlow * 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+    } else if (u.type === 'scout') {
+      // Следопыт: клин-ховер без пушек, мачта-антенна, парящий дрон-точка.
+      ctx.fillStyle = hull;
+      poly(ctx, [12, 0, -8, -8, -4, 0, -8, 8]); ctx.fill();
+      ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = main; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, -6); ctx.moveTo(9, 0); ctx.lineTo(-6, 6); ctx.stroke();
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(2, 0, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hull2; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-6, -10); ctx.stroke();
+      ctx.fillStyle = amber;
+      ctx.beginPath(); ctx.arc(-6, -11, 1.6 + pulse * 0.7, 0, Math.PI * 2); ctx.fill();
+      const dx = 10 + Math.sin(t * 2.2) * 2, dy = -8 + Math.cos(t * 3.1) * 1.6;
+      ctx.strokeStyle = bright; ctx.lineWidth = 1; ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(dx, dy); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.shadowColor = bright; ctx.shadowBlur = 6;
+      ctx.fillStyle = bright;
+      ctx.beginPath(); ctx.arc(dx, dy, 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = heat; ctx.globalAlpha = 0.7;
+      poly(ctx, [-8, -3, -8 - 4 * eng, 0, -8, 3]); ctx.fill();
+      ctx.globalAlpha = 1;
     } else {
       // Мортира «Нова»: длинная платформа, барабан, поднятый ствол.
       ctx.fillStyle = hull;

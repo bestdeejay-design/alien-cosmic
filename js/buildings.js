@@ -131,13 +131,15 @@ export function cancelQueueItem(st, b, i) {
   b.queue.splice(i, 1);
 }
 
-// Запустить исследование улучшения. Коды: ok | money | busy | max | wrong.
+// Запустить исследование улучшения. Коды: ok | money | busy | max | grade | wrong.
 export function startResearch(st, b, key) {
   const u = UPGRADES[key];
   if (!u || !b || b.dead || !b.done || !b.cfg.research) return 'wrong';
   if (b.res) return 'busy';
   const lvl = (st.tech[b.side] && st.tech[b.side][key]) || 0;
   if (lvl >= u.max) return 'max';
+  // H.1: ресерч за грейдом (авторемонт — за КЦ Г2). ИИ затвор не проходит.
+  if (u.requiresGrade && bestCCLevel(st, b.side) < u.requiresGrade.level) return 'grade';
   const cost = u.costs[lvl];
   if (st.minerals[b.side] < cost) return 'money';
   st.minerals[b.side] -= cost;
@@ -334,6 +336,25 @@ function trySpawnTrained(st, b, type) {
   return true;
 }
 
+// H: лучший грейд живого КЦ стороны (0 — нет КЦ). Проверки «есть ли Г2/Г3».
+export function bestCCLevel(st, side) {
+  let best = 0;
+  for (const b of st.buildings) {
+    if (!b.dead && b.side === side && b.type === 'cc') best = Math.max(best, b.level || 1);
+  }
+  return best;
+}
+
+// H.4: точка кольца разброса (выделено из спавна G.1 — та же формула).
+export function rallySpot(st, b) {
+  if (!b.rally) return { x: b.x, y: b.y }; // H.4: без точки сбора — сам КЦ
+  const seq = (b.rallySeq = (b.rallySeq || 0) + 1);
+  const a = seq * 2.39996, r = 20 + 9 * Math.sqrt(seq);
+  const gx = b.rally.x + Math.cos(a) * r, gy = b.rally.y + Math.sin(a) * r;
+  const bad = st.map.blockedAt((gx / TILE) | 0, (gy / TILE) | 0);
+  return bad ? { x: b.rally.x, y: b.rally.y } : { x: gx, y: gy };
+}
+
 function spawnTrainedUnit(st, b, type, x, y) {
   const u = spawnUnit(st, b.side, type, x, y, true);
   // Точка сбора на кристалле: новый рабочий сразу встаёт на добычу;
@@ -342,13 +363,9 @@ function spawnTrainedUnit(st, b, type, x, y) {
     const rc = b.rally.crystal;
     if (type === 'worker' && rc && !rc.dead && rc.amount > 0) orderGather(st, u, rc);
     else {
-      // G.1: точка сбора раздаёт строй, а не стек: детерминированное кольцо
-      // по золотому углу (счётчик здания) — новички встают рядом с точкой.
-      const seq = (b.rallySeq = (b.rallySeq || 0) + 1);
-      const a = seq * 2.39996, r = 20 + 9 * Math.sqrt(seq);
-      const gx = b.rally.x + Math.cos(a) * r, gy = b.rally.y + Math.sin(a) * r;
-      const bad = st.map.blockedAt((gx / TILE) | 0, (gy / TILE) | 0);
-      orderMove(st, u, bad ? b.rally.x : gx, bad ? b.rally.y : gy);
+      // G.1: точка сбора раздаёт строй, а не стек (кольцо rallySpot).
+      const spot = rallySpot(st, b);
+      orderMove(st, u, spot.x, spot.y);
     }
   }
   addEffect(st, { kind: 'spark', x, y, ang: -Math.PI / 2, t: 0, life: 0.25 });
