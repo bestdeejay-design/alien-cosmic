@@ -88,7 +88,10 @@ html, body {
 /* ---------- Нижняя панель (командная палуба) ---------- */
 #bottom-panel {
   position: absolute; left: 0; right: 0; bottom: 0;
-  height: 190px;
+  /* G.6: min-height вместо height — панель растёт по содержимому
+     (переводы, шрифты, узкие экраны) и никогда не наезжает на карту:
+     инсеты берутся из offsetHeight (ui.getPanelInsets). */
+  min-height: 190px;
   display: flex; gap: 12px;
   padding: 10px 14px 12px;
   background: linear-gradient(135deg, #0e242c, #0b1d25 60%, #0d2028);

@@ -558,9 +558,14 @@ export function initUI(game) {
     const r = mm.getBoundingClientRect();
     // C/П7: масштаб миникарты — от размера карты (фолбэк 64 до старта).
     const mp = (game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
+    // G.6: обратное преобразование letterbox-превью (minimapView):
+    // CSS-px → bitmap канваса → мир, с клампом в границы карты.
+    const view = minimapView(mp);
+    const bx = (e.clientX - r.left) * (view.S / r.width);
+    const by = (e.clientY - r.top) * (view.S / r.height);
     return {
-      x: ((e.clientX - r.left) / r.width) * mp.pxW,
-      y: ((e.clientY - r.top) / r.height) * mp.pxH,
+      x: Math.max(0, Math.min(mp.pxW, (bx - view.ox) / view.k)),
+      y: Math.max(0, Math.min(mp.pxH, (by - view.oy) / view.k)),
     };
   };
   mm.addEventListener('mousedown', (e) => {
@@ -759,12 +764,21 @@ export function getPanelPos() { return panelPos; }
 export function isPanelHidden() { return panelHidden; }
 export function getPanelInsets() {
   if (panelHidden) return { top: 0, bottom: 0, left: 0, right: 0 };
-  return {
-    top: panelPos === 'top' ? 190 : 0,
-    bottom: panelPos === 'bottom' ? 190 : 0,
-    left: panelPos === 'left' ? 236 : 0,
-    right: panelPos === 'right' ? 236 : 0,
-  };
+  // E.1 → G.6: инсеты — из реального размера панели, а не из зашитых
+  // 236/190: панель-top растёт по содержимому (height:auto) и на коротких
+  // экранах выше 190 — раньше она наезжала на карту, зона экрана на
+  // миникарте врала, а краевой скролл срабатывал над панелью. Меряем
+  // ПРАВИЛЬНОЕ измерение для каждой позиции: боковые — ширину (offsetWidth),
+  // верх/низ — высоту (offsetHeight) — предупреждение E.1 про «во весь
+  // экран» касалось только чужого измерения. Нет метрик (меню, fake DOM
+  // симов) — старые зашитые значения как фолбэк.
+  const p = typeof document !== 'undefined' ? document.getElementById('bottom-panel') : null;
+  const w = (p && p.offsetWidth) || 0;
+  const h = (p && p.offsetHeight) || 0;
+  if (panelPos === 'left') return { top: 0, bottom: 0, left: w || 236, right: 0 };
+  if (panelPos === 'right') return { top: 0, bottom: 0, left: 0, right: w || 236 };
+  if (panelPos === 'top') return { top: h || 190, bottom: 0, left: 0, right: 0 };
+  return { top: 0, bottom: h || 190, left: 0, right: 0 };
 }
 function savePanelPrefs() {
   try { localStorage.setItem(PANEL_KEY, JSON.stringify({ pos: panelPos, hidden: panelHidden })); }
@@ -1293,21 +1307,39 @@ export function refreshLocale() {
 // ------------------------------------------------------------
 // Миникарта: террейн-кэш + точки сущностей + туман + рамка камеры.
 // ------------------------------------------------------------
+// G.6: превращение миникарты — ВСЯ карта вписывается в квадрат канваса
+// с сохранением пропорций (letterbox): k = min(S/pxW, S/pxH), карта
+// центрируется смещением (ox, oy). Неквадратные карты (G.5: wide/tall)
+// больше не срезаются снизу и не растягиваются; край карты виден рамкой.
+// Одно и то же преобразование используют рендер (drawMinimap) и клики
+// (mmWorld) — превью и ввод всегда согласованы.
+export function minimapView(map) {
+  const pxW = (map && map.pxW) || WORLD_W;
+  const pxH = (map && map.pxH) || WORLD_H;
+  const S = 176; // bitmap #minimap (index.html)
+  const k = Math.min(S / pxW, S / pxH);
+  return { S, k, ox: (S - pxW * k) / 2, oy: (S - pxH * k) / 2 };
+}
+
 export function drawMinimap(game) {
   const st = game.state;
   if (!st || !els) return;
   const g = els.minimap.getContext('2d');
-  const S = els.minimap.width; // 176
-  const k = S / st.map.pxW; // C/П7: карты квадратные — один масштаб
+  const { S, k, ox, oy } = minimapView(st.map);
+  const mw = st.map.pxW * k, mh = st.map.pxH * k;
   g.imageSmoothingEnabled = false;
-  g.drawImage(st.map.miniCanvas, 0, 0, S, S);
+  // Поля за краем карты (letterbox) — глухой тёмный фон.
+  g.clearRect(0, 0, S, S);
+  g.fillStyle = '#0a161c';
+  g.fillRect(0, 0, S, S);
+  g.drawImage(st.map.miniCanvas, ox, oy, mw, mh);
 
   // Кристаллы (только разведанные). F.1: яркость — по доле остатка.
   for (const c of st.map.crystals) {
     if (c.amount <= 0 || !st.fog.tileExplored(c.tx, c.ty)) continue;
     g.globalAlpha = mineralDotAlpha(c);
     g.fillStyle = COLORS.mineral;
-    g.fillRect(c.tx * TILE * k, c.ty * TILE * k, 3, 3);
+    g.fillRect(ox + c.tx * TILE * k, oy + c.ty * TILE * k, 3, 3);
   }
   g.globalAlpha = 1;
   // Здания.
@@ -1315,30 +1347,39 @@ export function drawMinimap(game) {
     if (b.dead) continue;
     if (b.side === 'enemy' && !b.spotted) continue;
     g.fillStyle = b.side === 'player' ? '#76e3d7' : '#ff806e';
-    g.fillRect(b.tx * TILE * k, b.ty * TILE * k, Math.max(4, b.w * TILE * k), Math.max(3, b.h * TILE * k));
+    g.fillRect(ox + b.tx * TILE * k, oy + b.ty * TILE * k, Math.max(4, b.w * TILE * k), Math.max(3, b.h * TILE * k));
   }
   // Юниты (враги — только видимые).
   for (const u of st.units) {
     if (u.dead || u.garrison) continue;
     if (u.side === 'enemy' && !u.visible) continue;
     g.fillStyle = u.side === 'player' ? '#c5fff1' : '#ffd0b5';
-    g.fillRect(u.x * k - 1.5, u.y * k - 1.5, 3, 3);
+    g.fillRect(ox + u.x * k - 1.5, oy + u.y * k - 1.5, 3, 3);
   }
   // Туман войны.
   if (st.fog.dirty) st.fog.paint();
   g.imageSmoothingEnabled = false;
-  g.drawImage(st.fog.canvas, 0, 0, st.fog.w, st.fog.h, 0, 0, S, S);
+  g.drawImage(st.fog.canvas, 0, 0, st.fog.w, st.fog.h, ox, oy, mw, mh);
+  // G.6: край карты — тонкая рамка по границе: на letterbox-полях и при
+  // любом размере карты видно, где мир кончается.
+  g.strokeStyle = 'rgba(118,227,215,0.5)';
+  g.lineWidth = 1;
+  g.strokeRect(ox - 0.5, oy - 0.5, mw + 1, mh + 1);
   // Рамка обзора камеры.
   g.strokeStyle = 'rgba(255,255,255,0.85)';
   g.lineWidth = 1;
   // G.2: рамка — видимая область (за вычетом панели), а не весь канвас.
+  // G.6: кламп в прямоугольник карты — за краем мира рамки не рисуем.
   const vz = st.camera.z || 1;
-  g.strokeRect((st.camera.x + (game.uiLeft || 0) / vz) * k, (st.camera.y + (game.uiTop || 0) / vz) * k,
-    game.visW() * k, game.visH() * k);
+  const rx = st.camera.x + (game.uiLeft || 0) / vz;
+  const ry = st.camera.y + (game.uiTop || 0) / vz;
+  const x0 = Math.max(rx, 0), y0 = Math.max(ry, 0);
+  const x1 = Math.min(rx + game.visW(), st.map.pxW), y1 = Math.min(ry + game.visH(), st.map.pxH);
+  if (x1 > x0 && y1 > y0) g.strokeRect(ox + x0 * k, oy + y0 * k, (x1 - x0) * k, (y1 - y0) * k);
   // M0: ключевая цель — янтарный ромб (если здание разведано).
   for (const b of st.buildings) {
     if (b.dead || !b.keyTarget || (b.side === 'enemy' && !b.spotted)) continue;
-    const dx = (b.tx + b.w / 2) * TILE * k, dy = (b.ty + b.h / 2) * TILE * k;
+    const dx = ox + (b.tx + b.w / 2) * TILE * k, dy = oy + (b.ty + b.h / 2) * TILE * k;
     g.fillStyle = '#f3c579';
     g.beginPath();
     g.moveTo(dx, dy - 4); g.lineTo(dx + 4, dy);
@@ -1351,7 +1392,7 @@ export function drawMinimap(game) {
     g.strokeStyle = '#8ff5e2';
     g.lineWidth = 1.5;
     g.beginPath();
-    g.arc((w.x + 0.5) * TILE * k, (w.y + 0.5) * TILE * k, Math.max(3, w.r * TILE * k), 0, Math.PI * 2);
+    g.arc(ox + (w.x + 0.5) * TILE * k, oy + (w.y + 0.5) * TILE * k, Math.max(3, w.r * TILE * k), 0, Math.PI * 2);
     g.stroke();
   }
   // Пинги тревоги.
@@ -1360,7 +1401,7 @@ export function drawMinimap(game) {
     g.strokeStyle = `rgba(255,128,110,${a})`;
     g.lineWidth = 2;
     g.beginPath();
-    g.arc(p.x * k, p.y * k, 4 + p.t * 10, 0, Math.PI * 2);
+    g.arc(ox + p.x * k, oy + p.y * k, 4 + p.t * 10, 0, Math.PI * 2);
     g.stroke();
   }
 }
