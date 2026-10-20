@@ -21,7 +21,10 @@ out the workers move on by themselves.
 Supply: CC +10, home +8, hard ceiling 200. Cost: infantry and workers
 1 each, skiff 2, bastion and mortar 3. A "ready" unit that hits the
 ceiling waits — build a home. The training queue holds 5 (grades: 7/9);
-cancelling a slot refunds the minerals.
+cancelling a slot refunds the minerals. The live structure inspector shows
+the queue, progress and an ETA only when the time can be known; the refund
+is visible before a cancellation. This is a UI readout — simulation and
+production speed remain unchanged.
 
 ## Building and rally points
 
