@@ -413,8 +413,8 @@ try {
   assert(JSON.stringify(Object.keys(ru.ui.process)) === JSON.stringify(Object.keys(en.ui.process)), 'структура ui.process ru/en расходится');
   assert(ru.ui.process.refundLabel.includes('{n}') && en.ui.process.refundLabel.includes('{n}'), 'placeholder возврата пропал');
   assert(ru.ui.cmds.shortageHuman.includes('{n}') && en.ui.cmds.shortageHuman.includes('{n}'), 'placeholder дефицита пропал');
-  assert(cfg.GAME_VERSION === 'L', 'версия должна быть L');
-  pass('P1.8 локали 1:1, placeholders сохранены, бейдж L');
+  assert(cfg.GAME_VERSION === 'M', 'версия должна быть M');
+  pass('P1.8 локали 1:1, placeholders сохранены, бейдж M');
 } catch (e) { fail('P1.8 locale/version', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_P1: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_P1: ВСЕ СЦЕНАРИИ ПРОШЛИ');

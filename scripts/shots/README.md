@@ -23,6 +23,13 @@ node scripts/shots/unit_sheet.mjs
 ENV: `GAME_URL` (свой порт/хост), `OUT` (папка результата, default
 `design/shots`), `SCALE` (для unit_sheet, default 2).
 
+## Social preview
+
+`python3 scripts/shots/og_image.py` builds `assets/og-image.png` at exactly
+1200×630. The PNG is generated from code (Pillow required: `pip install
+pillow`), not hand-edited; its planet, orbital tracks, two scouting silhouettes,
+mineral shards, typography, and palette follow the landing hero.
+
 ## Харнессы (страницы, которые снимает playwright)
 
 - `unit_grid.html` — юниты 7×2 в игровом масштабе (`__GRID_DONE__`)

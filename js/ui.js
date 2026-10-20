@@ -536,6 +536,39 @@ function renderQuickBattleMenu() {
     status.textContent = t('ui.menu.quickBattleFirstVisit', { dims });
   }
   launch.setAttribute('aria-describedby', 'quick-battle-status');
+
+  const heroStatus = $('hero-quick-status');
+  if (heroStatus) {
+    heroStatus.textContent = quickBattleLastSaved
+      ? t('ui.menu.heroQuickReady', {
+        dims: quickBattleDimsLabel(quickBattleLastSaved.presetId),
+        side: facTitle(quickBattleLastSaved.faction),
+      })
+      : t('ui.menu.heroQuickChoose');
+  }
+}
+
+function setLandingPageActive(active, { resetScroll = false } = {}) {
+  const root = typeof document !== 'undefined' ? document.documentElement : null;
+  const body = typeof document !== 'undefined' ? document.body : null;
+  for (const node of [root, body]) {
+    if (node && node.classList) node.classList.toggle('menu-active', !!active);
+  }
+  if (els && els.landingPage && els.landingPage.classList) {
+    els.landingPage.classList.toggle('hidden', !active);
+  }
+  if (active && resetScroll) {
+    try {
+      const reduced = typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+        window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+      } else {
+        if (root) root.scrollTop = 0;
+        if (body) body.scrollTop = 0;
+      }
+    } catch { /* scroll restoration is only a presentation detail */ }
+  }
 }
 
 function updateCampaignStartLabel() {
@@ -569,6 +602,25 @@ function initQuickBattleMenu(game) {
     saveQuickBattleConfig();
     game.startSkirmish(quickBattleSelection.faction, quickBattlePresetDims(quickBattleSelection.presetId));
   });
+  const heroQuickStart = $('btn-quick-primary');
+  if (heroQuickStart) heroQuickStart.addEventListener('click', () => {
+    const saved = safeStoredQuickBattleConfig();
+    if (saved.isSaved) {
+      quickBattleSelection = { presetId: saved.presetId, faction: saved.faction };
+      quickBattleLastSaved = { presetId: saved.presetId, faction: saved.faction };
+      renderQuickBattleMenu();
+      game.startSkirmish(saved.faction, quickBattlePresetDims(saved.presetId));
+      return;
+    }
+    const quickBattleSection = $('quick-battle');
+    if (quickBattleSection && typeof quickBattleSection.scrollIntoView === 'function') {
+      const reduced = typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      quickBattleSection.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    }
+    const recommended = $('quick-preset-square-64');
+    if (recommended && typeof recommended.focus === 'function') recommended.focus({ preventScroll: true });
+  });
   restoreQuickBattleConfig();
 }
 
@@ -592,7 +644,7 @@ export function initUI(game) {
     selInfo: $('sel-info'),
     cmdGrid: $('cmd-grid'),
     toasts: $('toasts'),
-    overlay: $('overlay'),
+    landingPage: $('landing-page'),
     missionOverlay: $('mission-overlay'),
     missionList: $('mission-list'),
     briefOverlay: $('brief-overlay'),
@@ -623,16 +675,16 @@ export function initUI(game) {
   $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
-    els.overlay.classList.remove('hidden');
+    setLandingPageActive(true);
   });
   $('btn-codex').addEventListener('click', () => {
-    els.overlay.classList.add('hidden');
+    setLandingPageActive(false);
     showCodex();
     els.codexOverlay.classList.remove('hidden');
   });
   $('btn-codex-back').addEventListener('click', () => {
     els.codexOverlay.classList.add('hidden');
-    els.overlay.classList.remove('hidden');
+    setLandingPageActive(true);
   });
   // Брифинг: «В бой!».
   $('btn-brief-go').addEventListener('click', () => {
@@ -706,13 +758,14 @@ export function initUI(game) {
     if (e.buttons & 1) { const w = mmWorld(e); game.hooks.centerCamera(w.x, w.y); }
   });
   mm.addEventListener('contextmenu', (e) => e.preventDefault());
+  setLandingPageActive(true);
 }
 
 // ------------------------------------------------------------
 // Меню: список миссий кампании с брифингами и замками.
 // ------------------------------------------------------------
 export function showMissions(game) {
-  els.overlay.classList.add('hidden');
+  setLandingPageActive(false);
   els.missionOverlay.classList.remove('hidden');
   const unlocked = loadProgress();
   els.missionList.innerHTML = ''; // очистка (переводы в карточки идут через DOM)
@@ -860,12 +913,12 @@ export function showCodex() {
   render(CODEX[0]);
 }
 
-export function hideStart() { if (els) els.overlay.classList.add('hidden'); }
+export function hideStart() { if (els) setLandingPageActive(false); }
 export function showStart() {
   if (!els) return;
   updateCampaignStartLabel();
   renderQuickBattleMenu();
-  els.overlay.classList.remove('hidden');
+  setLandingPageActive(true, { resetScroll: true });
 }
 
 // I: бейдж версии (правило V) — текст приходит из game.js с параметрами локали.
