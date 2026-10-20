@@ -164,7 +164,7 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
     !!f && !m.blockedAt(f.x, f.y), f ? `(${f.x},${f.y})` : 'null');
 }
 
-// ---------- A9. drawUnit: все 14 спрайтов рисуются без ошибок ----------
+// ---------- A9. drawUnit: каждый юнит обеих фракций и 3 состояния ----------
 // (stub-контекст считает вызовы: проверяем, что теневых проходов мало).
 {
   const { UNITS, COLORS } = await import('../js/config.js');
@@ -204,8 +204,9 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
       }
     }
   }
-  ok('A9. drawUnit: 14 спрайтов × 3 состояния — без исключений',
-    errors.length === 0 && drawn === 42, errors.join('; ') || `${drawn}/42, вызовов ctx ${calls}, shadowBlur>0 ×${shadowSets}`);
+  const expectedDraws = types.length * 2 * 3;
+  ok(`A9. drawUnit: ${types.length} спрайтов × 2 фракции × 3 состояния — без исключений`,
+    errors.length === 0 && drawn === expectedDraws, errors.join('; ') || `${drawn}/${expectedDraws}, вызовов ctx ${calls}, shadowBlur>0 ×${shadowSets}`);
 }
 
 // ---------- A10. drawBuilding: 8 зданий × 2 фракции × состояния ----------

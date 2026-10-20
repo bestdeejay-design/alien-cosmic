@@ -1,6 +1,6 @@
 // ac_g_browse.mjs — браузерная приёмка V (бейдж версии) + G «Комфорт и сезоны»
 // по чек-листу Арены и требованиям владельца.
-// Ш1 главное меню: #ver-badge «версия G · 20.10.2026», кнопки Сезон 1 / Сезон 2 · СКОРО.  g_main_seasons
+// Ш1 главное меню (H): #ver-badge «версия H · 20.10.2026», кнопки Сезон 1 / Сезон 2 · СКОРО.  g_main_seasons
 // Ш2 Сезон 2 → тост «Сезон 2 — сюжетные миссии. Скоро.»                                  g_season2_soon
 // Ш3 Сезон 1 → карточки миссий + «Быстрый бой».                                          g_missions
 // Ш4 скирмиш: #sk-size 48/64/80/96, #sk-shape 3 формы, #sk-dims 96×64, старт 96-wide.    g_skirmish_cfg, g_skirmish_96x64
@@ -34,7 +34,7 @@ try {
 
   const badgeVisible = await page.locator('#ver-badge').isVisible();
   const badgeText = (await page.locator('#ver-badge').textContent() || '').trim();
-  if (badgeVisible && badgeText === 'версия G · 20.10.2026') ok('V1', `бейдж видим, текст «${badgeText}»`);
+  if (badgeVisible && badgeText === 'версия H · 20.10.2026') ok('V1', `бейдж видим, текст «${badgeText}»`);
   else bad('V1', `бейдж visible=${badgeVisible}, текст=«${badgeText}»`);
 
   const s1 = (await page.locator('#btn-season1').textContent() || '').trim();
