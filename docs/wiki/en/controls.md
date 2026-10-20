@@ -56,6 +56,15 @@ is remembered. In every position the camera keeps the target in the
 visible area — it never drives units under the panel. Building
 statuses (production, research, garrison) are visible right in the world.
 
+Select one of your structures for a live station readout: build progress
+without a guessed timer, and production, research or tier-upgrade progress
+with an ETA when the remaining time is known. Standby, garrison and fire
+states stay explicit, with no pretend progress bar. Queue chips show the
+refund before you cancel; `X` does the same for research and tier work.
+Hover, focus or tap a dimmed command to learn why it is locked or short
+on resources. After victory or defeat, orders fade while the inspector
+remains readable.
+
 Edge scroll: bring the cursor to the edge of the play area — the rim
 lights up turquoise (the pan zone), and the camera starts after a
 short delay, so brushing past toward the panel does not drag the

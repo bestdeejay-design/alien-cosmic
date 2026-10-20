@@ -88,16 +88,43 @@ html, body {
 /* ---------- Нижняя панель (командная палуба) ---------- */
 #bottom-panel {
   position: absolute; left: 0; right: 0; bottom: 0;
+  isolation: isolate;
   /* G.6: min-height вместо height — панель растёт по содержимому
      (переводы, шрифты, узкие экраны) и никогда не наезжает на карту:
      инсеты берутся из offsetHeight (ui.getPanelInsets). */
   min-height: 190px;
   display: flex; gap: 12px;
   padding: 10px 14px 12px;
-  background: linear-gradient(135deg, #0e242c, #0b1d25 60%, #0d2028);
+  background: linear-gradient(135deg, rgba(8, 24, 31, .92), rgba(7, 21, 28, .89) 60%, rgba(9, 25, 32, .92));
   border-top: 1px solid rgba(118, 227, 215, .32);
   box-shadow: 0 -8px 30px rgba(0,0,0,.35);
   z-index: 10;
+}
+#bottom-panel::before, #bottom-panel::after {
+  content: '';
+  position: absolute;
+  width: 18px; height: 14px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .72;
+}
+#bottom-panel::before {
+  top: 5px; left: 8px;
+  border-top: 1px solid var(--cyan);
+  border-left: 1px solid var(--cyan);
+}
+#bottom-panel::after {
+  right: 8px; bottom: 5px;
+  border-right: 1px solid var(--amber);
+  border-bottom: 1px solid var(--amber);
+}
+#bottom-panel > * { position: relative; z-index: 1; }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #bottom-panel {
+    background: linear-gradient(135deg, rgba(8, 24, 31, .88), rgba(7, 21, 28, .86) 60%, rgba(9, 25, 32, .89));
+    -webkit-backdrop-filter: blur(6px) saturate(1.08);
+    backdrop-filter: blur(6px) saturate(1.08);
+  }
 }
 #minimap-box {
   flex: 0 0 168px;
@@ -149,19 +176,64 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 
 #sel-info {
   flex: 1;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 13px;
   overflow-y: auto; /* страховка: даже длинное описание не обрежется */
-  background: rgba(4, 17, 22, .27);
+  background: rgba(4, 17, 22, .52);
 }
+.sel-box { animation: card-in .12s ease-out; }
+@keyframes card-in { from { opacity: .72; transform: translateX(-3px); } to { opacity: 1; transform: none; } }
 .hint { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .portrait { float: left; margin: 0 8px 4px 0; border: 1px solid var(--line); border-radius: 6px; background: #0c1a1f; }
 .sel-name { font-weight: 800; font-size: 15px; margin-bottom: 6px; color: var(--cyan-light); }
 .small { color: var(--muted); font-size: 12px; margin-top: 5px; line-height: 1.45; }
+.sel-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+.process-card {
+  clear: both;
+  position: relative;
+  display: grid;
+  gap: 4px;
+  margin: 9px 0 7px;
+  padding: 9px 10px;
+  border: 1px solid rgba(126, 213, 204, .24);
+  border-left: 2px solid rgba(118, 227, 215, .62);
+  border-radius: 7px;
+  background: linear-gradient(115deg, rgba(9, 28, 36, .76), rgba(7, 18, 24, .53));
+  transition: border-color .12s ease-out, box-shadow .12s ease-out;
+}
+.process-card::after {
+  content: '';
+  position: absolute; top: 0; right: 0;
+  width: 12px; height: 8px;
+  border-top: 1px solid rgba(243, 197, 121, .55);
+  border-right: 1px solid rgba(243, 197, 121, .55);
+  pointer-events: none;
+}
+.process-card.under-fire { border-left-color: var(--red); }
+.process-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.process-head-copy { min-width: 0; }
+.process-kicker { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.process-phase { color: var(--amber); font-size: 10px; font-weight: 800; letter-spacing: .04em; margin-top: 2px; }
+.process-eta { color: var(--cyan-light); font-size: 10px; font-weight: 750; text-align: right; font-variant-numeric: tabular-nums; }
+.process-title { color: var(--text); font-size: 13px; font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
+.process-track { width: 100%; height: 6px; border: 1px solid rgba(118, 227, 215, .16); border-radius: 4px; overflow: hidden; background: rgba(3, 13, 18, .68); }
+.process-fill { height: 100%; width: 0; transition: width .12s linear; }
+.process-fill.cyan { background: linear-gradient(90deg, #398e89, var(--cyan)); }
+.process-fill.amber { background: linear-gradient(90deg, #9a7444, var(--amber)); }
+.process-meta { color: var(--muted); font-size: 10px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.process-card.waiting .process-meta { color: var(--amber); }
+.process-card.ready-pulse { animation: ready-pulse .3s ease-out; }
+@keyframes ready-pulse {
+  0% { border-color: var(--line-strong); box-shadow: inset 0 0 0 1px rgba(118, 227, 215, .34); }
+  48% { border-color: var(--cyan-light); box-shadow: inset 0 0 0 1px rgba(118, 227, 215, .18), 0 0 12px rgba(118, 227, 215, .12); }
+  100% { border-color: rgba(126, 213, 204, .24); box-shadow: none; }
+}
 
 .bar {
-  width: 200px; height: 7px;
+  width: min(200px, 100%); height: 7px;
   background: #273d40;
   border-radius: 4px;
   overflow: hidden;
@@ -190,25 +262,31 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
   margin: 7px 0 3px;
 }
 
-.queue { display: flex; gap: 5px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+.queue-panel { margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(126, 213, 204, .13); }
+.queue-head { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .06em; }
+.queue { display: flex; gap: 5px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
 .queue-empty { color: var(--muted); font-size: 12px; font-style: italic; }
 .chip {
-  width: 38px; height: 38px;
-  background: rgba(20, 54, 60, .66);
+  width: 52px; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1px;
+  color: var(--text);
+  background: rgba(11, 33, 40, .82);
   border: 1px solid rgba(118, 227, 215, .27);
   border-radius: 6px;
   cursor: pointer;
   position: relative;
-  padding: 3px;
+  padding: 3px 3px 5px;
 }
-.chip:hover { border-color: var(--cyan); }
-.chip canvas { width: 100%; height: 100%; }
+.chip:hover { border-color: var(--cyan); background: rgba(20, 54, 60, .9); }
+.chip.disabled { opacity: .58; cursor: not-allowed; }
+.chip canvas { width: 25px; height: 25px; flex: 0 0 25px; }
+.chip-refund { color: var(--amber); font-size: 9px; line-height: 1.2; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chip-progress {
   position: absolute; left: 0; bottom: 0;
   height: 3px; background: var(--cyan); width: 0;
 }
 .chip-time {
-  position: absolute; top: -1px; right: 1px;
+  position: absolute; top: 1px; right: 3px;
   font-size: 9px; color: var(--cyan-light); font-weight: 800;
   text-shadow: 0 1px 2px #000;
 }
@@ -219,8 +297,10 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 /* ---------- Тултип кнопок панели ---------- */
 #cmd-tip {
   position: fixed;
-  width: 300px;
-  background: linear-gradient(145deg, #12313a, #0b1e27);
+  width: min(300px, calc(100vw - 16px));
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  background: linear-gradient(145deg, rgba(13, 39, 47, .97), rgba(7, 24, 31, .97));
   border: 1px solid var(--line-strong);
   border-left: 3px solid var(--amber);
   border-radius: 8px;
@@ -234,9 +314,10 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 }
 #cmd-tip.show { opacity: 1; transform: none; }
 .tip-title { font-weight: 800; font-size: 13.5px; color: var(--cyan-light); display: flex; justify-content: space-between; gap: 10px; }
-.tip-cost { color: var(--amber); font-weight: 800; }
+.tip-cost { color: var(--amber); font-weight: 800; white-space: nowrap; }
 .tip-desc { font-size: 12px; color: #bfd2cf; line-height: 1.5; margin-top: 4px; }
 .tip-row { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.tip-row.tip-reason { color: var(--amber); border-top: 1px solid rgba(243, 197, 121, .22); padding-top: 5px; margin-top: 6px; font-weight: 750; }
 
 /* ---------- Команды ---------- */
 #cmd-grid {
@@ -288,7 +369,20 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .cmd:hover { background: rgba(53, 117, 119, .44); border-color: var(--cyan); }
-.cmd.disabled { opacity: .43; }
+.cmd.disabled { opacity: .5; cursor: not-allowed; filter: saturate(.62); }
+.cmd.disabled:hover { background: rgba(20, 54, 60, .76); border-color: rgba(243, 197, 121, .52); }
+.cmd-refund { color: var(--cyan-light); }
+.cmd:focus-visible, .chip:focus-visible {
+  outline: 2px solid var(--cyan-light);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(118, 227, 215, .16);
+  z-index: 2;
+}
+.cmd.blocked-feedback, .chip.blocked-feedback { animation: blocked-feedback .28s ease-out; }
+@keyframes blocked-feedback {
+  0% { border-color: rgba(243, 197, 121, .9); box-shadow: 0 0 0 0 rgba(243, 197, 121, .22); }
+  100% { border-color: rgba(243, 197, 121, .28); box-shadow: 0 0 0 5px rgba(243, 197, 121, 0); }
+}
 .cmd canvas { width: 26px; height: 26px; }
 .cmd-label { font-size: 10.5px; line-height: 1.15; text-align: center; }
 .cmd-cost { font-size: 10.5px; color: var(--amber); font-weight: 800; }
@@ -553,3 +647,61 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
 .lang-row label { font-size: 11px; color: #7fa39c; text-transform: uppercase; letter-spacing: .12em; }
 .lang-row select { background: #0d1f22; color: var(--cyan-light); border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
 .lang-row select:hover { border-color: var(--cyan); }
+
+/* Узкое окно: оставляем прежнюю панель, но переносим её содержимое в строки.
+   G.6 продолжает измерять реальную высоту, а боковые 236px не меняются. */
+@media (max-width: 720px) {
+  body:not(.panel-left):not(.panel-right) #bottom-panel {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  body:not(.panel-left):not(.panel-right) #minimap-box {
+    flex: 0 0 128px;
+    width: 128px; height: 128px;
+  }
+  body:not(.panel-left):not(.panel-right) #minimap { width: 126px; height: 126px; }
+  body:not(.panel-left):not(.panel-right) #sel-info {
+    flex: 1 1 190px;
+    max-height: 154px;
+  }
+  body:not(.panel-left):not(.panel-right) #cmd-grid {
+    flex: 1 1 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-rows: 56px;
+    max-height: 118px;
+  }
+  body:not(.panel-left):not(.panel-right) #cmd-grid.compact {
+    flex: 1 1 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 32px;
+    max-height: 170px;
+  }
+  body:not(.panel-left):not(.panel-right) #panel-ctl {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-self: flex-start;
+  }
+}
+@media (max-width: 400px) {
+  body:not(.panel-left):not(.panel-right) #minimap-box {
+    flex-basis: 104px;
+    width: 104px; height: 104px;
+  }
+  body:not(.panel-left):not(.panel-right) #minimap { width: 102px; height: 102px; }
+  body:not(.panel-left):not(.panel-right) #sel-info { flex-basis: 160px; max-height: 164px; }
+  body:not(.panel-left):not(.panel-right) #cmd-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .process-card.ready-pulse {
+    border-color: var(--cyan-light);
+    box-shadow: inset 0 0 0 1px rgba(118, 227, 215, .18);
+  }
+}

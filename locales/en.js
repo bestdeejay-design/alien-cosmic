@@ -129,15 +129,34 @@ export default {
 
     buildingState: {
       wip: 'Building — {p}%', underFire: 'Under fire!',
-      researching: 'Researching: {name}',
-      prodWait: 'Production halted (no supply)',
+      researching: 'Researching: {name}', grading: 'Upgrading to Tier {to}',
+      prodWait: 'Production halted (no supply)', prodExit: 'Launch bay blocked — unit is ready',
       producing: 'Producing: {name}',
       idleOrder: 'Awaiting orders — queue empty',
       garrison: 'Garrison: {n}/{c}',
       onPost: 'In position', active: 'Active',
     },
 
+    process: {
+      heading: 'STATION TELEMETRY',
+      construction: 'Construction', research: 'Research', grade: 'Tier upgrade',
+      production: 'Production', garrison: 'Garrison', standby: 'Standby',
+      awaitingOrders: 'Awaiting orders', defense: 'Defense grid', onPost: 'On station',
+      readyState: 'Systems', online: 'Structure operational',
+      garrisonCount: 'Garrison {n}/{cap}',
+      researchTitle: '{name} · level {lvl}',
+      gradeTitle: '{name}: Tier {from} → {to}',
+      progress: '{n}% complete', eta: 'Ready in {n}s',
+      waitingSupply: 'Ready; waiting on supply', waitingExit: 'Ready; launch bay blocked',
+      queueTitle: 'Queue · {n}/{cap}',
+      refundShort: '↩ {n}', refundLabel: 'Refund: {n} minerals',
+      queueCancelLabel: 'Cancel {name} — reclaim {n} minerals',
+    },
+
     cmds: {
+      shortageHuman: 'Helios short by {n} erg', shortageAlien: 'The brood needs {n} more facets',
+      queueFull: 'Queue full', gameOver: 'Battle is over', unavailable: 'Unavailable right now',
+      disabledLabel: '{label} — {reason}',
       cancel: 'Cancel', undo: 'Undo', back: 'Back', stop: 'Stop',
       build: 'Build',
       recon: 'Recon',
@@ -146,7 +165,7 @@ export default {
       rallyTip: ['Every idle unit heads for the rally point', 'Needs a rally point (RMB on a building)'],
       grade: 'Tier {r}',
       deploy: 'Deploy ×{n}',
-      lockMark: ' 🔒',
+      lockMark: ' · locked',
     },
 
     gradeTip: {

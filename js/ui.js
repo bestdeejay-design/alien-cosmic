@@ -5,12 +5,12 @@
 // Весь UI — DOM поверх canvas; иконки команд рисуются кодом.
 // ============================================================
 import {
-  TILE, UNITS, BUILDINGS, UPGRADES, WORLD_W, WORLD_H, SUPPLY_MAX, COLORS,
-  fname, fdesc,
+  TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
+  WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
 } from './config.js';
 import { MISSIONS, SKIRMISH, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
 import { CODEX, codexTabLabel, codexEntryParts } from './lore.js';
-import { t, message, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
 import { crystalAt } from './units.js'; // F.1: тултип кристалла
 
 const $ = (id) => document.getElementById(id);
@@ -913,9 +913,9 @@ export function update(game) {
   const firstB = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
   const newSig = sel.map((e) => e.id + (e.done === false ? 'c' : '')).join(',') +
     '|' + (st.buildMenu ? 'B' : '') + (st.placing ? 'P' + st.placing.type : '') +
-    '|' + (firstB ? 'Q' + firstB.queue.length + (firstB.res ? 'R' + firstB.res.key : '') +
-      'G' + (firstB.gradeUp ? firstB.gradeUp.to : '') + 'L' + (firstB.level || 1) + // Б2: реакция на грейд
-      'H' + Math.ceil((firstB.hp / firstB.maxHp) * 12) : '');
+    '|' + (firstB ? 'Q' + firstB.queue.map((item) => item.type).join(',') +
+      (firstB.res ? 'R' + firstB.res.key : '') +
+      'G' + (firstB.gradeUp ? firstB.gradeUp.to : '') + 'L' + (firstB.level || 1) : '');
   if (newSig !== sig) {
     sig = newSig;
     rebuildPanel(game, sel);
@@ -925,7 +925,15 @@ export function update(game) {
 
 function rebuildPanel(game, sel) {
   const st = game.state;
-  dyn = { cmds: [] };
+  const previousDyn = dyn;
+  const selectedBuilding = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
+  const sameBuilding = selectedBuilding && previousDyn && previousDyn.processBuildingId === selectedBuilding.id;
+  dyn = {
+    cmds: [], queueButtons: [],
+    processBuildingId: selectedBuilding ? selectedBuilding.id : null,
+    processIdentity: sameBuilding ? previousDyn.processIdentity : null,
+    processReadySuppressed: sameBuilding ? previousDyn.processReadySuppressed : false,
+  };
   els.cmdGrid.innerHTML = '';
   els.selInfo.innerHTML = '';
 
@@ -951,99 +959,74 @@ function rebuildPanel(game, sel) {
   if (first.kind === 'building') {
     const b = first;
     const box = document.createElement('div');
-    box.className = 'sel-box';
+    box.className = 'sel-box building-card';
     box.appendChild(portraitEl(b.faction === 'alien' ? 'a_' + b.type : b.type));
     const name = document.createElement('div');
     name.className = 'sel-name';
     name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : t('ui.hints.buildWip'));
     box.appendChild(name);
-    const bst = buildingStatus(b);
-    box.appendChild(statusLine(bst.led, bst.text).el);
+    const status = statusLine('', '');
+    dyn.buildingLed = status.led;
+    dyn.buildingText = status.text;
+    box.appendChild(status.el);
     const hp = bar(b.hp / b.maxHp);
     box.appendChild(hp.el);
     dyn.hpFill = hp.fill;
-    if (!b.done) {
-      const p = bar(b.progress);
-      p.fill.classList.add('amber');
-      box.appendChild(p.el);
-      dyn.progFill = p.fill;
-      const hint = document.createElement('div');
-      hint.className = 'small';
-      hint.textContent = t('ui.hints.construction');
-      box.appendChild(hint);
-    } else {
-      // Описание здания — теперь подписано ВСЕГДА.
+
+    if (b.done) {
       const desc = document.createElement('div');
-      desc.className = 'small';
+      desc.className = 'small sel-desc';
       desc.textContent = fdesc(b.cfg, b.faction);
       box.appendChild(desc);
+    }
 
-      // Очередь производства — видна всегда у производящих зданий:
-      // и когда она есть (чипы + таймер), и когда пуста.
-      if (b.cfg.produces) {
-        const q = document.createElement('div');
-        q.className = 'queue';
-        if (b.queue.length) {
-          b.queue.forEach((item, i) => {
-            const chip = document.createElement('button');
-            chip.className = 'chip';
-            chip.title = t('ui.hints.queueCancel', { name: fname(UNITS[item.type], b.faction) });
-            chip.appendChild(iconEl(b.faction === 'alien' ? 'a_' + item.type : item.type));
-            if (i === 0) {
-              const pr = document.createElement('div');
-              pr.className = 'chip-progress';
-              chip.appendChild(pr);
-              dyn.chipFill = pr;
-              const tm = document.createElement('span');
-              tm.className = 'chip-time';
-              chip.appendChild(tm);
-              dyn.timerEl = tm;
-            }
-            chip.addEventListener('click', () => game.hooks.cancelQueue(b, i));
-            q.appendChild(chip);
-          });
-        } else {
-          const empty = document.createElement('div');
-          empty.className = 'queue-empty';
-          empty.textContent = t('ui.hints.queueEmpty');
-          q.appendChild(empty);
-        }
-        box.appendChild(q);
-      }
+    // Одна карточка отражает текущий процесс или честное состояние покоя.
+    box.appendChild(buildProcessCard());
 
-      // Исследование (лаборатория): прогресс и остаток времени.
-      if (b.res) {
-        const up = UPGRADES[b.res.key];
-        const rl = document.createElement('div');
-        rl.className = 'res-line';
-        const t1 = document.createElement('div');
-        t1.textContent = t('ui.hints.researchLeft', { name: fname(up, b.faction), lvl: b.res.lvl, sec: Math.ceil(b.res.t) });
-        rl.appendChild(t1);
-        const rp = bar(1 - b.res.t / b.res.total);
-        rp.fill.classList.add('amber');
-        rl.appendChild(rp.el);
-        dyn.resFill = rp.fill;
-        box.appendChild(rl);
+    // Очередь остаётся доступной прямо в инспекторе; возврат виден до клика.
+    if (b.done && b.cfg.produces) {
+      const queuePanel = document.createElement('div');
+      queuePanel.className = 'queue-panel';
+      const queueHead = document.createElement('div');
+      queueHead.className = 'queue-head';
+      queueHead.textContent = t('ui.process.queueTitle', {
+        n: fmtNum(b.queue.length), cap: fmtNum(gradeQueue(b.type, b.level || 1)),
+      });
+      queuePanel.appendChild(queueHead);
+      const queue = document.createElement('div');
+      queue.className = 'queue';
+      if (b.queue.length) {
+        b.queue.forEach((item, i) => queue.appendChild(buildQueueButton(game, b, item, i)));
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'queue-empty';
+        empty.textContent = t('ui.hints.queueEmpty');
+        queue.appendChild(empty);
       }
+      queuePanel.appendChild(queue);
+      box.appendChild(queuePanel);
+    }
 
-      if (b.cfg.garrisonCap) {
-        const hint = document.createElement('div');
-        hint.className = 'small';
-        hint.textContent = t('ui.hints.garrisonHint', { n: b.garrison.length, cap: b.cfg.garrisonCap });
-        box.appendChild(hint);
-      }
-      if (b.cfg.attack) {
-        const s = document.createElement('div');
-        s.className = 'small';
-        s.textContent = t('ui.hints.dmgLine', { d: b.cfg.dmg, r: b.cfg.range, cd: b.cfg.cooldown });
-        box.appendChild(s);
-      }
-      if (b.cfg.produces && !b.queue.length) {
-        const hint = document.createElement('div');
-        hint.className = 'small';
-        hint.textContent = t('ui.hints.rallyHint');
-        box.appendChild(hint);
-      }
+    if (b.done && b.cfg.garrisonCap) {
+      const hint = document.createElement('div');
+      hint.className = 'small';
+      hint.textContent = t('ui.hints.garrisonHint', {
+        n: b.garrison.length, cap: gradeGar(b.type, b.level || 1, b.cfg.garrisonCap),
+      });
+      box.appendChild(hint);
+      dyn.garrisonHint = hint;
+    }
+    if (b.cfg.attack) {
+      const s = document.createElement('div');
+      s.className = 'small';
+      s.textContent = t('ui.hints.dmgLine', { d: b.cfg.dmg, r: b.cfg.range, cd: b.cfg.cooldown });
+      box.appendChild(s);
+    }
+    if (b.done && b.cfg.produces && !b.queue.length) {
+      const hint = document.createElement('div');
+      hint.className = 'small';
+      hint.textContent = t('ui.hints.rallyHint');
+      box.appendChild(hint);
     }
     els.selInfo.appendChild(box);
     infoStats(box, b);
@@ -1080,30 +1063,339 @@ function rebuildPanel(game, sel) {
     const btn = document.createElement('button');
     btn.className = 'cmd';
     btn.dataset.code = c.code;
+    btn.setAttribute('aria-describedby', 'cmd-tip');
     btn.appendChild(iconEl(c.icon));
     const label = document.createElement('span');
     label.className = 'cmd-label';
     label.textContent = c.label;
     btn.appendChild(label);
-    if (c.cost) {
+
+    const refund = refundForCommand(c, selectedBuilding);
+    const shownCost = c.cost ? fmtNum(c.cost) : (refund !== null
+      ? t('ui.process.refundShort', { n: fmtNum(refund) }) : '');
+    if (shownCost) {
       const cost = document.createElement('span');
-      cost.className = 'cmd-cost';
-      cost.textContent = c.cost;
+      cost.className = refund !== null ? 'cmd-cost cmd-refund' : 'cmd-cost';
+      cost.textContent = shownCost;
       btn.appendChild(cost);
     }
     const key = document.createElement('kbd');
     key.textContent = c.code.replace('Key', '');
     btn.appendChild(key);
-    btn.addEventListener('click', () => c.on());
-    // Подсказка при наведении: полное описание юнита/здания/улучшения.
-    if (c.tip) {
-      btn.addEventListener('mouseenter', () => showTip(c.tip, btn));
-      btn.addEventListener('mouseleave', hideTip);
-      btn.addEventListener('click', hideTip);
-    }
+
+    const entry = { code: c.code, el: btn, cmd: c, refund, tip: commandTooltip(c, refund) };
+    btn.addEventListener('click', () => {
+      const state = commandAvailability(c, game, selectedBuilding);
+      if (state.disabled) {
+        blockedFeedback(btn);
+        showTip(entry.tip, btn, state.reason);
+        return;
+      }
+      if (refund !== null) suppressReadiness();
+      c.on();
+      hideTip();
+    });
+    const tipHandler = () => showCommandTip(entry, game, selectedBuilding);
+    btn.addEventListener('mouseenter', tipHandler);
+    btn.addEventListener('focus', tipHandler);
+    btn.addEventListener('pointerdown', (event) => {
+      if (event && event.pointerType === 'touch') tipHandler();
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (!document.activeElement || document.activeElement !== btn) hideTip();
+    });
+    btn.addEventListener('blur', hideTip);
     els.cmdGrid.appendChild(btn);
-    dyn.cmds.push({ code: c.code, el: btn, cmd: c });
+    dyn.cmds.push(entry);
   }
+}
+
+function setAttr(el, name, value) {
+  const text = String(value);
+  if (el.getAttribute && el.getAttribute(name) === text) return;
+  if (el.setAttribute) el.setAttribute(name, text);
+  else el[name] = text;
+}
+
+function clamp01(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+}
+
+function percentOf(value) { return Math.round(clamp01(value) * 100); }
+
+function progressOf(remaining, total) {
+  const left = Number(remaining), full = Number(total);
+  return Number.isFinite(left) && Number.isFinite(full) && full > 0
+    ? clamp01(1 - left / full) : null;
+}
+
+function etaOf(remaining) {
+  const left = Number(remaining);
+  return Number.isFinite(left) && left > 0
+    ? t('ui.process.eta', { n: fmtNum(Math.ceil(left)) }) : '';
+}
+
+function buildingProcessModel(b) {
+  const buildingName = fname(b.cfg, b.faction);
+  if (!b.done) {
+    const progress = clamp01(b.progress);
+    return {
+      kind: 'construction', identity: 'construction', tone: 'amber',
+      phase: t('ui.process.construction'), title: buildingName,
+      progress, eta: '', meta: t('ui.process.progress', { n: fmtNum(percentOf(progress)) }), waiting: false,
+    };
+  }
+  if (b.res) {
+    const upgrade = UPGRADES[b.res.key];
+    const progress = progressOf(b.res.t, b.res.total);
+    return {
+      kind: 'research', identity: 'research:' + b.res.key, tone: 'amber',
+      phase: t('ui.process.research'),
+      title: t('ui.process.researchTitle', { name: fname(upgrade, b.faction), lvl: fmtNum(b.res.lvl) }),
+      progress, eta: etaOf(b.res.t),
+      meta: progress === null ? '' : t('ui.process.progress', { n: fmtNum(percentOf(progress)) }), waiting: false,
+    };
+  }
+  if (b.gradeUp) {
+    const to = Number(b.gradeUp.to) || 2;
+    const progress = progressOf(b.gradeUp.t, b.gradeUp.total);
+    return {
+      kind: 'grade', identity: 'grade:' + to, tone: 'amber',
+      phase: t('ui.process.grade'),
+      title: t('ui.process.gradeTitle', {
+        name: buildingName, from: GRADE_ROMAN[to - 1] || '', to: GRADE_ROMAN[to] || '',
+      }),
+      progress, eta: etaOf(b.gradeUp.t),
+      meta: progress === null ? '' : t('ui.process.progress', { n: fmtNum(percentOf(progress)) }), waiting: false,
+    };
+  }
+  if (b.queue && b.queue.length) {
+    const item = b.queue[0];
+    const unit = UNITS[item.type];
+    const remaining = Number(item.t);
+    const progress = progressOf(item.t, item.total);
+    const held = !!item.hold;
+    const waitingExit = !held && Number.isFinite(remaining) && remaining <= 0;
+    return {
+      kind: 'production', identity: 'production:' + item.type, tone: 'cyan',
+      phase: t('ui.process.production'), title: fname(unit, b.faction), progress,
+      eta: held || waitingExit ? '' : etaOf(item.t),
+      meta: held ? t('ui.process.waitingSupply') : waitingExit ? t('ui.process.waitingExit')
+        : progress === null ? '' : t('ui.process.progress', { n: fmtNum(percentOf(progress)) }),
+      waiting: held || waitingExit,
+    };
+  }
+  if (b.cfg.garrisonCap) {
+    const cap = gradeGar(b.type, b.level || 1, b.cfg.garrisonCap);
+    return {
+      kind: 'garrison', identity: null, tone: 'cyan',
+      phase: t('ui.process.garrison'),
+      title: t('ui.process.garrisonCount', { n: fmtNum((b.garrison || []).length), cap: fmtNum(cap) }),
+      progress: null, eta: '', meta: '', waiting: false,
+    };
+  }
+  if (b.cfg.produces) {
+    return {
+      kind: 'idle', identity: null, tone: 'cyan',
+      phase: t('ui.process.standby'), title: t('ui.process.awaitingOrders'),
+      progress: null, eta: '', meta: '', waiting: false,
+    };
+  }
+  if (b.cfg.attack) {
+    return {
+      kind: 'post', identity: null, tone: 'cyan',
+      phase: t('ui.process.defense'), title: t('ui.process.onPost'),
+      progress: null, eta: '', meta: '', waiting: false,
+    };
+  }
+  return {
+    kind: 'idle', identity: null, tone: 'cyan',
+    phase: t('ui.process.readyState'), title: t('ui.process.online'),
+    progress: null, eta: '', meta: '', waiting: false,
+  };
+}
+
+function buildProcessCard() {
+  const card = document.createElement('div');
+  card.className = 'process-card';
+  const head = document.createElement('div');
+  head.className = 'process-head';
+  const left = document.createElement('div');
+  left.className = 'process-head-copy';
+  const kicker = document.createElement('div');
+  kicker.className = 'process-kicker';
+  kicker.textContent = t('ui.process.heading');
+  left.appendChild(kicker);
+  const phase = document.createElement('div');
+  phase.className = 'process-phase';
+  left.appendChild(phase);
+  const eta = document.createElement('div');
+  eta.className = 'process-eta';
+  head.appendChild(left);
+  head.appendChild(eta);
+  card.appendChild(head);
+  const title = document.createElement('div');
+  title.className = 'process-title';
+  card.appendChild(title);
+  const track = document.createElement('div');
+  track.className = 'process-track';
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', '100');
+  const fill = document.createElement('div');
+  fill.className = 'process-fill';
+  track.appendChild(fill);
+  card.appendChild(track);
+  const meta = document.createElement('div');
+  meta.className = 'process-meta';
+  card.appendChild(meta);
+  dyn.processCard = card;
+  dyn.processPhase = phase;
+  dyn.processTitle = title;
+  dyn.processEta = eta;
+  dyn.processTrack = track;
+  dyn.processFill = fill;
+  dyn.processMeta = meta;
+  return card;
+}
+
+function refundForCommand(command, building) {
+  if (!building || command.code !== 'KeyX') return null;
+  if (building.gradeUp) {
+    const grade = GRADES[building.type] && GRADES[building.type][building.gradeUp.to];
+    return grade ? grade.cost : null;
+  }
+  if (building.res) {
+    const upgrade = UPGRADES[building.res.key];
+    return upgrade ? upgrade.costs[building.res.lvl - 1] : null;
+  }
+  return null;
+}
+
+function producedUnitForCommand(command, building) {
+  if (!building || !building.cfg.produces) return null;
+  let key = String(command.icon || '');
+  if (key.startsWith('a_')) key = key.slice(2);
+  const produces = Array.isArray(building.cfg.produces) ? building.cfg.produces : [building.cfg.produces];
+  return UNITS[key] && produces.includes(key) ? key : null;
+}
+
+function commandAvailability(command, game, building) {
+  const st = game.state;
+  const faction = st.factions.player;
+  if (st.gameOver) return { disabled: true, reason: t('ui.cmds.gameOver') };
+
+  const unitType = producedUnitForCommand(command, building);
+  if (unitType && building.queue.length >= gradeQueue(building.type, building.level || 1)) {
+    return { disabled: true, reason: t('ui.cmds.queueFull') };
+  }
+
+  const lines = command.tip && Array.isArray(command.tip.lines) ? command.tip.lines : [];
+  const gradeLock = message('needCC2', faction);
+  if (lines.includes(gradeLock)) return { disabled: true, reason: gradeLock };
+
+  if (building && building.cfg.research && building.res && String(command.icon || '').startsWith('u_')) {
+    return { disabled: true, reason: message('labBusy', faction) };
+  }
+
+  if (command.enabled && !command.enabled()) {
+    const cost = Number(command.cost);
+    const minerals = Number(st.minerals.player) || 0;
+    if (Number.isFinite(cost) && cost > minerals) {
+      const missing = fmtNum(Math.ceil(cost - minerals));
+      const key = faction === 'alien' ? 'shortageAlien' : 'shortageHuman';
+      return { disabled: true, reason: t('ui.cmds.' + key, { n: missing }) };
+    }
+    return { disabled: true, reason: t('ui.cmds.unavailable') };
+  }
+  return { disabled: false, reason: '' };
+}
+
+function commandTooltip(command, refund) {
+  const source = command.tip || {};
+  const lines = Array.isArray(source.lines) ? source.lines.slice() : (source.lines ? [source.lines] : []);
+  if (refund !== null) {
+    const line = t('ui.process.refundLabel', { n: fmtNum(refund) });
+    if (!lines.includes(line)) lines.push(line);
+  }
+  return {
+    title: source.title || command.label,
+    cost: source.cost !== undefined ? source.cost : (refund !== null
+      ? t('ui.process.refundShort', { n: fmtNum(refund) }) : ''),
+    desc: source.desc || '', lines,
+  };
+}
+
+function showCommandTip(entry, game, building) {
+  const state = commandAvailability(entry.cmd, game, building);
+  showTip(entry.tip, entry.el, state.disabled ? state.reason : '');
+}
+
+function buildQueueButton(game, building, item, index) {
+  const unit = UNITS[item.type];
+  const name = fname(unit, building.faction);
+  const refund = unit.cost;
+  const refundShort = t('ui.process.refundShort', { n: fmtNum(refund) });
+  const refundLine = t('ui.process.refundLabel', { n: fmtNum(refund) });
+  const label = t('ui.process.queueCancelLabel', { name, n: fmtNum(refund) });
+  const tip = { title: name, cost: refundShort, lines: [refundLine] };
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.title = label;
+  chip.setAttribute('aria-label', label);
+  chip.setAttribute('aria-describedby', 'cmd-tip');
+  chip.appendChild(iconEl(building.faction === 'alien' ? 'a_' + item.type : item.type));
+  const refundEl = document.createElement('span');
+  refundEl.className = 'chip-refund';
+  refundEl.textContent = refundShort;
+  chip.appendChild(refundEl);
+
+  let progress = null, timer = null;
+  if (index === 0 && buildingProcessModel(building).kind !== 'production') {
+    progress = document.createElement('div');
+    progress.className = 'chip-progress';
+    chip.appendChild(progress);
+    timer = document.createElement('span');
+    timer.className = 'chip-time';
+    chip.appendChild(timer);
+  }
+  const entry = { el: chip, item, index, label, tip, progress, timer };
+  const show = () => showTip(tip, chip, game.state.gameOver ? t('ui.cmds.gameOver') : '');
+  chip.addEventListener('mouseenter', show);
+  chip.addEventListener('focus', show);
+  chip.addEventListener('pointerdown', (event) => {
+    if (event && event.pointerType === 'touch') show();
+  });
+  chip.addEventListener('mouseleave', () => {
+    if (!document.activeElement || document.activeElement !== chip) hideTip();
+  });
+  chip.addEventListener('blur', hideTip);
+  chip.addEventListener('click', () => {
+    if (game.state.gameOver) {
+      blockedFeedback(chip);
+      showTip(tip, chip, t('ui.cmds.gameOver'));
+      return;
+    }
+    suppressReadiness();
+    game.hooks.cancelQueue(building, index);
+    hideTip();
+  });
+  dyn.queueButtons.push(entry);
+  return chip;
+}
+
+function blockedFeedback(button) {
+  button.classList.remove('blocked-feedback');
+  // Restart a single short animation when the same unavailable command is tapped twice.
+  void button.offsetWidth;
+  button.classList.add('blocked-feedback');
+  clearTimeout(button._blockedFeedbackTimer);
+  button._blockedFeedbackTimer = setTimeout(() => button.classList.remove('blocked-feedback'), 280);
+}
+
+function suppressReadiness() {
+  if (dyn) dyn.processReadySuppressed = true;
 }
 
 // ------------------------------------------------------------
@@ -1115,11 +1407,13 @@ function ensureTipEl() {
   if (!tipEl) {
     tipEl = document.createElement('div');
     tipEl.id = 'cmd-tip';
+    tipEl.setAttribute('role', 'tooltip');
+    tipEl.setAttribute('aria-hidden', 'true');
     document.body.appendChild(tipEl);
   }
   return tipEl;
 }
-function showTip(tip, btn) {
+function showTip(tip, btn, reason = '') {
   ensureTipEl();
   // Переведённые строки — только через DOM (никаких innerHTML).
   tipEl.textContent = '';
@@ -1128,7 +1422,7 @@ function showTip(tip, btn) {
   title.appendChild(document.createTextNode(tip.title || ''));
   const cost = document.createElement('span');
   cost.className = 'tip-cost';
-  cost.textContent = tip.cost || '';
+  cost.textContent = typeof tip.cost === 'number' ? fmtNum(tip.cost) : (tip.cost || '');
   title.appendChild(cost);
   tipEl.appendChild(title);
   if (tip.desc) {
@@ -1137,27 +1431,52 @@ function showTip(tip, btn) {
     setRich(desc, tip.desc);
     tipEl.appendChild(desc);
   }
-  for (const l of tip.lines || []) {
-    const r = document.createElement('div');
-    r.className = 'tip-row';
-    setRich(r, l);
-    tipEl.appendChild(r);
+  const lines = Array.isArray(tip.lines) ? tip.lines : (tip.lines ? [tip.lines] : []);
+  for (const l of lines) {
+    const row = document.createElement('div');
+    row.className = 'tip-row';
+    setRich(row, l);
+    tipEl.appendChild(row);
   }
+  if (reason && !lines.includes(reason)) {
+    const row = document.createElement('div');
+    row.className = 'tip-row tip-reason';
+    setRich(row, reason);
+    tipEl.appendChild(row);
+  }
+  tipEl.setAttribute('aria-hidden', 'false');
   tipEl.classList.add('show');
-  const r = btn.getBoundingClientRect();
-  tipEl.style.left = Math.max(8, Math.min(window.innerWidth - 320, r.left + r.width / 2 - 150)) + 'px';
-  const h = tipEl.offsetHeight || 120;
-  tipEl.style.top = Math.max(8, r.top - h - 8) + 'px';
+  if (!btn || !btn.getBoundingClientRect) return;
+  const rect = btn.getBoundingClientRect();
+  const vw = Math.max(240, Number(window.innerWidth) || 320);
+  const vh = Math.max(160, Number(window.innerHeight) || 240);
+  const width = Math.min(tipEl.offsetWidth || 300, vw - 16);
+  const left = Math.max(8, Math.min(vw - width - 8, rect.left + rect.width / 2 - width / 2));
+  const height = tipEl.offsetHeight || 120;
+  const above = rect.top - height - 8;
+  const below = rect.bottom + 8;
+  const top = above >= 8 ? above : Math.max(8, Math.min(vh - height - 8, below));
+  tipEl.style.left = left + 'px';
+  tipEl.style.top = top + 'px';
 }
-function hideTip() { if (tipEl) tipEl.classList.remove('show'); }
+function hideTip() {
+  if (!tipEl) return;
+  tipEl.classList.remove('show');
+  tipEl.setAttribute('aria-hidden', 'true');
+}
 
 // F.1: тултип в точке экрана (для остатков кристалла) — безопасно: setRich.
 function tipAt(text, x, y) {
   ensureTipEl(); // Б1: работает и до первого наведения на кнопку
   setRich(tipEl, text);
-  tipEl.style.left = Math.min(x + 14, window.innerWidth - 250) + 'px';
-  tipEl.style.top = Math.max(y - 10, 8) + 'px';
+  setAttr(tipEl, 'aria-hidden', 'false');
   tipEl.classList.add('show');
+  const vw = Math.max(240, Number(window.innerWidth) || 320);
+  const vh = Math.max(160, Number(window.innerHeight) || 240);
+  const width = Math.min(tipEl.offsetWidth || 300, vw - 16);
+  const height = tipEl.offsetHeight || 120;
+  tipEl.style.left = Math.max(8, Math.min(vw - width - 8, x + 14)) + 'px';
+  tipEl.style.top = Math.max(8, Math.min(vh - height - 8, y - 10)) + 'px';
 }
 
 // F.1: яркость точки миникарты по доле остатка (0.25 пустой → 1.0 полный).
@@ -1170,7 +1489,7 @@ export function updateCrystalTip(game, wx, wy) {
   const st = game.state;
   if (!st || st.over || !st.map) return; // Б1: у Game нет els — старый гард гасил всё
   const c = crystalAt(st, wx, wy);
-  if (!c || c.amount <= 0) { if (tipEl) tipEl.classList.remove('show'); return; }
+  if (!c || c.amount <= 0) { hideTip(); return; }
   let sum = 0;
   for (const k of st.map.crystals) {
     if (k.amount > 0 && k.fieldId === c.fieldId && k.fieldId !== 0) sum += k.amount;
@@ -1183,53 +1502,117 @@ export function updateCrystalTip(game, wx, wy) {
 function refreshDynamic(game, sel) {
   if (!dyn) return;
   const st = game.state;
-  // Доступность кнопок (минералы).
-  for (const c of dyn.cmds) {
-    if (c.cmd.enabled) c.el.classList.toggle('disabled', !c.cmd.enabled());
-  }
-  // Полоски HP / прогресса / таймер очереди / прогресс исследования.
   const first = sel[0];
-  if (first) {
-    if (dyn.hpFill) {
-      const f = Math.max(0, first.hp / first.maxHp);
-      dyn.hpFill.style.width = (f * 100) + '%';
-      dyn.hpFill.classList.toggle('warn', f <= 0.55 && f > 0.28);
-      dyn.hpFill.classList.toggle('crit', f <= 0.28);
-    }
-    // Статус приказа юнита — живой, каждый кадр (приказы меняются часто).
-    // led — класс оформления; подпись — ui.states.<код> из локали.
-    if (dyn.unitText && first.kind === 'unit') {
-      const ORDL = {
-        idle: ['idle', 'ui.states.idle'], move: ['work', 'ui.states.move'],
-        attack: ['err', 'ui.states.attack'], attackMove: ['err', 'ui.states.attackMove'],
-        gather: ['warn', 'ui.states.gather'], build: ['warn', 'ui.states.build'],
-        repair: ['ok', 'ui.states.repair'], garrison: ['work', 'ui.states.garrison'],
-        heal: ['ok', 'ui.states.heal'],
-      };
-      let led, text;
-      if (first.idleReason === 'unreachable') {
-        led = 'err blink'; text = t('ui.states.blocked');
-      } else {
-        const o = (first.order && ORDL[first.order.kind]) || ORDL.idle;
-        led = o[0]; text = t(o[1]);
-        if (sel.length > 1) text += t('ui.states.squad', { n: sel.length });
-      }
-      dyn.unitLed.className = 'led ' + led;
-      if (dyn.unitText.textContent !== text) dyn.unitText.textContent = text;
-    }
-    if (dyn.progFill) dyn.progFill.style.width = Math.min(100, first.progress * 100) + '%';
-    if (dyn.chipFill && first.kind === 'building' && first.queue.length) {
-      const q = first.queue[0];
-      dyn.chipFill.style.width = ((1 - q.t / q.total) * 100) + '%';
-      if (dyn.timerEl) {
-        dyn.timerEl.textContent = q.hold ? t('ui.states.waiting') : t('ui.states.sec', { n: Math.ceil(q.t) });
-        dyn.timerEl.classList.toggle('hold', !!q.hold);
+  const selectedBuilding = sel.length === 1 && first.kind === 'building' ? first : null;
+
+  for (const entry of dyn.cmds) {
+    const state = commandAvailability(entry.cmd, game, selectedBuilding);
+    entry.el.classList.toggle('disabled', state.disabled);
+    setAttr(entry.el, 'aria-disabled', state.disabled ? 'true' : 'false');
+    setAttr(entry.el, 'aria-label', state.reason
+      ? t('ui.cmds.disabledLabel', { label: entry.cmd.label, reason: state.reason }) : entry.cmd.label);
+    entry.disabledReason = state.reason;
+  }
+  for (const entry of dyn.queueButtons) {
+    const disabled = !!st.gameOver;
+    entry.el.classList.toggle('disabled', disabled);
+    setAttr(entry.el, 'aria-disabled', disabled ? 'true' : 'false');
+    setAttr(entry.el, 'aria-label', disabled
+      ? t('ui.cmds.disabledLabel', { label: entry.label, reason: t('ui.cmds.gameOver') }) : entry.label);
+    if (entry.progress && selectedBuilding) {
+      const item = selectedBuilding.queue[entry.index];
+      if (item) {
+        const frac = progressOf(item.t, item.total);
+        entry.progress.style.width = (frac === null ? 0 : percentOf(frac)) + '%';
       }
     }
-    if (dyn.resFill && first.kind === 'building' && first.res) {
-      dyn.resFill.style.width = ((1 - first.res.t / first.res.total) * 100) + '%';
+    if (entry.timer && selectedBuilding) {
+      const item = selectedBuilding.queue[entry.index];
+      if (item) {
+        const waiting = !!item.hold || !(Number(item.t) > 0);
+        entry.timer.textContent = waiting ? t('ui.states.waiting')
+          : t('ui.states.sec', { n: fmtNum(Math.ceil(item.t)) });
+        entry.timer.classList.toggle('hold', waiting);
+      }
     }
   }
+
+  if (!first) return;
+  if (dyn.hpFill) {
+    const f = Math.max(0, first.hp / first.maxHp);
+    dyn.hpFill.style.width = (f * 100) + '%';
+    dyn.hpFill.classList.toggle('warn', f <= 0.55 && f > 0.28);
+    dyn.hpFill.classList.toggle('crit', f <= 0.28);
+  }
+  if (first.kind === 'building') {
+    const status = buildingStatus(first);
+    if (dyn.buildingLed) dyn.buildingLed.className = 'led ' + status.led;
+    if (dyn.buildingText && dyn.buildingText.textContent !== status.text) dyn.buildingText.textContent = status.text;
+    if (dyn.hpStats) dyn.hpStats.textContent = t('ui.hints.hpLine', { hp: Math.ceil(first.hp), max: first.maxHp });
+    if (dyn.garrisonHint && first.cfg.garrisonCap) {
+      dyn.garrisonHint.textContent = t('ui.hints.garrisonHint', {
+        n: first.garrison.length, cap: gradeGar(first.type, first.level || 1, first.cfg.garrisonCap),
+      });
+    }
+    if (dyn.processCard) updateProcessCard(first);
+  }
+
+  // Статус приказа юнита — живой, каждый кадр (приказы меняются часто).
+  if (dyn.unitText && first.kind === 'unit') {
+    const ORDL = {
+      idle: ['idle', 'ui.states.idle'], move: ['work', 'ui.states.move'],
+      attack: ['err', 'ui.states.attack'], attackMove: ['err', 'ui.states.attackMove'],
+      gather: ['warn', 'ui.states.gather'], build: ['warn', 'ui.states.build'],
+      repair: ['ok', 'ui.states.repair'], garrison: ['work', 'ui.states.garrison'],
+      heal: ['ok', 'ui.states.heal'],
+    };
+    let led, text;
+    if (first.idleReason === 'unreachable') {
+      led = 'err blink'; text = t('ui.states.blocked');
+    } else {
+      const order = (first.order && ORDL[first.order.kind]) || ORDL.idle;
+      led = order[0]; text = t(order[1]);
+      if (sel.length > 1) text += t('ui.states.squad', { n: sel.length });
+    }
+    dyn.unitLed.className = 'led ' + led;
+    if (dyn.unitText.textContent !== text) dyn.unitText.textContent = text;
+  }
+}
+
+function updateProcessCard(building) {
+  const model = buildingProcessModel(building);
+  const previous = dyn.processIdentity;
+  const becameReady = !!previous && !model.identity;
+  if (becameReady && !dyn.processReadySuppressed) pulseReady(dyn.processCard);
+  dyn.processReadySuppressed = false;
+  dyn.processIdentity = model.identity;
+
+  dyn.processCard.dataset.kind = model.kind;
+  dyn.processCard.classList.toggle('waiting', model.waiting);
+  dyn.processCard.classList.toggle('under-fire', building.flashT > 0);
+  dyn.processPhase.textContent = model.phase;
+  dyn.processTitle.textContent = model.title;
+  dyn.processEta.textContent = model.eta;
+  dyn.processMeta.textContent = model.meta;
+  const hasProgress = model.progress !== null;
+  dyn.processTrack.style.display = hasProgress ? '' : 'none';
+  setAttr(dyn.processTrack, 'aria-hidden', hasProgress ? 'false' : 'true');
+  if (hasProgress) {
+    const percent = percentOf(model.progress);
+    dyn.processFill.style.width = percent + '%';
+    dyn.processFill.className = 'process-fill ' + model.tone;
+    setAttr(dyn.processTrack, 'aria-valuenow', percent);
+    setAttr(dyn.processTrack, 'aria-valuetext', model.meta || model.eta);
+  }
+}
+
+function pulseReady(card) {
+  if (!card) return;
+  card.classList.remove('ready-pulse');
+  void card.offsetWidth;
+  card.classList.add('ready-pulse');
+  clearTimeout(dyn.readyTimer);
+  dyn.readyTimer = setTimeout(() => card.classList.remove('ready-pulse'), 300);
 }
 
 function bar(frac) {
@@ -1255,32 +1638,33 @@ function statusLine(led, text) {
   return { el: d, led: l, text: t };
 }
 
-// Статус здания на момент перестройки панели (очередь/исследование/
-// ранение входят в подпись — панель пересоберётся при их смене).
+// Состояние здания обновляется без перестройки карточки.
 function buildingStatus(b) {
-  if (!b.done) return { led: 'warn blink', text: t('ui.buildingState.wip', { p: Math.round((b.progress || 0) * 100) }) };
+  if (!b.done) return { led: 'warn blink', text: t('ui.buildingState.wip', { p: percentOf(b.progress) }) };
   if (b.flashT > 0) return { led: 'err blink', text: t('ui.buildingState.underFire') };
   if (b.res) return { led: 'work', text: t('ui.buildingState.researching', { name: fname(UPGRADES[b.res.key], b.faction) }) };
+  if (b.gradeUp) return { led: 'work', text: t('ui.buildingState.grading', { to: GRADE_ROMAN[b.gradeUp.to] || '' }) };
   if (b.queue && b.queue.length) {
     if (b.queue[0].hold) return { led: 'warn', text: t('ui.buildingState.prodWait') };
+    if (!(Number(b.queue[0].t) > 0)) return { led: 'warn', text: t('ui.buildingState.prodExit') };
     return { led: 'ok', text: t('ui.buildingState.producing', { name: fname(UNITS[b.queue[0].type], b.faction) }) };
   }
-  if (b.cfg.produces) return { led: 'warn', text: t('ui.buildingState.idleOrder') };
   if (b.cfg.garrisonCap) {
-    return {
-      led: b.garrison.length ? 'ok' : 'work',
-      text: t('ui.buildingState.garrison', { n: b.garrison.length, c: b.cfg.garrisonCap }),
-    };
+    const count = (b.garrison || []).length;
+    const cap = gradeGar(b.type, b.level || 1, b.cfg.garrisonCap);
+    return { led: count ? 'ok' : 'work', text: t('ui.buildingState.garrison', { n: count, c: cap }) };
   }
+  if (b.cfg.produces) return { led: 'warn', text: t('ui.buildingState.idleOrder') };
   if (b.cfg.attack) return { led: 'ok', text: t('ui.buildingState.onPost') };
   return { led: 'work', text: t('ui.buildingState.active') };
 }
 
 function infoStats(box, b) {
   const s = document.createElement('div');
-  s.className = 'small';
+  s.className = 'small hp-stats';
   s.textContent = t('ui.hints.hpLine', { hp: Math.ceil(b.hp), max: b.maxHp });
   box.appendChild(s);
+  dyn.hpStats = s;
 }
 
 // ------------------------------------------------------------
