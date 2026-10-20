@@ -365,18 +365,14 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
   }
 }
 
-// ---------- A12. Скирмиш-пресеты G.5 (12 форм × 2 сида) ----------
+// ---------- A12. Canonical quick-battle map geometries (6 IDs × 2 seeds) ----------
 {
   const { CC_WORKER_OFFS } = await import('../js/map.js');
-  // Формула — та же, что skirmishDims в ui.js (size длинная, short ≈ 2/3 чётная).
-  const dims = (size, shape) => {
-    const short = Math.round(size / 3) * 2;
-    if (shape === 'wide') return [size, short];
-    if (shape === 'tall') return [short, size];
-    return [size, size];
-  };
-  for (const size of [48, 64, 80, 96]) for (const shape of ['square', 'wide', 'tall']) {
-    const [w, h] = dims(size, shape);
+  const presets = [
+    ['square-48', 48, 48], ['square-64', 64, 64], ['square-80', 80, 80],
+    ['square-96', 96, 96], ['wide-96x64', 96, 64], ['tall-64x96', 64, 96],
+  ];
+  for (const [id, w, h] of presets) {
     for (const seed of [7, 424242]) {
       // base — как startSkirmish в game.js (y = h - 16).
       const gm = new GameMap(seed, { w, h, seed, lakes: 'default', rocks: 8, rich: 1.0, base: { x: 8, y: h - 16 } });
@@ -407,7 +403,7 @@ const maps = SEEDS.map((s) => new GameMap(s, { seed: s, lakes: 'default', rocks:
         }
       });
       if (!gm.crystals.length) errs.push('нет кристаллов');
-      ok(`A12. скирмиш ${w}×${h} сид ${seed}`, errs.length === 0,
+      ok(`A12. ${id} ${w}×${h} seed ${seed}`, errs.length === 0,
         errs.join('; ') || `путь ${tiles.length}, калиток 0, кристаллов ${gm.crystals.length}`);
     }
   }

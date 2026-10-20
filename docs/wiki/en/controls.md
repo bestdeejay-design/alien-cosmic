@@ -3,6 +3,14 @@
 Verified against `js/input.js` and `js/ui.js`. Hover any button —
 the tooltip shows price, stats and role.
 
+## From the launch deck
+
+In Quick Battle, choose one of the six map spans and a side, then commit
+through the button that names the selected setup. A first visit recommends
+64×64, but never picks a faction for you. Your last sortie returns ready for
+a one-action launch. Campaign lives on its own card: its button resumes the
+mission named by campaign progress, never a quick battle.
+
 ## Mouse
 
 | Gesture | Action |

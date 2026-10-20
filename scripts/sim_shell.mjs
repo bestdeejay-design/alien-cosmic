@@ -3,7 +3,7 @@
 //
 // S1 camera: центр и углы карты на видимой области во всех 4 позициях + скрытая.
 // S2 zoom: клампы 0.5/2.0 (G.5), якорь держит точку.
-// S3 presets: габариты 12 пресетов + клик-флоу скирмиша 54×80 с путём баз.
+// S3 presets: шесть канонических ID→габариты + запуск CTA 64×96 с путём баз.
 // S4 seasons: Сезон 1 → миссия → реальная победа → прогресс 1; С2 — тост СКОРО.
 //
 // Запуск: node scripts/sim_shell.mjs
@@ -102,30 +102,35 @@ try {
   pass('S2 zoom: 0.5–2.0, якорь держит точку');
 } catch (e) { fail('S2 zoom', e); }
 
-// ---------- S3: пресеты скирмиша ----------
+// ---------- S3: canonical quick-battle presets ----------
 try {
-  const D = ui.skirmishDims;
-  assert(JSON.stringify(D(48, 'square')) === '{"w":48,"h":48}', '48²');
-  assert(JSON.stringify(D(96, 'wide')) === '{"w":96,"h":64}', 'wide96');
-  assert(JSON.stringify(D(96, 'tall')) === '{"w":64,"h":96}', 'tall96');
-  assert(JSON.stringify(D(64, 'wide')) === '{"w":64,"h":42}', 'wide64');
-  assert(JSON.stringify(D(80, 'tall')) === '{"w":54,"h":80}', 'tall80');
-  assert(JSON.stringify(D('xx', 'yy')) === '{"w":64,"h":64}', 'дефолт на мусоре');
-  el('sk-size').value = '80';
-  el('sk-shape').value = 'tall';
-  el('btn-skirmish-human').click();
-  assert(game.started, 'скирмиш не стартовал по клику');
-  const st = game.state;
-  assert(st.map.w === 54 && st.map.h === 80, `карта ${st.map.w}×${st.map.h}, ждали 54×80`);
-  const s = st.map.bases.player.center, g = st.map.bases.enemy.center;
-  assert(st.map.inBounds(s.x, s.y) && st.map.inBounds(g.x, g.y), 'базы вне карты');
-  const tiles = PF.findPath(st.map, s.x, s.y, (x, y) => x === g.x && y === g.y,
-    (x, y) => Math.max(Math.abs(g.x - x), Math.abs(g.y - y)));
-  const last = tiles[tiles.length - 1];
-  assert(last && last.x === g.x && last.y === g.y, 'пути база↔база нет');
+  const expected = [
+    ['square-48', 48, 48], ['square-64', 64, 64], ['square-80', 80, 80],
+    ['square-96', 96, 96], ['wide-96x64', 96, 64], ['tall-64x96', 64, 96],
+  ];
+  let finalPathLength = 0;
+  for (const [id, w, h] of expected) {
+    game.toMenu();
+    localStorage.removeItem('terranrts.quickBattle');
+    ui.restoreQuickBattleConfig();
+    el('quick-preset-' + id).click();
+    el('quick-faction-human').click();
+    el('btn-quick-battle-start').click();
+    assert(game.started && game.mission.id === -1, `${id}: quick battle did not start`);
+    const st = game.state;
+    assert(st.map.w === w && st.map.h === h && game.mission.faction === 'human',
+      `${id}: received ${st.map.w}×${st.map.h} / ${game.mission.faction}`);
+    const s = st.map.bases.player.center, g = st.map.bases.enemy.center;
+    assert(st.map.inBounds(s.x, s.y) && st.map.inBounds(g.x, g.y), `${id}: bases out of bounds`);
+    const tiles = PF.findPath(st.map, s.x, s.y, (x, y) => x === g.x && y === g.y,
+      (x, y) => Math.max(Math.abs(g.x - x), Math.abs(g.y - y)));
+    const last = tiles[tiles.length - 1];
+    assert(last && last.x === g.x && last.y === g.y, `${id}: no base-to-base path`);
+    finalPathLength = tiles.length;
+  }
   ticks(30);
   paint();
-  pass(`S3 presets: 12 пресетов считаются, клик дал 54×80 с путём баз (${tiles.length} т.)`);
+  pass(`S3 presets: all six IDs launched exact map sizes for HELIOS; base path exists (last ${finalPathLength} tiles)`);
 } catch (e) { fail('S3 presets', e); }
 
 // ---------- S4: сезоны ----------
@@ -151,12 +156,12 @@ try {
   const toasts = el('toasts').children.map((t) => t.textContent).join(' ');
   assert(/Скоро/.test(toasts), 'тоста СКОРО нет: ' + toasts);
   assert(game.mission.id === 0, 'Сезон 2 что-то запустил');
-  el('btn-codex').click(); // Легенда на главном экране, как раньше
-  assert(!el('codex-overlay').classList.contains('hidden'), 'Легенда не открылась');
+  el('btn-codex').click(); // Universe link on the main screen
+  assert(!el('codex-overlay').classList.contains('hidden'), 'Вселенная не открылась');
   el('btn-codex-back').click();
-  assert(el('codex-overlay').classList.contains('hidden'), 'Легенда не закрылась');
+  assert(el('codex-overlay').classList.contains('hidden'), 'Вселенная не закрылась');
   paint();
-  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — тост СКОРО; Легенда на месте');
+  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — тост СКОРО; Вселенная на месте');
 } catch (e) { fail('S4 seasons', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_SHELL: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_SHELL: ВСЕ СЦЕНАРИИ ПРОШЛИ');

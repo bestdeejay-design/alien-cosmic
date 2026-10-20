@@ -37,36 +37,110 @@
 
     <div id="toasts"></div>
 
-    <!-- Главное меню -->
+    <!-- Main menu -->
     <div id="overlay" class="overlay">
       <div class="overlay-box menu-box">
-        <h1>ALIEN COSMIC</h1>
-        <p class="sub" data-i18n="ui.menu.sub"></p>
-        <div id="ver-badge" class="ver-badge"></div>
-        <div class="lang-row">
-          <label for="lang-select" data-i18n="ui.langLabel"></label>
-          <select id="lang-select"></select>
-        </div>
-        <div class="menu-buttons">
-          <button id="btn-season1" class="big-btn" data-i18n="ui.menu.season1"></button>
-          <button id="btn-season2" class="big-btn ghost-btn season-soon" data-i18n="ui.menu.season2"></button>
-          <button id="btn-codex" class="big-btn ghost-btn" data-i18n="ui.menu.codex"></button>
-        </div>
-        <div class="fac-teaser">
-          <div class="fac-chip fac-human" data-i18n="ui.menu.facTeaserHuman"></div>
-          <div class="fac-chip fac-alien" data-i18n="ui.menu.facTeaserAlien"></div>
-        </div>
-        <div class="help">
-          <p data-i18n="ui.menu.help.0"></p>
-          <p data-i18n="ui.menu.help.1"></p>
-          <p data-i18n="ui.menu.help.2"></p>
-          <p data-i18n="ui.menu.help.3"></p>
-          <p data-i18n="ui.menu.help.4"></p>
-          <p data-i18n="ui.menu.help.5"></p>
-          <p data-i18n="ui.menu.help.6"></p>
-        </div>
-        <button id="btn-start" class="big-btn ghost-btn small-start"></button>
-        <button id="btn-reset" class="big-btn ghost-btn small-start" data-i18n="ui.menu.reset"></button>
+        <header class="menu-head">
+          <div class="menu-head-copy">
+            <h1>ALIEN COSMIC</h1>
+            <p class="sub" data-i18n="ui.menu.sub"></p>
+          </div>
+          <div class="menu-head-meta">
+            <div id="ver-badge" class="ver-badge"></div>
+            <div class="lang-row">
+              <label for="lang-select" data-i18n="ui.langLabel"></label>
+              <select id="lang-select"></select>
+            </div>
+          </div>
+        </header>
+
+        <section id="quick-battle" class="quick-battle-card" aria-labelledby="quick-battle-title">
+          <div class="quick-battle-head">
+            <div>
+              <p class="menu-eyebrow" data-i18n="ui.menu.quickBattleEyebrow"></p>
+              <h2 id="quick-battle-title" data-i18n="ui.menu.quickBattleTitle"></h2>
+              <p class="quick-battle-copy" data-i18n="ui.menu.quickBattleSub"></p>
+            </div>
+          </div>
+
+          <div class="quick-section">
+            <h3 id="quick-map-label" data-i18n="ui.menu.quickBattleMapLabel"></h3>
+            <div id="quick-map-grid" class="quick-map-grid" role="group" aria-labelledby="quick-map-label">
+              <button id="quick-preset-square-48" class="quick-preset" type="button" data-preset-id="square-48" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.compact"></span><span class="preset-dims">48×48</span>
+              </button>
+              <button id="quick-preset-square-64" class="quick-preset is-selected" type="button" data-preset-id="square-64" aria-pressed="true">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.standard"></span><span class="preset-dims">64×64</span>
+                <span class="quick-recommended" data-i18n="ui.menu.quickBattleRecommended"></span>
+              </button>
+              <button id="quick-preset-square-80" class="quick-preset" type="button" data-preset-id="square-80" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.large"></span><span class="preset-dims">80×80</span>
+              </button>
+              <button id="quick-preset-square-96" class="quick-preset" type="button" data-preset-id="square-96" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.expanse"></span><span class="preset-dims">96×96</span>
+              </button>
+              <button id="quick-preset-wide-96x64" class="quick-preset" type="button" data-preset-id="wide-96x64" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.wide"></span><span class="preset-dims">96×64</span>
+              </button>
+              <button id="quick-preset-tall-64x96" class="quick-preset" type="button" data-preset-id="tall-64x96" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.tall"></span><span class="preset-dims">64×96</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="quick-section">
+            <h3 id="quick-faction-label" data-i18n="ui.menu.quickBattleFactionLabel"></h3>
+            <div id="quick-faction-grid" class="fac-cards" role="group" aria-labelledby="quick-faction-label">
+              <button id="quick-faction-human" class="fac-card fac-human" type="button" aria-pressed="false">
+                <span class="fc-title" data-i18n="ui.skirmish.humanCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></span>
+              </button>
+              <button id="quick-faction-alien" class="fac-card fac-alien" type="button" aria-pressed="false">
+                <span class="fc-title" data-i18n="ui.skirmish.alienCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="quick-battle-actions">
+            <p id="quick-battle-status" class="quick-battle-status" role="status" aria-live="polite"></p>
+            <button id="btn-quick-battle-start" class="big-btn quick-start is-disabled" type="button" aria-disabled="true" aria-describedby="quick-battle-status" data-i18n="ui.menu.quickBattleNeedFaction"></button>
+          </div>
+        </section>
+
+        <section class="menu-secondary" aria-labelledby="campaign-card-title">
+          <div class="campaign-card">
+            <div class="campaign-card-copy">
+              <h2 id="campaign-card-title" data-i18n="ui.menu.campaignTitle"></h2>
+              <p data-i18n="ui.menu.campaignSub"></p>
+            </div>
+            <div class="campaign-actions">
+              <button id="btn-start" class="big-btn campaign-start" type="button"></button>
+              <button id="btn-season1" class="big-btn ghost-btn campaign-browse" type="button" data-i18n="ui.menu.campaignBrowse"></button>
+            </div>
+          </div>
+          <nav class="menu-secondary-links" aria-labelledby="campaign-card-title">
+            <button id="btn-season2" class="season-teaser" type="button" data-i18n="ui.menu.season2"></button>
+            <button id="btn-codex" class="universe-link" type="button" data-i18n="ui.menu.universe"></button>
+          </nav>
+        </section>
+
+        <details id="menu-controls" class="menu-disclosure">
+          <summary data-i18n="ui.menu.controls"></summary>
+          <div class="help">
+            <p data-i18n="ui.menu.help.0"></p>
+            <p data-i18n="ui.menu.help.1"></p>
+            <p data-i18n="ui.menu.help.2"></p>
+            <p data-i18n="ui.menu.help.3"></p>
+            <p data-i18n="ui.menu.help.4"></p>
+            <p data-i18n="ui.menu.help.5"></p>
+            <p data-i18n="ui.menu.help.6"></p>
+          </div>
+        </details>
+        <details id="menu-more" class="menu-disclosure menu-more">
+          <summary data-i18n="ui.menu.more"></summary>
+          <button id="btn-reset" class="big-btn ghost-btn small-start" type="button" data-i18n="ui.menu.reset"></button>
+        </details>
       </div>
     </div>
 
@@ -76,7 +150,6 @@
         <h1 data-i18n="ui.missionsScr.h1"></h1>
         <p class="sub" data-i18n="ui.missionsScr.sub"></p>
         <div id="mission-list"></div>
-        <button id="btn-missions-skirmish" class="big-btn ghost-btn" data-i18n="ui.missionsScr.skirmishBtn"></button>
         <button id="btn-missions-back" class="big-btn ghost-btn" data-i18n="ui.missionsScr.back"></button>
       </div>
     </div>
@@ -98,40 +171,14 @@
       </div>
     </div>
 
-    <!-- Кодекс «Легенда» -->
+    <!-- Universe archive -->
     <div id="codex-overlay" class="overlay hidden">
       <div class="overlay-box wide codex-box">
-        <h1 data-i18n="ui.codexScr.h1"></h1>
+        <h1 data-i18n="ui.codexScr.universeTitle"></h1>
         <p class="sub" data-i18n="ui.codexScr.sub"></p>
         <div id="codex-tabs"></div>
         <div id="codex-body"></div>
         <button id="btn-codex-back" class="big-btn ghost-btn" data-i18n="ui.codexScr.back"></button>
-      </div>
-    </div>
-
-    <!-- Выбор фракции для быстрого боя -->
-    <div id="skirmish-overlay" class="overlay hidden">
-      <div class="overlay-box wide">
-        <h1 data-i18n="ui.skirmish.h1"></h1>
-        <p class="sub" data-i18n="ui.skirmish.sub"></p>
-        <div class="sk-config">
-          <label><span data-i18n="ui.skirmish.size"></span> <select id="sk-size"><option value="48">48</option><option value="64" selected>64</option><option value="80">80</option><option value="96">96</option></select></label>
-          <label><span data-i18n="ui.skirmish.shape"></span> <select id="sk-shape"><option value="square" data-i18n="ui.skirmish.shapes.square"></option><option value="wide" data-i18n="ui.skirmish.shapes.wide"></option><option value="tall" data-i18n="ui.skirmish.shapes.tall"></option></select></label>
-          <span id="sk-dims" class="sk-dims"></span>
-        </div>
-        <div class="fac-cards">
-          <button id="btn-skirmish-human" class="fac-card fac-human">
-            <div class="fc-title" data-i18n="ui.skirmish.humanCard.title"></div>
-            <div class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></div>
-            <div class="fc-list" data-i18n="ui.skirmish.humanCard.list"></div>
-          </button>
-          <button id="btn-skirmish-alien" class="fac-card fac-alien">
-            <div class="fc-title" data-i18n="ui.skirmish.alienCard.title"></div>
-            <div class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></div>
-            <div class="fc-list" data-i18n="ui.skirmish.alienCard.list"></div>
-          </button>
-        </div>
-        <button id="btn-skirmish-back" class="big-btn ghost-btn" data-i18n="ui.skirmish.back"></button>
       </div>
     </div>
 

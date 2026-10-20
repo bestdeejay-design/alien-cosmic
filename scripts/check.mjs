@@ -92,8 +92,8 @@ else ok('заголовок ALIEN COSMIC на месте');
 
 // 6) Версия (V): бейдж на экране входа
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'K'")) err('config.js: нет GAME_VERSION === \'K\'');
-else ok("GAME_VERSION === 'K'");
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'L'")) err('config.js: нет GAME_VERSION === \'L\'');
+else ok("GAME_VERSION === 'L'");
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
 else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 
@@ -158,6 +158,15 @@ try {
   ok('sim_p1 прошёл');
 } catch (e) {
   err('sim_p1 упал (см. вывод выше)');
+}
+
+// 10) sim_menu — R2-C: пресеты, CTA, prefs, кампания и новый menu shell.
+console.log('\n[10] sim_menu (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_menu.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_menu прошёл');
+} catch (e) {
+  err('sim_menu упал (см. вывод выше)');
 }
 
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
