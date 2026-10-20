@@ -5,7 +5,7 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, BUILDINGS } from './config.js';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS } from './config.js';
 import { unitAt } from './units.js';
 import { buildingAt } from './buildings.js';
 
@@ -40,6 +40,11 @@ export function attachInput(game) {
   window.addEventListener('mousemove', (e) => {
     game.mouse.x = e.clientX;
     game.mouse.y = e.clientY;
+    // Хотфикс L: курсор над UI панели/топбара — краевой скролл молчит.
+    // Инсеты уже исключают панели из игровой зоны, это страховка от любого
+    // расхождения CSS и инсетов (изменение высоты панелей и т.п.).
+    game.overUI = !!(e.target && e.target.closest &&
+      e.target.closest('#topbar, #bottom-panel, #cmd-tip, #panel-show, .overlay:not(.hidden)'));
     const st = game.state;
     if (!st) return;
     // Перетаскивание карты СКМ: камера следует за мышью 1:1.
@@ -246,7 +251,16 @@ export function attachInput(game) {
   });
 
   window.addEventListener('keyup', (e) => held.delete(e.code));
-  window.addEventListener('blur', () => held.clear());
+  window.addEventListener('blur', () => { held.clear(); game.mouse.x = -1; game.edgeT = 0; });
+  // Хотфикс L: курсор ушёл за окно — мышь «умерла» (sentinel −1), иначе
+  // последняя позиция в краевой зоне панорамировала бы вечно. Гарды —
+  // для headless-среды симов (там document.documentElement нет).
+  if (typeof document !== 'undefined' && document.documentElement &&
+      document.documentElement.addEventListener) {
+    document.documentElement.addEventListener('mouseleave', () => {
+      game.mouse.x = -1; game.mouse.y = -1; game.edgeT = 0; game.edgeZone = null;
+    });
+  }
 }
 
 // П3: шаг призрака по сетке с клампом (клавиатурная постановка).
@@ -348,19 +362,34 @@ export function updateCamera(game, dt) {
   if (dx || dy) {
     st.camera.x += dx * KEY_SCROLL_SPEED * dt;
     st.camera.y += dy * KEY_SCROLL_SPEED * dt;
-  } else if (!game.pan && game.started && !st.gameOver && game.mouse.x >= 0) {
+    game.edgeT = 0; game.edgeZone = null; // хотфикс L: стрелки — без краевых зон
+  } else if (!game.pan && game.started && !st.gameOver && game.mouse.x >= 0 && !game.overUI) {
     const m = game.mouse, M = EDGE_MARGIN;
     const w = window.innerWidth, h = window.innerHeight;
     const top = game.uiTop || 0, bot = game.uiBottom || 0;
     const L = game.uiLeft || 0, R = game.uiRight || 0;
     // Курсор в игровой зоне (вне панелей E.1); края считаются от неё.
     const inPlay = m.x > L && m.x < w - R && m.y > top && m.y < h - bot;
-    if (inPlay) {
-      if (m.x < L + M) st.camera.x -= EDGE_SCROLL_SPEED * dt;
-      else if (m.x > w - R - M) st.camera.x += EDGE_SCROLL_SPEED * dt;
-      if (m.y < top + M) st.camera.y -= EDGE_SCROLL_SPEED * dt;
-      else if (m.y > h - bot - M) st.camera.y += EDGE_SCROLL_SPEED * dt;
+    // Хотфикс L: какие краевые зоны активны — для grace и индикатора на экране.
+    const zL = inPlay && m.x < L + M, zR = inPlay && m.x > w - R - M;
+    const zT = inPlay && m.y < top + M, zB = inPlay && m.y > h - bot - M;
+    game.edgeZone = (zL || zR || zT || zB) ? { l: zL, r: zR, t: zT, b: zB } : null;
+    if (game.edgeZone) {
+      // Хотфикс L: пан стартует после EDGE_PAN_GRACE непрерывного пребывания
+      // в зоне — проход к панели через 26-пиксельную полосу камеру не тянет.
+      game.edgeT = (game.edgeT || 0) + dt;
+      if (game.edgeT >= EDGE_PAN_GRACE) {
+        if (zL) st.camera.x -= EDGE_SCROLL_SPEED * dt;
+        else if (zR) st.camera.x += EDGE_SCROLL_SPEED * dt;
+        if (zT) st.camera.y -= EDGE_SCROLL_SPEED * dt;
+        else if (zB) st.camera.y += EDGE_SCROLL_SPEED * dt;
+      }
+    } else {
+      game.edgeT = 0;
     }
+  } else {
+    // Хотфикс L: над UI / при перетаскивании / без мыши зоны гаснут.
+    game.edgeT = 0; game.edgeZone = null;
   }
   game.clampCam();
 }

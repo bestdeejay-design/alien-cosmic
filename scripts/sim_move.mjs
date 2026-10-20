@@ -202,5 +202,32 @@ const setRock = (st, x, y, v = 2) => { st.map.terrain[y * MAP_W + x] = v; };
   ok('S5. преграда на плече добычи — минералы идут', gained > 0, `+${Math.round(gained)} минералов, блоков ${placed}`);
 }
 
+// ---------- S6. Хотфикс L: строй на картах 96/48 — край досягаем ----------
+// Регресс репорта владельца: «после смены размера карты войска не довести
+// до края». Причина — кламп слотов строя на 63 (легаси 64×64): на картах
+// 80/96 групповые приказы у правого/нижнего края останавливались на тайле 63.
+// S6b/S6c — инварианты новой схемы (ключ от map.w, границы карты).
+{
+  const u8 = Array.from({ length: 8 }, (_, i) => ({ id: i + 1 })); // formationGoals читает только .id
+  // 96×96: приказ группой к правому краю — слоты у края (88+), не на тайле 63.
+  const st96 = { map: new GameMap(0xC0FFEE, { seed: 0xC0FFEE, lakes: 'default', rocks: 7, rich: 1, base: { x: 8, y: 88 }, w: 96, h: 96 }) };
+  const gEdge = U.formationGoals(st96, u8, 95.7 * TILE, 48 * TILE);
+  const txs = gEdge.map((g) => (g.x / TILE) | 0);
+  ok('S6a. 96-карта: строй доводится до правого края',
+    txs.every((tx) => tx >= 88) && Math.max(...txs) >= 92,
+    `tx слотов ${Math.min(...txs)}…${Math.max(...txs)} (ждём ≥88 и максимум ≥92)`);
+  // Инвариант ключа занятости: 8 слотов = 8 разных тайлов (ключ y*map.w+x).
+  const gUniq = U.formationGoals(st96, u8, 70 * TILE, 4 * TILE);
+  const keys = new Set(gUniq.map((g) => ((g.y / TILE) | 0) * 96 + ((g.x / TILE) | 0)));
+  ok('S6b. 96-карта: 8 слотов — 8 разных тайлов (ключ без коллизий)', keys.size === 8, `уникальных ${keys.size}/8`);
+  // 48×48: у края слоты в границах карты (не 63 за пределами).
+  const st48 = { map: new GameMap(0xBEEF, { seed: 0xBEEF, lakes: 'default', rocks: 7, rich: 1, base: { x: 8, y: 40 }, w: 48, h: 48 }) };
+  const g48 = U.formationGoals(st48, u8, 47.7 * TILE, 24 * TILE);
+  const tx48 = g48.map((g) => (g.x / TILE) | 0);
+  ok('S6c. 48-карта: слоты в границах карты у края',
+    tx48.every((tx) => tx <= 47) && Math.max(...tx48) >= 44,
+    `tx слотов ${Math.min(...tx48)}…${Math.max(...tx48)} (ждём ≤47 и максимум ≥44)`);
+}
+
 console.log(fails ? `\nИТОГ СИМУЛЯЦИИ: ЕСТЬ ПРОВАЛЫ (${fails})` : '\nИТОГ СИМУЛЯЦИИ: ВСЕ СЦЕНАРИИ ПРОШЛИ');
 process.exit(fails ? 1 : 0);

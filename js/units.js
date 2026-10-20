@@ -171,9 +171,13 @@ export function formationGoals(st, units, x, y) {
   const out = [];
   for (let i = 0; i < units.length; i++) {
     const wx = x + offs[i][0], wy = y + offs[i][1];
-    let tx = Math.max(0, Math.min(63, (wx / TILE) | 0));
-    let ty = Math.max(0, Math.min(63, (wy / TILE) | 0));
-    if (st.map.blockedAt(tx, ty) || used.has(ty * 64 + tx)) {
+    // G.5/хотфикс L: кламп на РЕАЛЬНЫЙ размер карты (63 был легаси 64×64 —
+    // на картах 80/96 строй у правого/нижнего края зажимался на тайл 63,
+    // и войска не доходили до края). Ключ занятости — от map.w: занятость
+    // строго в координатах карты, без завязки на былой 64×64.
+    let tx = Math.max(0, Math.min(st.map.w - 1, (wx / TILE) | 0));
+    let ty = Math.max(0, Math.min(st.map.h - 1, (wy / TILE) | 0));
+    if (st.map.blockedAt(tx, ty) || used.has(ty * st.map.w + tx)) {
       // Ищем свободный НЕЗАНЯТЫЙ тайл спиралью (до 6 тайлов — дальше
       // строй уже не строй). Важно перебирать кольцо самим, а не звать
       // nearestFreeFrom с растущим радиусом: он возвращал бы один и тот
@@ -181,7 +185,7 @@ export function formationGoals(st, units, x, y) {
       const spot = freeSlotNear(st.map, tx, ty, used, 6);
       tx = spot.x; ty = spot.y;
     }
-    used.add(ty * 64 + tx);
+    used.add(ty * st.map.w + tx);
     // Точка внутри тайла + детерминированный микро-сдвиг по id,
     // чтобы два юнита не целились в один пиксель.
     const u = units[i];
@@ -197,7 +201,7 @@ export function formationGoals(st, units, x, y) {
 // по (y, x). Fallback — ближайший свободный хоть и занятый (тесно,
 // но приказ выполним), в крайнем случае — исходный тайл.
 function freeSlotNear(map, tx, ty, used, maxR) {
-  const key = (x, y) => y * 64 + x;
+  const key = (x, y) => y * map.w + x; // хотфикс L: тот же ключ, что и в formationGoals
   if (!map.blockedAt(tx, ty) && !used.has(key(tx, ty))) return { x: tx, y: ty };
   for (let r = 1; r <= maxR; r++) {
     let best = null, bd = Infinity, bo = -1;
