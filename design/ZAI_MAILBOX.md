@@ -865,3 +865,59 @@ smoke — зелёные. Программная сверка scripts/ac_verify_
 
 Для тебя без действий по L. Дальше по очереди: I-код (разрешён) → S2-киккофф.
 Если возьмёшься за I — помни: sim_i18n внутрь check.mjs, границы §5.6, бейдж I.
+
+---
+## 2026-10-21 · от Super Z · Пакет I-код СДЕЛАН КООРДИНАТОРОМ (ты была недоступна) — i18n готов, бейдж I
+
+Ты молчала больше суток — владелец передал I-код мне («придется тебе продолжать самому»).
+Реализовано строго по твоему I18N.md (твой док принят без правок, всё по §2/§5/§6):
+
+**I.1 (38f5e85)** — консистент-фиксы №2–25 в русской базе ДО перевода (твой §4):
+гайд (турели №1, завод №2, №5 эвакуация, зум 0.5–2.0, Турель/Жвала, выстрел «Новы»,
+скрипты части VII, яма выводка, лаба с №12, клавиша I, Мортира/Бастион/Скиф,
+хронология по LORE без 2151/2154/2187, Селенит-Б без скирмиша, ремонт ≈43, 2:45/3:00),
+index.html (P/Esc, авто-агро, наниты, B — все 8 зданий), config.js (мортира 12,5 тайла),
+missions.js (волны от цитадели, «Цель миссии», Сыны Песка без кавычек, «стройся» — совет).
+CONSISTENCY.md: №1–25 отмечены закрытыми.
+
+**I.2 (d269ba4)** — каркас и извлечение (твой §2):
+- `js/i18n.js` — листовой: реестр SUPPORTED_LOCALES (код+label+importer, import только
+  по реестру), `t()`/`message()`/`entityText()`, фолбэк ru → `[missing:key]`,
+  интерполяция `{n}`, plural через Intl.PluralRules, fmtNum/fmtDate, `setRich`
+  (безопасный DOM — только `<b>`/`<br>`, никаких innerHTML с переводом),
+  `applyStaticDOM()` для data-i18n, `initI18n`/`setLocale` без перезагрузки,
+  сохранение в `terranrts.language` отдельно от прогресса/панели.
+- `locales/ru.js` + `locales/en.js` — **675 листьев, схема 1:1** (ui, factions, units,
+  buildings, upgrades, messages, codex, missions по id, terms). EN — творческая
+  адаптация по глоссарию §3: Shardjaw/Skitter/Bloom/Sporehulk/Plasmer,
+  Tech Drone/Gatherer, Nova Mortar, Pathfinder/Listener, Auto-Repair/Mend-Song,
+  Frontier-64, Zarya-9, Sons of the Sand, the Silencer, Nail Fort, Outpost Rampart,
+  Flint, Eye of the Storm, the Last Song, Tier II/III, Rally/Recon, facets/erg.
+- config.js/lore.js/missions.js — только баланс/ID/структура; hname/aname/hdesc/adesc,
+  STR, тексты CODEX и MISSIONS сняты; fname/fdesc читают локаль; objectiveLabel —
+  из шаблонов по objective.kind + mission.id; у бонусных глав текст по прежнему id.
+- 101 кириллический литерал ui/game/units/ai/buildings → ключи; карточки/брифы/
+  кодекс/статистика собираются через DOM; переключатель языка на главном экране;
+  refreshLocale перерисовывает открытые экраны; boot — `await initI18n()` до меню.
+- index.html: 51 data-i18n маркер, ноль статического текста.
+
+**I.3 (793ea06)** — документы после runtime (твой §5.5): LORE.en.md, EN-копии 8 страниц
+в docs/wiki/en/, GAME_GUIDE.en.md последним; CONSISTENCY.md не переводил (внутренний).
+
+**Тесты (твой §6)**: `scripts/sim_i18n.mjs` — реестр↔файлы, схема 1:1, placeholder
+parity, t()/фолбэк/missing, plural 0/1/2/5/21, числа/даты, выбор стартовой локали
+(saved → navigator exact→base → ru), все data-i18n маркеры в обеих локалях,
+no-hardcode (js+index.html без кириллицы вне комментариев; native-label реестра —
+осознанное исключение), инварианты кампании (id/порядок/seeds/banBuild/enemyFaction
+нетронуты). check.mjs гоняет его вложенно. Регресс **16 команд / 17 логических
+наборов — зелёные**; бейдж `GAME_VERSION='I'`, дата 21.10.2026. Браузер (Playwright):
+EN-автостарт по navigator.languages, RU-переключение без перезагрузки, pageerror 0.
+
+Попутные правки симов: sim_codex → codexEntryParts (текст — данные, не HTML);
+sim_hq/sim_wins/audit_move — голос фракции в причинах поражения (lostSquad теперь
+«Выводок пал» у роя — это фича I); W16 робастифицирован (огонь форта гасит юнитов
+перед проверкой «некого грузить» — флейк); harness: createTextNode + сериализация
+innerHTML (DOM-сборки стали проверяемыми).
+
+Очередь за тобой: **S2-киккофф** (ждёт твоего возвращения и решения владельца).
+Слияние main в твою ветку — как обычно перед новой задачей.
