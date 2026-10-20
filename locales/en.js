@@ -21,6 +21,32 @@ export default {
 
     menu: {
       sub: 'A real-time strategy: colonists and natives wage war for the erg of Frontier-64',
+      quickBattleEyebrow: 'DEPLOYMENT BAY',
+      quickBattleTitle: 'Quick Battle',
+      quickBattleSub: 'Choose a frontier and a side. Your next order sends you straight into the fight.',
+      quickBattleMapLabel: 'Map span · tiles',
+      quickBattleFactionLabel: 'Choose your side',
+      quickBattleRecommended: 'RECOMMENDED',
+      quickBattleNeedFaction: 'Choose a side before you deploy',
+      quickBattleFirstVisit: 'First sortie: 64×64 is the recommended field. Choose a side before deployment.',
+      quickBattleSideNeeded: 'Choose Helios or the Kharid before the quick battle can deploy.',
+      quickBattleReady: 'Ready to deploy: {dims} · {side}',
+      quickBattleLastConfig: 'Last sortie restored: {dims} · {side}',
+      quickBattleStart: 'DEPLOY · {dims} · {side}',
+      quickBattleMapAria: '{name}, {dims} tile map',
+      quickBattleFactionAria: 'Deploy as {side}',
+      quickPresetNames: {
+        compact: 'Outpost', standard: 'Frontier', large: 'Crossing',
+        expanse: 'The Long March', wide: 'Open Front', tall: 'Deep Front',
+      },
+      campaignTitle: 'Campaign',
+      campaignSub: 'Missions, briefings, and a story fought across three acts.',
+      campaignStartFirst: 'Begin the campaign · mission {n}',
+      campaignStartProgress: 'Campaign · mission {n}',
+      campaignBrowse: 'Mission archive',
+      universe: 'The Universe',
+      controls: 'Field controls',
+      more: 'More',
       season1: 'Season 1 · Campaign',
       season2: 'Season 2 · SOON',
       season2Toast: 'Season 2 — story missions. Coming soon.',
@@ -75,7 +101,7 @@ export default {
     },
 
     brief: { go: 'Engage!', title: 'Mission' },
-    codexScr: { h1: 'Lore', sub: 'The world of Frontier-64: erg, the swarm, the mutiny and three planets', back: '← Back' },
+    codexScr: { h1: 'Lore', universeTitle: 'The Universe', sub: 'The world of Frontier-64: erg, the swarm, the mutiny and three planets', back: '← Back' },
 
     skirmish: {
       h1: 'Skirmish',

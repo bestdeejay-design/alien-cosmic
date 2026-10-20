@@ -17,6 +17,32 @@ export default {
 
     menu: {
       sub: 'Стратегия в реальном времени: война колонистов и аборигенов за эрг на Рубеже-64',
+      quickBattleEyebrow: 'ПРОТОКОЛ ВЫЛЕТА',
+      quickBattleTitle: 'Быстрый бой',
+      quickBattleSub: 'Выберите поле и сторону — следующий приказ сразу отправит вас в бой.',
+      quickBattleMapLabel: 'Размер карты · тайлы',
+      quickBattleFactionLabel: 'Выберите сторону',
+      quickBattleRecommended: 'СОВЕТУЕМ',
+      quickBattleNeedFaction: 'Выберите сторону, чтобы начать бой',
+      quickBattleFirstVisit: 'Первый вылет: советуем карту 64×64. Выберите сторону, чтобы выйти на поле.',
+      quickBattleSideNeeded: 'Перед стартом выберите сторону: ГЕЛИОС или КХАРИД.',
+      quickBattleReady: 'К вылету готовы: {dims} · {side}',
+      quickBattleLastConfig: 'Последняя конфигурация восстановлена: {dims} · {side}',
+      quickBattleStart: 'НАЧАТЬ БОЙ · {dims} · {side}',
+      quickBattleMapAria: '{name}, карта {dims}',
+      quickBattleFactionAria: 'Играть за сторону {side}',
+      quickPresetNames: {
+        compact: 'Малая', standard: 'Рубеж', large: 'Простор',
+        expanse: 'Дальний рубеж', wide: 'Широкий фронт', tall: 'Глубокий рубеж',
+      },
+      campaignTitle: 'Кампания',
+      campaignSub: 'Миссии, брифинги и путь через три акта.',
+      campaignStartFirst: 'Начать кампанию · миссия {n}',
+      campaignStartProgress: 'Кампания · миссия {n}',
+      campaignBrowse: 'Все миссии',
+      universe: 'Вселенная',
+      controls: 'Управление',
+      more: 'Ещё',
       season1: 'Сезон 1 · Кампания',
       season2: 'Сезон 2 · СКОРО',
       season2Toast: 'Сезон 2 — сюжетные миссии. Скоро.',
@@ -71,7 +97,7 @@ export default {
     },
 
     brief: { go: 'В бой!', title: 'Миссия' },
-    codexScr: { h1: 'Легенда', sub: 'Мир Рубежа-64: эрг, рой, мятеж и три планеты', back: '← Назад' },
+    codexScr: { h1: 'Легенда', universeTitle: 'Вселенная', sub: 'Мир Рубежа-64: эрг, рой, мятеж и три планеты', back: '← Назад' },
 
     skirmish: {
       h1: 'Быстрый бой',
