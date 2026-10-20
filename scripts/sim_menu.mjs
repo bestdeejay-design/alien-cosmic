@@ -1,6 +1,6 @@
 // ============================================================
-// sim_menu.mjs — R2-C menu acceptance: quick battle, persistence,
-// campaign separation, locale-safe labels and responsive semantics.
+// sim_menu.mjs — R2-C/R2-D menu acceptance: quick battle, persistence,
+// full-page hero flow, campaign separation, locale-safe labels and metadata.
 // Run with node scripts/sim_menu.mjs; also nested from check.mjs.
 // ============================================================
 import './harness.mjs';
@@ -182,6 +182,75 @@ await check('M7 secondary menu: Universe, Season 2 teaser and confirmed reset st
     if (originalConfirm === undefined) delete globalThis.confirm;
     else globalThis.confirm = originalConfirm;
   }
+});
+
+await check('D1 landing page: full-height hero, single primary, scroll sections, social metadata and generated OG asset', () => {
+  const heroStart = html.indexOf('<section id="hero"');
+  const quickStart = html.indexOf('<section id="quick-battle"');
+  const hero = html.slice(heroStart, quickStart);
+  assert(heroStart >= 0 && quickStart > heroStart, 'full-screen hero is missing or not before the page sections');
+  assert((html.match(/id="btn-quick-primary"/g) || []).length === 1, 'hero primary CTA must exist exactly once');
+  assert((hero.match(/class="big-btn hero-cta"/g) || []).length === 1, 'the first screen must have exactly one primary button');
+  assert(hero.includes('data-i18n="ui.menu.heroQuickCta"') && hero.includes('id="hero-quick-status"'), 'hero CTA or its live explanation is missing');
+  const sectionIds = ['quick-battle', 'campaign', 'universe', 'controls', 'more'];
+  const sectionPositions = sectionIds.map((id) => html.indexOf(`id="${id}"`));
+  assert(sectionPositions.every((position, i) => position > quickStart && (i === 0 || position > sectionPositions[i - 1])), 'scroll sections are missing or out of order');
+  assert(html.includes('id="landing-page"') && !html.includes('id="overlay"'), 'the landing page is still an overlay shell');
+  for (const tag of ['property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"']) {
+    assert(html.includes(tag), `social metadata is missing ${tag}`);
+  }
+  assert(html.includes('content="./assets/og-image.png"') && html.includes('content="1200"') && html.includes('content="630"'), 'OG image path or declared dimensions are wrong');
+  const og = readFileSync(new URL('../assets/og-image.png', import.meta.url));
+  assert(og.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'OG asset is not a PNG');
+  assert(og.readUInt32BE(16) === 1200 && og.readUInt32BE(20) === 630, 'OG PNG must be exactly 1200×630');
+  assert(html.includes('src="./assets/hero-art.svg"') && css.includes('#landing-page.hidden'), 'the hero illustration or page/game mode styling is missing');
+  assert(css.includes('overflow-x: clip') && css.includes('@media (max-width: 560px)') && css.includes('repeat(2, minmax(0, 1fr))'), 'responsive page/quick-choice rules are missing');
+});
+
+await check('D2 hero CTA: first visit leads to an explicit choice and reaches default battle in three taps', () => {
+  game.toMenu();
+  localStorage.removeItem(STORAGE_KEY);
+  const fresh = ui.restoreQuickBattleConfig();
+  assert(!fresh.isSaved && fresh.presetId === 'square-64' && fresh.faction === null, 'first visit did not restore the safe recommended setup');
+  let scrolls = 0;
+  el('quick-battle').scrollIntoView = (options) => {
+    scrolls++;
+    assert(options.block === 'start', 'hero CTA did not align the selection section');
+  };
+  let actions = 0;
+  actions++;
+  el('btn-quick-primary').click();
+  assert(scrolls === 1 && !game.started, 'first-run hero CTA must lead to the choice, not silently launch');
+  assert(el('quick-faction-human').getAttribute('aria-pressed') === 'false' && el('quick-faction-alien').getAttribute('aria-pressed') === 'false', 'hero path silently selected a faction');
+  assert(el('hero-quick-status').textContent.includes('Выбор ещё не сохранён'), 'hero does not explain the unsaved first-run choice');
+  actions++;
+  el('quick-faction-human').click();
+  actions++;
+  el('btn-quick-battle-start').click();
+  assert(actions === 3 && game.started && game.mission.id === -1, `first-run hero path used ${actions} taps or started the wrong mode`);
+  assert(game.mission.faction === 'human' && game.state.map.w === 64 && game.state.map.h === 64, 'first-run hero path launched the wrong default battle');
+});
+
+await check('D3 saved hero CTA: one tap launches the validated preset; invalid storage routes to selection', () => {
+  game.toMenu();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ presetId: 'wide-96x64', faction: 'alien' }));
+  ui.restoreQuickBattleConfig();
+  let scrolls = 0;
+  el('quick-battle').scrollIntoView = () => { scrolls++; };
+  let actions = 0;
+  actions++;
+  el('btn-quick-primary').click();
+  assert(actions === 1 && scrolls === 0, 'saved hero CTA did not launch directly in one tap');
+  assert(game.started && game.mission.id === -1 && game.mission.faction === 'alien', 'saved hero CTA launched the wrong mode or side');
+  assert(game.state.map.w === 96 && game.state.map.h === 64, 'saved hero CTA lost the wide preset dimensions');
+
+  game.toMenu();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ presetId: 'wide-96x64', faction: 'player' }));
+  const fallback = ui.restoreQuickBattleConfig();
+  assert(!fallback.isSaved && fallback.presetId === 'square-64' && fallback.faction === null, 'invalid saved setup did not fall back safely');
+  scrolls = 0;
+  el('btn-quick-primary').click();
+  assert(scrolls === 1 && !game.started, 'invalid storage did not route to explicit selection');
 });
 
 console.log(failures.length ? `\nИТОГ SIM_MENU: ${failures.length} ПРОВАЛОВ (${failures.join(', ')})` : '\nИТОГ SIM_MENU: ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
