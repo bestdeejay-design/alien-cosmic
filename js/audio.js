@@ -110,6 +110,7 @@ export class Sound {
   deposit(){ this.tone(880, 880, 0.05, 'triangle', 0.09); this.tone(1318, 1318, 0.07, 'triangle', 0.09, 0.05); }
   mine()   { this.tone(170 + Math.random() * 90, 130, 0.05, 'square', 0.05); }
   ping()   { this.tone(980, 980, 0.12, 'sine', 0.22); this.tone(980, 980, 0.12, 'sine', 0.22, 0.18); }
+  alarm()  { this.tone(660, 520, 0.16, 'sawtooth', 0.2); this.tone(660, 520, 0.16, 'sawtooth', 0.2, 0.2); } // H.2: сирена базового тира
   win()    { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, f, 0.18, 'triangle', 0.2, i * 0.14)); }
   lose()   { [392, 330, 262, 196].forEach((f, i) => this.tone(f, f * 0.9, 0.24, 'sawtooth', 0.14, i * 0.17)); }
 }

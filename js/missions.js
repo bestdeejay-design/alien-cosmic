@@ -40,7 +40,7 @@ export const UNLOCK_AT = {
   worker: -1, depot: -1, cc: -1,
   marine: 0, barracks: 0,
   turret: 1, wall: 1, bunker: 1,
-  factory: 2, buggy: 2, tank: 2,
+  factory: 2, buggy: 2, tank: 2, scout: 2, // H.3: разведчик приходит с заводом
   flamer: 6, arty: 7, medic: 8, lab: 11,
 };
 

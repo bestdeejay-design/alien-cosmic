@@ -94,6 +94,14 @@ export function icon(type) {
       g.beginPath(); g.moveTo(0, -3); g.lineTo(9, -11); g.stroke();
       g.fillStyle = amber; g.beginPath(); g.arc(9, -11, 2.6, 0, Math.PI * 2); g.fill();
       break;
+    case 'scout': // H.3: клин-ховер, глаз-кабина, дрон-точка с лучом.
+      g.fillStyle = teal;
+      g.beginPath(); g.moveTo(9, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.fill();
+      g.fillStyle = white; g.beginPath(); g.arc(1, 0, 2.2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = white; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(1, 0); g.lineTo(-6, -8); g.stroke();
+      g.fillStyle = amber; g.beginPath(); g.arc(-6, -8, 1.8, 0, Math.PI * 2); g.fill();
+      break;
     // ===== Люди: здания (своя крыша/проём у каждого) =====
     case 'cc':
       g.fillStyle = steel; g.fillRect(-10, -6, 20, 13);
@@ -196,6 +204,14 @@ export function icon(type) {
       g.closePath(); g.stroke();
       g.fillStyle = steel; g.fillRect(-1.5, -5, 3, 10); g.fillRect(-5, -1.5, 10, 3);
       break;
+    case 'u_autoRepair': // H.1: ключ в круговой стрелке.
+      g.strokeStyle = green; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(-5, 5); g.lineTo(1, -1); g.stroke();
+      g.fillStyle = green; g.fillRect(1, -7, 6, 6);
+      g.strokeStyle = steel; g.lineWidth = 2;
+      g.beginPath(); g.arc(0, 0, 9, Math.PI * 0.3, Math.PI * 1.7); g.stroke();
+      g.beginPath(); g.moveTo(9, -3); g.lineTo(11, 3); g.lineTo(5, 1); g.stroke();
+      break;
     case 'build':
       g.fillStyle = steel; g.fillRect(-9, -8, 10, 8);
       g.fillStyle = amber; g.fillRect(-2, -4, 12, 4);
@@ -224,6 +240,18 @@ export function icon(type) {
       g.beginPath(); g.moveTo(-7, 7); g.lineTo(2, -2); g.stroke();
       g.fillStyle = green;
       g.fillRect(2, -8, 8, 8);
+      break;
+    case 'recon': // H.3: радар — круг, развёртка, точка контакта.
+      g.strokeStyle = teal; g.lineWidth = 2;
+      g.beginPath(); g.arc(0, 0, 8, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(6, -6); g.stroke();
+      g.fillStyle = red; g.beginPath(); g.arc(-4, 3, 2, 0, Math.PI * 2); g.fill();
+      break;
+    case 'rally': // H.4: флажок сбора на мачте.
+      g.strokeStyle = dark; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(-4, 9); g.lineTo(-4, -9); g.stroke();
+      g.fillStyle = amber;
+      g.beginPath(); g.moveTo(-4, -9); g.lineTo(8, -5); g.lineTo(-4, -1); g.closePath(); g.fill();
       break;
     // ===== Кхарид: органика (своя геометрия у каждого) =====
     case 'a_worker':
@@ -280,6 +308,17 @@ export function icon(type) {
       g.strokeStyle = flesh; g.lineWidth = 4;
       g.beginPath(); g.moveTo(-2, -2); g.lineTo(-8, -9); g.stroke();
       g.fillStyle = slime; g.beginPath(); g.arc(-8, -10, 3, 0, Math.PI * 2); g.fill();
+      break;
+    case 'a_scout': // H.3: юркое тело, уши-локаторы, спора-спутник.
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 8, 5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = flesh;
+      g.beginPath(); g.moveTo(1, -2); g.lineTo(3, -9); g.lineTo(5, -2); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(-4, -2); g.lineTo(-2, -9); g.lineTo(0, -2); g.closePath(); g.fill();
+      g.fillStyle = slime;
+      g.beginPath(); g.arc(3, -9, 1.3, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(-2, -9, 1.3, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(-8, -6, 1.8, 0, Math.PI * 2); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(5, 1, 1.4, 0, Math.PI * 2); g.fill();
       break;
     case 'a_cc':
       // Улей: курган + КРАСНОЕ сердце (уникальный признак штаба).
