@@ -125,15 +125,34 @@ export default {
 
     buildingState: {
       wip: 'Строится — {p}%', underFire: 'Под огнём!',
-      researching: 'Исследование: {name}',
-      prodWait: 'Производство ждёт (нет снабжения)',
+      researching: 'Исследование: {name}', grading: 'Грейд до {to}',
+      prodWait: 'Производство ждёт (нет снабжения)', prodExit: 'Выход занят — юнит готов',
       producing: 'Производство: {name}',
       idleOrder: 'Ожидает приказа — очередь пуста',
       garrison: 'Гарнизон: {n}/{c}',
       onPost: 'На позиции', active: 'Активно',
     },
 
+    process: {
+      heading: 'ПРОЦЕСС СИСТЕМЫ',
+      construction: 'Строительство', research: 'Исследование', grade: 'Грейд здания',
+      production: 'Производство', garrison: 'Гарнизон', standby: 'Готовность',
+      awaitingOrders: 'Ожидает приказа', defense: 'Оборона', onPost: 'На позиции',
+      readyState: 'Системы', online: 'Здание исправно',
+      garrisonCount: 'Гарнизон {n}/{cap}',
+      researchTitle: '{name} · уровень {lvl}',
+      gradeTitle: '{name}: грейд {from} → {to}',
+      progress: 'Прогресс {n}%', eta: 'До готовности: {n}с',
+      waitingSupply: 'Готово — ждёт снабжения', waitingExit: 'Готово — выход занят',
+      queueTitle: 'Очередь · {n}/{cap}',
+      refundShort: '↩ {n}', refundLabel: 'Вернётся: {n} минералов',
+      queueCancelLabel: 'Отменить {name} — вернуть {n} минералов',
+    },
+
     cmds: {
+      shortageHuman: 'Не хватает минералов: {n}', shortageAlien: 'Улью не хватает граней: {n}',
+      queueFull: 'Очередь полна', gameOver: 'Партия завершена', unavailable: 'Сейчас недоступно',
+      disabledLabel: '{label} — {reason}',
       cancel: 'Отмена', undo: 'Отменить', back: 'Назад', stop: 'Стоп',
       build: 'Строить',
       recon: 'Разведать',
@@ -142,7 +161,7 @@ export default {
       rallyTip: ['Все юниты без приказа — к точке сбора', 'Нужна точка сбора (ПКМ по зданию)'],
       grade: 'Грейд {r}',
       deploy: 'Выпустить ×{n}',
-      lockMark: ' 🔒',
+      lockMark: ' · закрыто',
     },
 
     gradeTip: {
