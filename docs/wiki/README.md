@@ -33,3 +33,4 @@
 - [Мир](world.md) — эрг, Рубеж-64, три силы, три планеты. Кратко;
   полный канон — в [LORE.md](../../LORE.md).
 - [CONSISTENCY.md](CONSISTENCY.md) — все расхождения текстов с кодом.
+- [English mirror](en/README.md) — EN-копии восьми страниц (пакет I).
