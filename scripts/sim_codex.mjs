@@ -162,8 +162,8 @@ try {
   assert(!t(M.MISSIONS[6], 'arty') && t(M.MISSIONS[7], 'arty'), 'мортира: не №7');
   assert(!t(M.MISSIONS[7], 'medic') && t(M.MISSIONS[8], 'medic'), 'нанит: не №8');
   assert(!t(M.MISSIONS[10], 'lab') && t(M.MISSIONS[11], 'lab'), 'лаборатория: не №11');
-  assert(!t(M.MISSIONS[17], 'barracks') && !t(M.MISSIONS[17], 'factory'), 'ban №18 не держит');
-  assert(t(M.MISSIONS[17], 'lab') && t(M.MISSIONS[15], 'barracks'), 'ban бьёт мимо');
+  assert(!t(M.MISSIONS[17], 'barracks') && !t(M.MISSIONS[17], 'factory') && !t(M.MISSIONS[17], 'lab'), 'ban №18 не держит (лаба добавлена, hotfix K)');
+  assert(t(M.MISSIONS[15], 'barracks'), 'ban бьёт мимо');
   M.saveProgress(15);
   assert(!t(m1, 'factory'), 'переигровка №1 открыла фабрику');
   M.resetProgress();
