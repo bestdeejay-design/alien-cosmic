@@ -8,6 +8,7 @@
 import {
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
+  EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc,
 } from './config.js';
 import { GameMap, CC_WORKER_OFFS } from './map.js';
@@ -92,6 +93,9 @@ export class Game {
     this.mission = MISSIONS[0];      // активная миссия (или сконструированный «быстрый бой»)
     this.box = null;                 // рамка выделения (мировые координаты)
     this.mouse = { x: -1, y: -1 };
+    this.overUI = false;          // хотфикс L: курсор над панелями (краевой скролл молчит)
+    this.edgeT = 0;               // хотфикс L: время непрерывного пребывания в краевой зоне
+    this.edgeZone = null;         // хотфикс L: активные краевые зоны {l,r,t,b} для индикатора
     this.cssW = window.innerWidth;
     this.cssH = window.innerHeight;
     this.acc = 0;
@@ -1352,6 +1356,39 @@ export class Game {
     ctx.textAlign = 'left';
 
     ctx.restore(); // конец зоны мира (тряска + зум)
+
+    // Хотфикс L: индикатор краевых зон панорамирования — подсвечивает ту
+    // сторону игровой области, где курсор вызовет съезд камеры (после
+    // EDGE_PAN_GRACE). Над панелями зоны гаснут — игрок видит мёртвую зону.
+    const ez = this.edgeZone;
+    if (ez && this.started && !st.gameOver) {
+      const M = EDGE_MARGIN;
+      const top = this.uiTop || 0, bot = this.uiBottom || 0;
+      const Lft = this.uiLeft || 0, Rgt = this.uiRight || 0;
+      const t = performance.now() * 0.006;
+      const a = 0.14 + 0.05 * Math.sin(t); // мягкий пульс
+      const strip = (x, y, w2, h2, vertical, inward) => {
+        // Яркая кромка — внешняя (к краю экрана), растворение внутрь зоны:
+        // 'neg' — край сверху/слева (min-координата), 'pos' — снизу/справа.
+        const g = vertical
+          ? (inward === 'neg' ? ctx.createLinearGradient(x, y, x, y + h2)
+                              : ctx.createLinearGradient(x, y + h2, x, y))
+          : (inward === 'neg' ? ctx.createLinearGradient(x, y, x + w2, y)
+                              : ctx.createLinearGradient(x + w2, y, x, y));
+        g.addColorStop(0, `rgba(${EDGE_ZONE_COLOR},${a + 0.12})`);
+        g.addColorStop(1, `rgba(${EDGE_ZONE_COLOR},0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w2, h2);
+        ctx.fillStyle = `rgba(${EDGE_ZONE_COLOR},${a + 0.25})`;
+        if (vertical) ctx.fillRect(x, inward === 'neg' ? y : y + h2 - 2, w2, 2);
+        else ctx.fillRect(inward === 'neg' ? x : x + w2 - 2, y, 2, h2);
+      };
+      const pw = W - Lft - Rgt, ph = H - top - bot;
+      if (ez.t) strip(Lft, top, pw, M, true, 'neg');            // верх: свет вниз
+      if (ez.b) strip(Lft, H - bot - M, pw, M, true, 'pos');    // низ: свет вверх
+      if (ez.l) strip(Lft, top, M, ph, false, 'neg');           // лево: свет вправо
+      if (ez.r) strip(W - Rgt - M, top, M, ph, false, 'pos');   // право: свет влево
+    }
   }
 
   // П2: флажок точки сбора. Линия от здания к точке + шест с вымпелом

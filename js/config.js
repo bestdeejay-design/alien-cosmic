@@ -238,6 +238,9 @@ export const AI = {
 export const EDGE_SCROLL_SPEED = 560; // прокрутка мышью у края экрана, px/с
 export const KEY_SCROLL_SPEED = 720;  // прокрутка стрелками, px/с
 export const EDGE_MARGIN = 26;        // ширина зоны у края экрана, px
+export const EDGE_PAN_GRACE = 0.15;   // хотфикс L: задержка до старта пана (с) —
+                                      // проход мимо зоны к панели не уводит камеру
+export const EDGE_ZONE_COLOR = '118,227,215'; // хотфикс L: индикатор зоны (бирюза, rgb)
 
 // --- Палитра сторон (язык цвета «Рубежа 64»: бирюза против огня) ---
 // player — бирюзовый («свечение своих»), enemy — раскалённо-оранжевый.
