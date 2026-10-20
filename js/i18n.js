@@ -131,6 +131,15 @@ export function t(key, params) {
   return v;
 }
 
+// --- «Мягкий» запрос: undefined, если ключа нет ни в локали, ни в ru. ---
+// Для опциональных по дизайну ключей (например, группы записей кодекса):
+// t() при промахе возвращает заглушку '[missing:key]', tMaybe — ничего.
+export function tMaybe(key) {
+  let v = lookup(dict, key);
+  if (v === undefined) v = lookup(ruDict, key);
+  return v;
+}
+
 // --- Фракционные сообщения (бывший STR): messages.<key>.{human,alien} ---
 export function message(key, faction, params) {
   const m = lookup(dict, 'messages.' + key) || lookup(ruDict, 'messages.' + key);

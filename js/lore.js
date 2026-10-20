@@ -6,7 +6,7 @@
 // Листовой модуль: импортирует только i18n (без циклов).
 // ============================================================
 
-import { t } from './i18n.js';
+import { t, tMaybe } from './i18n.js';
 
 // Структура кодекса: id вкладки → раздел codex.<id> в локали.
 // unlockAfter: -1 = открыта всегда; иначе номер миссии-ключа
@@ -68,10 +68,10 @@ export function codexEntryParts(entry, progress) {
     let g = null;
     entry.items.forEach((it, i) => {
       const itemBase = base + '.items.' + i;
-      if (t(itemBase + '.group') !== undefined) {
-        const gk = t(itemBase + '.group');
-        if (gk !== g) { g = gk; parts.push({ type: 'h3', text: gk }); }
-      }
+      // Группа опциональна: t() при отсутствии ключа вернёт заглушку,
+      // поэтому проверяем через tMaybe (настоящий undefined).
+      const gk = tMaybe(itemBase + '.group');
+      if (gk !== undefined && gk !== g) { g = gk; parts.push({ type: 'h3', text: gk }); }
       if (codexOpen(progress, it.unlockAfter)) {
         parts.push({ type: 'item', title: t(itemBase + '.title'), body: t(itemBase + '.body') });
       } else {
