@@ -161,6 +161,7 @@ export default {
     hints: {
       buildMode: '<b>Tap</b> to place; serial mode stays on.<br>Tap the ghost <b>✕</b> or the Cancel chip to exit; tap another building in the palette to switch type.<br>Mouse: LMB places; drag walls/turrets to draw a line. Arrows move the ghost, Enter places it.<br>RMB / Esc cancels.',
       select: 'Select a unit with LMB or a drag-box.<br>RMB — move / mine / attack / repair.<br>RMB on a bunker — garrison it.',
+      selectTouch: '<b>Tap</b> — select or order a point.<br>Long-press — order like RMB (mine / repair / rally).<br>Double-tap empty ground — deselect.<br>Pinch — zoom · empty drag — camera · drag from a unit — box.',
       construction: 'The assigned worker raises it.',
       buildWip: ' — under construction',
       queueCancel: '{name} — click to cancel (minerals refunded)',
@@ -383,6 +384,7 @@ export default {
     underAttack: { human: 'We are under attack!', alien: 'The hive is under attack!' },
     rallyCrystal: { human: 'Rally at the crystal', alien: 'Rally at the facets' },
     rallyPoint: { human: 'Rally point', alien: 'Rally point' },
+    touchOrders: { human: 'Tap the map to order · long-press = right-click · double-tap empty ground to deselect', alien: 'Tap the map to order · long-press = right-click · double-tap empty ground to deselect' },
     builtDone: { human: 'Construction complete: ', alien: 'The nest has grown: ' },
     repairStop: { human: 'Repair halted: ', alien: 'Mending interrupted: ' },
     repairDone: { human: 'Repair complete: ', alien: 'Mended: ' },

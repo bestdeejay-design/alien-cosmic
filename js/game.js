@@ -285,6 +285,7 @@ export class Game {
     this.mission = m;
     this.newGame();
     this.started = true;
+    this.sleepMouse(); // T2: stale-позиция меню не включает краевой скролл
     ui.hideStart();
     ui.hideMissions();
     ui.hideBrief();
@@ -315,6 +316,7 @@ export class Game {
     ui.hideEnd();
     this.newGame();
     this.started = true;
+    this.sleepMouse();
     ui.hideStart();
     ui.toast(objectiveLabel(this.mission));
     this.sound.click();
@@ -358,6 +360,23 @@ export class Game {
   // Видимый размер мира в пикселях при текущем зуме.
   viewW() { return this.cssW / ((this.state && this.state.camera.z) || 1); }
   viewH() { return this.cssH / ((this.state && this.state.camera.z) || 1); }
+
+  // Хотфикс T2: мышь в «сонное» состояние — краевой скролл спит,
+  // пока не появится настоящее движение настоящей мыши.
+  sleepMouse() {
+    this.mouse.x = -1; this.mouse.y = -1;
+    this.edgeT = 0; this.edgeZone = null; this.overUI = false;
+  }
+
+  // Хотфикс T3 (guard-система отрисовки): сбойный элемент пропускается,
+  // кадр живёт — на незнакомых устройствах игра не превращается в чёрный
+  // экран, а в консоли остаётся ровно одна диагностика на тип сбоя.
+  drawWarnOnce(key, e) {
+    if (!this.drawWarned) this.drawWarned = new Set();
+    if (this.drawWarned.has(key)) return;
+    this.drawWarned.add(key);
+    try { console.warn('[draw-skip] ' + key + ': ' + ((e && e.message) || e)); } catch { /* консоль может отсутствовать */ }
+  }
 
   // G.2: видимая область (канвас минус инсеты панели/топбара) в px мира.
   visW() { return (this.cssW - (this.uiLeft || 0) - (this.uiRight || 0)) / ((this.state && this.state.camera.z) || 1); }
@@ -1288,7 +1307,7 @@ export class Game {
     for (const c of st.map.crystals) {
       if (c.amount <= 0 || !inView(c.x, c.y, 40)) continue;
       if (!st.fog.tileExplored(c.tx, c.ty)) continue;
-      this.drawCrystal(ctx, c, cam.x, cam.y);
+      try { this.drawCrystal(ctx, c, cam.x, cam.y); } catch (e) { this.drawWarnOnce('crystal', e); }
     }
 
     // Здания: свои всегда; вражеские — видимые или «запомненные».
@@ -1300,7 +1319,8 @@ export class Game {
       const visibleNow = b.side === 'player' ||
         st.fog.tileVisible(b.tx + (b.w >> 1), b.ty + (b.h >> 1));
       if (b.side === 'enemy' && !b.spotted && !visibleNow) continue;
-      B.drawBuilding(ctx, b, b.side === 'enemy' && !visibleNow, cam.x, cam.y, st);
+      try { B.drawBuilding(ctx, b, b.side === 'enemy' && !visibleNow, cam.x, cam.y, st); }
+      catch (e) { this.drawWarnOnce('building:' + b.type, e); continue; }
       // M0: пульсирующий ромб над ключевой целью (обе расы, янтарь DS).
       if (b.keyTarget && !b.dead) {
         const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.005);
@@ -1342,7 +1362,8 @@ export class Game {
       const wx = u.prevX + (u.x - u.prevX) * alpha;
       const wy = u.prevY + (u.y - u.prevY) * alpha;
       if (!inView(wx, wy, 30)) continue;
-      U.drawUnit(ctx, u, wx - cam.x, wy - cam.y);
+      try { U.drawUnit(ctx, u, wx - cam.x, wy - cam.y); }
+      catch (e) { this.drawWarnOnce('unit:' + u.type, e); }
     }
 
     // Маршруты выделенных: пунктирная линия пути + флажок цели.

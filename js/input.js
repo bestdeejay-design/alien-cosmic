@@ -8,6 +8,7 @@
 import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js';
 import { unitAt } from './units.js';
 import { buildingAt } from './buildings.js';
+import { message } from './i18n.js';
 
 export function attachInput(game) {
   const cv = game.canvas;
@@ -72,6 +73,11 @@ export function attachInput(game) {
     lastTouchPoint = { x: e.clientX, y: e.clientY };
     const point = localPoint(e);
     touchPointers.set(e.pointerId, point);
+    // Хотфикс T2: тач не «оживляет» мышь. Синтетические mouse-события
+    // после тача могут попасть в краевую зону (тап по кнопке «старт»
+    // внизу экрана) — и камера уезжает вбок/вниз без остановки. Мышь
+    // возвращается в сонное состояние (sentinel −1) на всё касание.
+    game.mouse.x = -1; game.mouse.y = -1; game.edgeT = 0; game.edgeZone = null;
     try { if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId); } catch { /* capture may be unavailable in embedded browsers */ }
 
     if (touchPointers.size >= 2) {
@@ -191,9 +197,8 @@ export function attachInput(game) {
     } else if (touchGesture.mode === 'pending') {
       const now = performance.now();
       const isDouble = now - lastTouchTap.t < 350 && distance(point, lastTouchTap) < 16;
-      if (isDouble) doubleSelect(game, st, world);
-      else clickSelect(game, st, world, false);
       lastTouchTap = { t: now, x: point.x, y: point.y };
+      touchTap(game, st, world, isDouble);
       game.sound.click();
     } else if (touchGesture.mode === 'box' && game.box) {
       game.box.x1 = world.x; game.box.y1 = world.y;
@@ -215,6 +220,10 @@ export function attachInput(game) {
   cv.addEventListener('lostpointercapture', cancelTouchGesture);
 
   window.addEventListener('mousemove', (e) => {
+    // Хотфикс T2: синтетические mouse-события тача (compat) не двигают
+    // мышь — иначе на телефоне краевой скролл стартует от позиции тапа
+    // и не останавливается (позиция мыши больше не обновляется).
+    if (isCompatMouse(e)) return;
     game.mouse.x = e.clientX;
     game.mouse.y = e.clientY;
     // Хотфикс L: курсор над UI панели/топбара — краевой скролл молчит.
@@ -482,6 +491,52 @@ export function clickSelect(game, st, w, shift) {
     st.selection = [picked];
   }
   st.buildMenu = false;
+}
+
+// Хотфикс T1 (тап-приказ): семантика одиночного тача-тапа.
+// Тап по своему юниту — выделение (двойной — все такие же на экране);
+// по своему зданию — выделение. По врагу/земле/кристаллу при активном
+// выделении — приказ (эквивалент ПКМ), выделение сохраняется.
+// Двойной тап по пустому — снять выделение. Без выделения — как было:
+// осмотр врага, иначе пустой тап.
+function touchTap(game, st, w, dbl) {
+  const ownUnit = unitAt(st, w.x, w.y, 'player');
+  if (ownUnit) {
+    if (dbl) doubleSelect(game, st, w);
+    else clickSelect(game, st, w, false);
+    touchHintOnce(game);
+    return;
+  }
+  const b = buildingAt(st, w.x, w.y);
+  if (b && b.side === 'player') {
+    clickSelect(game, st, w, false); // двойной тап на здании смысла не меняет
+    touchHintOnce(game);
+    return;
+  }
+  const hasUnits = st.selection.some((s) => s.kind === 'unit' && s.side === 'player' && !s.dead);
+  const hasBld = st.selection.length === 1 && st.selection[0].kind === 'building' &&
+    st.selection[0].side === 'player' && !st.selection[0].dead;
+  if (hasUnits || hasBld) {
+    const enemy = unitAt(st, w.x, w.y, 'enemy');
+    if (dbl && !enemy) {
+      st.selection = []; st.buildMenu = false; // двойной тап по пустому — снять
+      return;
+    }
+    game.hooks.issueRMB(w.x, w.y); // идти/атака/добыча/ремонт/точка сбора
+    touchHintOnce(game);
+    return;
+  }
+  clickSelect(game, st, w, false); // без выделения — как раньше
+}
+
+// Одноразовая подсказка жестов: игроку на телефоне нужно знать, что
+// тап теперь отдаёт приказы, а снять выделение можно двойным тапом.
+function touchHintOnce(game) {
+  if (game.touchHintShown) return;
+  game.touchHintShown = true;
+  if (game.ui && game.ui.toast && game.state) {
+    game.ui.toast(message('touchOrders', game.state.factions.player));
+  }
 }
 
 // Двойной клик/двойной тап по юниту — выделить всех таких же на экране.
