@@ -1,118 +1,134 @@
 # 👽 Alien Cosmic
 
-Классическая стратегия в реальном времени о конфронтации колонистов и аборигенов
-на чужих планетах. Чистый JavaScript (ES-модули, Canvas 2D, Web Audio) — **без
-сборки, зависимостей и сетевых запросов**. Работает на GitHub Pages из
-статических файлов.
+[![Play now](https://img.shields.io/badge/▶%20PLAY%20NOW-alien--cosmic-0fd7c2?style=for-the-badge&labelColor=0a1216)](https://bestdeejay-design.github.io/alien-cosmic/)
+[![Language](https://img.shields.io/badge/🇷🇺%20Русская%20версия-README.ru.md-8b9d83?style=for-the-badge&labelColor=0a1216)](README.ru.md)
+[![Pure JavaScript](https://img.shields.io/badge/pure%20JavaScript-no%20build%20·%20no%20deps-8b9d83?style=flat-square&labelColor=0a1216)](#technical-highlights)
 
-**Alien Cosmic — основная линия развития.** Проект вырос из прототипа
-«Звёздный рубеж» (кампания 15/3, две расы) и вобрал лучшие движковые решения
-аркады «Рубеж 64»: авто-режимы юнитов, умный спавн, анти-толпа — и её визуальный язык: тёмная бирюза, светящиеся корпуса и кристаллы. Прототипы
-(`terran-rts/`, `minigames/rubezh64/`, `minigames/rts/`) сохранены как
-справочник идей и больше не развиваются.
+![Alien Cosmic — Frontier-64 RTS](assets/og-image.png)
 
-> 🚀 Играть: https://bestdeejay-design.github.io/alien-cosmic/
-> (прототип для сравнения: https://bestdeejay-design.github.io/terran-rts/)
+**Alien Cosmic** is a classic real-time strategy that runs entirely in your
+browser. Lead human colonists or the alien Kharid hive across distant worlds:
+build bases, harvest crystals, research upgrades and fight through a
+15-mission campaign. No install, no accounts — open the page and play.
 
----
+**🇷🇺 Русская версия этого README: [README.ru.md](README.ru.md).**
 
-## Видение
+## Why it's different
 
-- **Чужие планеты как персонаж.** Три биома (ржавый Актан-4, фиолетовые
-  пустоши улья Брок-Тхаал, реголит Селенита-Б) — это не «скины», а сцены
-  истории: колониальные поля добычи, священные колыбели кхарид, заброшенные
-  лунные карьеры.
-- **Конфронтация с обеих сторон.** У каждой силы своя правда и своя кампания:
-  «Гелиос» видит в кристаллах топливо и прибыль, кхарид — колыбели выводка.
-  Развивать сюжет в обе стороны (см. [ROADMAP.md](ROADMAP.md), фаза Ф5).
-- **Механики, которые контролируются.** Ни одной «мёртвой» ситуации: рабочий
-  погиб на стройке — стройка встала, но её можно достроить другим рабочим;
-  выход из казармы заперт — юнит ждёт у ворот, а не застревает в корпусе;
-  кристаллы распределяются без толпы. Всё, что игрок видит, он может
-  разрешить осознанным действием.
-- **Авто-режимы и умные детали.** Рабочие сами возвращаются к добыче после
-  стройки, бойцы отстреливаются на ходу, наниты лечат на марше, двойной клик
-  собирает всех таких же — рутина снята с плеч игрока, остаётся стратегия.
-- **Готовность к сетевой игре.** Архитектура с фиксированным шагом логики и
-  приказами-командами проектируется так, чтобы впоследствии построить на ней
-  реплеи, лобби и PvP (см. [ARCHITECTURE.md](ARCHITECTURE.md)).
+- **Alien planets as a character.** Three biomes (the rusted Actan-4, the violet
+  hive wastelands of Brok-Thaal, the regolith of Selenite-B) are not skins but
+  story scenes: colonial mining fields, sacred kharid cradles, abandoned lunar
+  quarries.
+- **Conflict with a point of view.** Both sides have their own truth: Helios
+  sees crystals as fuel and profit, the kharid see them as brood cradles. The
+  story is designed to develop in both directions (see [ROADMAP.md](ROADMAP.md), phase Ф5).
+- **Nothing dead-ends.** A worker dies on a construction site — the site stalls
+  but any other worker can finish it. A barracks exit is blocked — the unit
+  waits by the gates instead of getting stuck. Crystals are distributed without
+  crowding. Everything the player sees can be resolved with a deliberate action.
+- **Auto-modes remove the routine.** Workers return to harvesting after
+  building, fighters shoot on the move without dropping orders, nanites heal
+  while marching, double-click selects all units of the same type. The routine
+  is off the player's shoulders — the strategy stays.
+- **Built for multiplayer.** The architecture (fixed-step simulation,
+  command-based orders) is designed so replays, lobbies and PvP can be built
+  on top of it later (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 
-## Что внутри
+## What's inside
 
-| Раздел | Содержимое |
+| Section | Content |
 |---|---|
-| 🎬 **Кампания 15/3** | 15 миссий в трёх актах: обучение, обороны с таймерами, штурмы фортов, стелс-рейд без базы, финал с врагом полного арсенала. Прогресс сохраняется |
-| 🧬 **Три силы** | Гелиос (люди: техника и бетон), кхарид (рой: органика улья) и мятежники «Красного флага» — зеркальные характеристики, разные облик, имена и постройки |
-| 🏗 **8 зданий** | Командный центр/улей, Дом/кладовая, Казарма/инкубатор, Турель/жвала, Бункер/кокон, Стена/хитин, Завод техники/яма выводка, Лаборатория/узел эволюции |
-| 🚙 **7 юнитов × 2 облика** | Гелиос: Дрон-техник, Рейнджер, Нанит (лечение), Плазмер (сплэш), Скиф, Бастион, Мортира «Нова» (дальность 12,5 тайлов). Кхарид: Собиратель, Кристожал, Цветень, Кислотник, Скользень, Громила, Спогром |
-| 🔬 **Улучшения** | 4 ветки × 3 уровня: оружие/броня пехоты, орудия/плиты техники. ИИ исследует тоже |
-| 🤖 **Авто-режимы (Ф1)** | Атака-движение (A+ЛКМ), огонь на задаче без срыва приказа, авто-возврат рабочих к добыче, точка сбора на кристалле = авто-добыча, спавн «не ближе 24px» без слипания, анти-толпа кристаллов, двойной клик = все такие же, нанит лечит на марше, анти-застревание: репут, боковой обход и выталкивание из зданий |
-| 🖼 **Подписи всего** | Тултип на каждой кнопке: цена, статы, роль. Очередь производства всегда видна — с таймером и отменой |
-| 🔧 **Ремонт** | Рабочие ремонтируют здания и технику за минералы (ПКМ по повреждённому) |
-| 🗺 **Биомы планет** | Марсианские пустоши с кратерами, фиолетовые пустоши улья, лунные равнины — генератор карт с симметрией и гарантией проходимости |
-| 🤖 **ИИ противника** | Экономика, дома, казармы со смешанной пехотой, техника до мортир, лаборатории, ремонт, волны атак; в обороне — волны из гнёзд |
-| 💥 **Эффекты** | Тряска экрана от взрывов, дым повреждённых зданий, обломки, вспышки, зелёные плюсики лечения |
-| 🔊 **Звук** | Синтез на Web Audio: выстрелы, пушка, сварка, взрывы, фанфары |
-| 👁 **Туман войны** | Три состояния клеток, «запоминание» увиденных зданий |
+| 🎬 **Campaign 15/3** | 15 missions in 3 acts: tutorial, timed defenses, fort assaults, a stealth raid without a base, a finale against an enemy with a full arsenal. Progress is saved |
+| 🧬 **Three factions** | Helios (humans: machines and concrete), kharid (swarm: hive organics) and the "Red Flag" rebels — mirrored stats, distinct looks, names and buildings |
+| 🏗 **8 buildings** | Command center/hive, House/depot, Barracks/incubator, Turret/mandible, Bunker/cocoon, Wall/chitin, Vehicle plant/brood pit, Lab/evolution node |
+| 🚙 **8 units × 2 skins** | Helios: Tech Drone, Ranger, Nanite (healing), Plasmer (splash), Skiff, Bastion, Nova Mortar (12.5-tile range), Pathfinder (recon). Kharid: Gatherer, Shardjaw, Bloom, Acid Spitter, Skitter, Bruiser, Sporehulk, Listener |
+| 🔬 **Upgrades** | 4 branches × 3 levels: infantry weapons/armor, vehicle guns/plating. The AI researches too |
+| 🤖 **Auto-modes** | Attack-move (A + click), fire while holding an order, auto-return of workers to harvesting, rally point on a crystal = auto-harvest, spaced spawn, no crystal crowding, double-click select-same, nanites heal on the march, anti-stuck: re-path, side-step and push-out of buildings |
+| 🖼 **Tooltips on everything** | Every button explains cost, stats and role. The production queue is always visible — with a timer and cancellation |
+| 🔧 **Repair** | Workers repair buildings and vehicles for minerals (right-click a damaged one) |
+| 🗺 **Planet biomes** | Martian wastes with craters, violet hive wastes, lunar plains — a map generator with symmetry and guaranteed passability |
+| 🤖 **Enemy AI** | Economy, housing, barracks with mixed infantry, vehicles up to mortars, labs, repair, attack waves; defense missions bring waves from nests |
+| 💥 **Effects** | Screen shake from explosions, smoke from damaged buildings, debris, flashes, green healing crosses |
+| 🔊 **Sound** | Synthesized with Web Audio: gunfire, cannon, welding, explosions, fanfares |
+| 👁 **Fog of war** | Three cell states, remembered buildings stay on the map |
 
-## Запуск
+## Controls
 
-Нужен любой статический сервер (ES-модули не работают с `file://`):
+| Action | Keys |
+|---|---|
+| Select / box-select | LMB, LMB-drag |
+| All same-type units on screen | double-click/tap a unit |
+| Order (move/harvest/attack/repair) | RMB on ground/crystal/enemy/own |
+| **Attack-move** | **A**, then LMB on the point (RMB/Esc to cancel) |
+| Building rally point | select building → RMB; **on a crystal — new workers start harvesting** |
+| Groups | Ctrl/Shift + 1…9 (assign), 1…9 (select) |
+| Build | B (or Q/W/E/R/T/Y/U/I), LMB — place |
+| Stop | S |
+| Camera | arrows, screen edge, MMB-drag, Space — jump to base |
+| Pause | P |
+
+## Run it
+
+Any static server works (ES modules don't load from `file://`):
 
 ```bash
 python3 -m http.server 8080
-# откройте http://localhost:8080/
+# open http://localhost:8080/
 ```
 
-Никаких зависимостей, сборки и сети — только браузер.
+No dependencies, no build step, no network — just a browser.
+Or play right now: **https://bestdeejay-design.github.io/alien-cosmic/**
 
-## Управление
-
-| Действие | Клавиши |
-|---|---|
-| Выделение / рамка | ЛКМ, ЛКМ-тянуть |
-| Все такие же юниты на экране | двойной клик/тап по юниту |
-| Приказ (идти/добывать/атака/ремонт) | ПКМ по земле/кристаллу/врагу/своему |
-| **Атака-движение** | **A**, затем ЛКМ по точке (отмена — ПКМ/Esc) |
-| Точка сбора здания | выделить здание → ПКМ; **на кристалле — новые рабочие сразу добывают** |
-| Группы | Ctrl/Shift + 1…9 (назначить), 1…9 (выбрать) |
-| Стройка | B (или Q/W/E/R/T/Y/U/I), ЛКМ — место |
-| Стоп | S |
-| Камера | стрелки, край экрана, СКМ-тянуть, Пробел — к базе |
-| Пауза | P |
-
-## Структура репозитория
+## Repository structure
 
 ```
-index.html        — разметка (меню, кампания, брифинг, HUD)
-style.css         — стили интерфейса
+index.html        — markup (menu, campaign, briefing, HUD)
+style.css         — interface styles
 js/
-  config.js       — ВЕСЬ баланс: юниты, здания, улучшения, биомы, ИИ
-  map.js          — генератор карт (3 биома, симметрия, проходимость)
-  pathfinding.js  — A* по сетке, пути к прямоугольникам
-  units.js        — юниты: приказы, движение, добыча, стройка, бой
-  buildings.js    — здания: очереди, турели, гарнизоны, спавн
-  ai.js           — ИИ противника (профили миссий)
-  missions.js     — 15 миссий / 3 акта, прогресс
-  fog.js          — туман войны
-  input.js        — управление и камера
-  ui.js           — панель команд, тултипы, миникарта, меню
-  audio.js        — синтез звука (Web Audio)
-  game.js         — точка входа, игровой цикл, победа/поражение
+  config.js       — ALL the balance: units, buildings, upgrades, biomes, AI
+  map.js          — map generator (3 biomes, symmetry, passability)
+  pathfinding.js  — grid A*, paths to rectangles
+  units.js        — units: orders, movement, harvesting, building, combat
+  buildings.js    — buildings: queues, turrets, garrisons, spawning
+  ai.js           — enemy AI (mission profiles)
+  missions.js     — 15 missions / 3 acts, progress
+  fog.js          — fog of war
+  input.js        — controls and camera
+  ui.js           — command panel, tooltips, minimap, menu
+  audio.js        — sound synthesis (Web Audio)
+  game.js         — entry point, game loop, victory/defeat
 scripts/
-  check.mjs       — статический валидатор (синтаксис, импорты, html)
-CAMPAIGN.md       — архитектура кампании и дуга сюжета
-GAME_GUIDE.md     — полный справочник: сюжет, фракции, юниты, миссии
-RESEARCH_CLASSIC_RTS.md — ресерч классических RTS (референсы)
-ROADMAP.md        — план развития (Ф2…Ф7)
-ARCHITECTURE.md   — архитектура и путь к сетевой игре
+  check.mjs       — static validator (syntax, imports, html)
+CAMPAIGN.md       — campaign architecture and story arc
+GAME_GUIDE.md     — full reference: story, factions, units, missions (RU)
+GAME_GUIDE.en.md  — full reference (EN)
+LORE.md / LORE.en.md — world lore (RU/EN)
+RESEARCH_CLASSIC_RTS.md — classic RTS research (references)
+ROADMAP.md        — development plan (phases 2…7)
+ARCHITECTURE.md   — architecture and the path to multiplayer
 ```
 
-## Родословная
+## Technical highlights
 
-| Версия | Что дала Alien Cosmic |
+- **Pure JavaScript**: ES modules, Canvas 2D, Web Audio. No frameworks, no
+  bundlers, no runtime dependencies, no network requests — the whole game is
+  static files on GitHub Pages.
+- **Fixed-step simulation** with command-based orders — deterministic by
+  design, ready for replays and future multiplayer.
+- **Balance lives in one file** (`js/config.js`), so tuning doesn't touch
+  engine code.
+
+## Lineage
+
+| Version | What it gave Alien Cosmic |
 |---|---|
-| **«Звёздный рубеж» 3.0** (`terran-rts`) | кампания 15/3, две расы + третья сила, техника, улучшения, тултипы, биомы — весь контент-слой |
-| **«Рубеж 64»** (`minigames/rubezh64`) | авто-режимы, спавн с дистанцией, анти-толпа, сложность на выбор — движковый слой (фаза Ф1) |
+| **"Zvezdny Rubeg" 3.0** (`terran-rts`) | 15/3 campaign, two races + a third force, vehicles, upgrades, tooltips, biomes — the whole content layer |
+| **"Rubezh 64"** (`minigames/rubezh64`) | auto-modes, spaced spawning, anti-crowding, difficulty selection — the engine layer (phase 1) |
 
-Прототипы законсервированы как эталон идей; новые механики появляются только здесь.
+The prototypes are archived as a reference for ideas; new mechanics appear
+only here.
+
+---
+
+Earth needs the crystals. The hive needs its cradles.
+Whoever you lead — the frontier keeps score. 🛸
