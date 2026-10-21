@@ -7,7 +7,8 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN,
+  REPAIR_START_BUFFER, AUTOREPAIR_MAX_CREWS} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { message } from './i18n.js';
 
@@ -274,6 +275,19 @@ function currentCrystal(u) {
   if (o.kind === 'gather' && o.target && !o.target.dead && o.target.amount > 0) return o.target;
   if (o.resume && !o.resume.dead && o.resume.amount > 0) return o.resume;
   return null;
+}
+
+// H.1v2: остаток задачи в минералах — во сколько обойдётся долечить цель до полного HP.
+// Экспорт для симуляций (sim_repair) и UI-подсказок.
+export function repairCostLeft(t) {
+  return (t.maxHp - t.hp) / REPAIR_HP_PER_MINERAL;
+}
+// H.1v2: правило «деньги вперёд» — авторемонт (auto:true) стартует и
+// продолжается, только если банк покрывает ПОЛНУЮ стоимость долечивания
+// плюс резерв на дорогу сварщика. Ручной приказ игрока (auto:false)
+// этих ворот не проходит — деньги на него решил потратить сам игрок.
+export function repairAffordable(st, side, t) {
+  return st.minerals[side] >= repairCostLeft(t) + REPAIR_START_BUFFER;
 }
 
 // Авто-возврат к добыче после стройки/ремонта: к прежнему кристаллу,
@@ -626,12 +640,40 @@ export function updateUnits(st, dt, grid) {
 // в радиусе от своих КЦ; чинят свободные (idle, потом gather), кап 2/цель
 // живым учётом; приказы attack/move/build/garrison святы. По готовности —
 // resumeGather (встроен в updateRepair).
+// H.1v2 «умные деньги» — пат «все ремонтники замерли» (банк пуст +
+// авторемонт): раньше диспетчер стягивал ВСЕХ без осмотра денег, а
+// updateRepair без минералов просто стоял — приказ repair держал,
+// пулы пустели, никто не добывал. Теперь три правила:
+//   1) деньги вперёд: задача стартует только оплаченная целиком
+//      (полная стоимость долечивания + резерв REPAIR_START_BUFFER);
+//   2) отзыв голодных: деньги кончились (в т.ч. посреди сварки —
+//      что-то ещё съело банк) — авторемонтник возвращается к добыче;
+//      банк снова накоплен — диспетчер отправит его обратно;
+//   3) ближние, не все: экипажей на сторону не больше
+//      AUTOREPAIR_MAX_CREWS, приоритет — самым битым целям (триаж),
+//      из пула берём ближайших; остальные продолжают добычу;
+//   4) ручной приказ игрока (auto:false) не отзывается никогда.
+// Кристаллов нет вовсе: отозванные уходят в простой (resumeGather
+// не находит жилу), диспетчер молчит — майать нечем, но и петли нет.
 function updateAutoRepair(st, dt) {
   st.autoRepairT = (st.autoRepairT || 0) + dt;
   if (st.autoRepairT < AUTOREPAIR_TICK) return;
   st.autoRepairT = 0;
   for (const side of ['player', 'enemy']) {
     if (!((st.tech[side] && st.tech[side].autoRepair) > 0)) continue;
+    // (2) отзыв голодных: чинящий авторемонтник с непокрытой задачей — на добычу.
+    //      Вне зависимости от КЦ (база могла пасть — стоять у мёртвого КЦ тем
+    //      более незачем). minerals − costLeft сохраняется при чистой трате на
+    //      ремонт, так что срабатывает только если банк съело что-то ещё.
+    let waiting = false;
+    for (const u of st.units) {
+      if (u.dead || u.garrison || u.side !== side) continue;
+      const o = u.order;
+      if (o.kind !== 'repair' || !o.auto) continue;
+      const t = o.target;
+      if (!t || t.dead || t.hp >= t.maxHp) continue; // разрулит updateRepair
+      if (st.minerals[side] + 0.5 < repairCostLeft(t)) { resumeGather(st, u); waiting = true; }
+    }
     const ccs = [];
     for (const b of st.buildings) if (!b.dead && b.side === side && b.type === 'cc') ccs.push(b);
     if (!ccs.length) continue;
@@ -665,12 +707,28 @@ function updateAutoRepair(st, dt) {
       }
       return null;
     };
+    // (3) ближние, не все: живой счёт экипажей своей стороны — потолок
+    // считается по auto-приказам (ручные не в счёт и не отзываются).
+    let crews = 0;
+    for (const u of st.units) {
+      if (u.dead || u.garrison || u.side !== side) continue;
+      if (u.order.kind === 'repair' && u.order.auto) crews++;
+    }
     for (const t of targets) {
-      while (repairersOf(st, t) < REPAIRERS_PER_TARGET) {
+      if (crews >= AUTOREPAIR_MAX_CREWS) break;
+      // (1) деньги вперёд: неоплаченную задачу не раздаём (и один раз объясняем игроку).
+      if (!repairAffordable(st, side, t)) { waiting = true; continue; }
+      while (repairersOf(st, t) < REPAIRERS_PER_TARGET && crews < AUTOREPAIR_MAX_CREWS) {
         const w = take(t);
-        if (!w) return;
+        if (!w) return; // пулы пусты — на других целях то же самое
         orderRepair(st, w, t, true);
+        crews++;
       }
+    }
+    // (4) прозрачность: почему ремонт стоит — игроку не чаще раза в 14 c.
+    if (waiting && side === 'player' && st.time - (st.lastAutoWaitToast || -99) > 14) {
+      st.lastAutoWaitToast = st.time;
+      st.game.ui.toast(message('autoRepairWait', st.factions.player), 'warn');
     }
   }
 }
@@ -697,7 +755,10 @@ function updateOrderByKind(st, u, dt, grid) {
         if (u.scanT <= 0) {
           u.scanT = 0.5;
           const veh = findRepairTarget(st, u);
-          if (veh) { orderRepair(st, u, veh, true); break; }
+          // H.1v2: за технику не хватаемся без оплаченной задачи —
+          // иначе маята приказами у негреемой цели (простой → ремонт
+          // без денег → снова простой). Нет денег — честно стоим.
+          if (veh && repairAffordable(st, u.side, veh)) { orderRepair(st, u, veh, true); break; }
           // П3 (B.7.6): некому строить — рабочий в простое подхватывает
           // ближайший голодный недострой сам. Приказ игрока свят:
           // подхват только из idle, после ремонта техники.
@@ -1300,6 +1361,10 @@ function updateRepair(st, u, dt) {
     const rate = REPAIR_RATE[isB ? 'building' : 'unit'];
     const cost = (rate * dt) / REPAIR_HP_PER_MINERAL;
     if (st.minerals[u.side] < cost) {
+      // H.1v2: авторемонтник без денег не мёрзнет — ушёл добывать;
+      // диспетчер вернёт его, когда задача снова будет оплачена.
+      // Ручной приказ (auto:false) стоит до указания игрока.
+      if (u.order.auto) { resumeGather(st, u); return; }
       // Нет минералов — простой (игроку подсказка не чаще раза в 6 c).
       if (u.side === 'player' && st.time - (st.lastRepairToast || -99) > 6) {
         st.lastRepairToast = st.time;

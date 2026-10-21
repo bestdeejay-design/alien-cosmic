@@ -173,7 +173,7 @@ export class Game {
       keyTotal: 0,                          // ключевых целей встречено (защита от мгновенной победы)
       phase2: false,                        // П5: фаза 2 двухфазной миссии началась (тост показан)
       shakeT: 0, shakeMag: 0,       // тряска экрана от взрывов
-      lastAlertT: -99, lastSupplyToast: -99, lastRepairToast: -99,
+      lastAlertT: -99, lastSupplyToast: -99, lastRepairToast: -99, lastAutoWaitToast: -99,
       lastAlertPos: null, // точка последней тревоги — прыжок по H
     };
     st.map = new GameMap(seed, m.map);
