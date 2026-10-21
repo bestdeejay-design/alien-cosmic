@@ -13,7 +13,7 @@
 import { entityText } from './i18n.js';
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
-export const GAME_VERSION = 'M';
+export const GAME_VERSION = 'N';
 export const GAME_DATE = '21.10.2026'; // дата фактической поставки (правило V)
 
 // --- Мир ---
@@ -151,13 +151,7 @@ export const REPAIRERS_PER_TARGET = 2; // G.4: техников на цель (�
 export const REPAIR_SPREAD_PX = 256;   // G.4: радиус сбора целей вокруг клика (8 тайлов)
 export const AUTOREPAIR_RADIUS = 480;  // H.1: радиус диспетчера от КЦ (15 тайлов)
 export const AUTOREPAIR_TICK = 0.5;    // H.1: тик диспетчера, сек
-// H.1v2 «умные деньги»: авторемонт стартует и продолжается только на
-// ОПЛАЧЕННУЮ задачу; без денег экипаж уходит добывать, а не мёрзнет у цели.
-export const REPAIR_START_BUFFER = 15; // резерв сверх полной стоимости задачи (минералы):
-                                       // пока сварщик идёт до цели, банк не должен опустеть
-                                       // (~3 с дороги постройки при 26 HP/с ÷ 6 HP/минерал)
-export const AUTOREPAIR_MAX_CREWS = 4; // потолок авторемонтников на сторону (2 цели × 2 техника);
-                                       // остальные продолжают добычу — экономика не глохнет
+export const AUTOREPAIR_WORKERS_PER_SIDE = 2; // H.1: глобальный лимит авто-ремонтников, чтобы не снимать всех с добычи
 export const ALARM_BASE_RADIUS = 480;  // H.2: базовый тир тревоги (15 тайлов от КЦ)
 export const RECON_TICK = 0.4;         // H.3: тик разведки, сек
 export const RECON_FLEE_TILES = 6;     // H.3: отход от угрозы, тайлов
