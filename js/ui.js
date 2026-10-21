@@ -1405,7 +1405,10 @@ function rebuildPanel(game, sel) {
   } else if (!sel.length) {
     const hint = document.createElement('div');
     hint.className = 'hint';
-    setRich(hint, t('ui.hints.select'));
+    // Хотфикс T1: на тач-устройствах подсказка про ЛКМ/ПКМ бессмысленна.
+    const coarse = typeof window !== 'undefined' && window.matchMedia &&
+      window.matchMedia('(pointer: coarse)').matches;
+    setRich(hint, t(coarse ? 'ui.hints.selectTouch' : 'ui.hints.select'));
     els.selInfo.appendChild(hint);
     return;
   } else {
