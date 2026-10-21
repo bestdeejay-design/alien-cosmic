@@ -151,6 +151,7 @@ export const REPAIRERS_PER_TARGET = 2; // G.4: техников на цель (�
 export const REPAIR_SPREAD_PX = 256;   // G.4: радиус сбора целей вокруг клика (8 тайлов)
 export const AUTOREPAIR_RADIUS = 480;  // H.1: радиус диспетчера от КЦ (15 тайлов)
 export const AUTOREPAIR_TICK = 0.5;    // H.1: тик диспетчера, сек
+export const AUTOREPAIR_WORKERS_PER_SIDE = 2; // H.1: глобальный лимит авто-ремонтников, чтобы не снимать всех с добычи
 export const ALARM_BASE_RADIUS = 480;  // H.2: базовый тир тревоги (15 тайлов от КЦ)
 export const RECON_TICK = 0.4;         // H.3: тик разведки, сек
 export const RECON_FLEE_TILES = 6;     // H.3: отход от угрозы, тайлов
