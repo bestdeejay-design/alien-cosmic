@@ -1,0 +1,217 @@
+=== ЭТАП 1: базовые метрики (зум=1) ===
+{
+ "innerW": 390,
+ "innerH": 844,
+ "vvW": 390,
+ "vvH": 844,
+ "vvScale": 1,
+ "vvOffset": {
+  "l": 0,
+  "t": 0
+ },
+ "canvasRect": {
+  "w": 390,
+  "h": 844,
+  "x": 0,
+  "y": 0
+ },
+ "canvasBacking": {
+  "w": 1170,
+  "h": 2532
+ },
+ "gameCss": {
+  "w": 390,
+  "h": 844
+ },
+ "scrollW": 390,
+ "scrollX": 0,
+ "scrollY": 0
+}
+✓ скриншот при зуме=1, камера у правого края → /home/z/my-project/alien-cosmic/tool-results/mobile/Z1_scale1_rightedge.png
+=== ЭТАП 2: page zoom 1.4 (эмуляция двойного тапа) ===
+{
+ "innerW": 390,
+ "innerH": 844,
+ "vvW": 278.6,
+ "vvH": 602.9,
+ "vvScale": 1.4,
+ "vvOffset": {
+  "l": 0,
+  "t": 0
+ },
+ "canvasRect": {
+  "w": 390,
+  "h": 844,
+  "x": 0,
+  "y": 0
+ },
+ "canvasBacking": {
+  "w": 1170,
+  "h": 2532
+ },
+ "gameCss": {
+  "w": 390,
+  "h": 844
+ },
+ "scrollW": 390,
+ "scrollX": 0,
+ "scrollY": 0
+}
+✓ скриншот при зуме=1.4 → /home/z/my-project/alien-cosmic/tool-results/mobile/Z2_scale14_rightedge.png
+правая невидимая полоса: 111.42855834960938px = 28.6% ширины
+=== ЭТАП 3: реагирует ли игра на зум (resize/профиль) ===
+{"gameCssW":390,"canvasStyleW":"390px"}  ← игра НЕ пересчиталась, если cssW=390
+=== ЭТАП 4: аудит touch-action — где может сработать double-tap/pinch ===
+checked: 25
+DOUBLE-TAP зоны (top по площади): [
+ {
+  "p": "html.game-desktop",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "body",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "div#game-root",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "div#bottom-panel",
+  "w": 390,
+  "h": 240,
+  "area": 93594
+ },
+ {
+  "p": "div#sel-info",
+  "w": 220,
+  "h": 163,
+  "area": 35857
+ },
+ {
+  "p": "div.hint",
+  "w": 192,
+  "h": 141,
+  "area": 27069
+ },
+ {
+  "p": "div#topbar",
+  "w": 390,
+  "h": 52,
+  "area": 20280
+ },
+ {
+  "p": "div#minimap-box",
+  "w": 142,
+  "h": 142,
+  "area": 20164
+ },
+ {
+  "p": "div#panel-ctl",
+  "w": 139,
+  "h": 44,
+  "area": 6114
+ },
+ {
+  "p": "div.res.res-supply",
+  "w": 36,
+  "h": 11,
+  "area": 391
+ },
+ {
+  "p": "div.res.res-minerals",
+  "w": 32,
+  "h": 11,
+  "area": 351
+ },
+ {
+  "p": "div.res.res-time",
+  "w": 32,
+  "h": 11,
+  "area": 350
+ }
+]
+PINCH зоны (top по площади): [
+ {
+  "p": "html.game-desktop",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "body",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "div#game-root",
+  "w": 390,
+  "h": 844,
+  "area": 329160
+ },
+ {
+  "p": "div#bottom-panel",
+  "w": 390,
+  "h": 240,
+  "area": 93594
+ },
+ {
+  "p": "div#sel-info",
+  "w": 220,
+  "h": 163,
+  "area": 35857
+ },
+ {
+  "p": "div.hint",
+  "w": 192,
+  "h": 141,
+  "area": 27069
+ },
+ {
+  "p": "div#topbar",
+  "w": 390,
+  "h": 52,
+  "area": 20280
+ },
+ {
+  "p": "div#minimap-box",
+  "w": 142,
+  "h": 142,
+  "area": 20164
+ },
+ {
+  "p": "div#panel-ctl",
+  "w": 139,
+  "h": 44,
+  "area": 6114
+ },
+ {
+  "p": "button#panel-pos.mini-btn",
+  "w": 79,
+  "h": 44,
+  "area": 3493
+ },
+ {
+  "p": "button#panel-hide.mini-btn",
+  "w": 56,
+  "h": 44,
+  "area": 2445
+ },
+ {
+  "p": "button#btn-sound.tb-btn",
+  "w": 44,
+  "h": 44,
+  "area": 1936
+ }
+]
+=== ЭТАП 5: реальный двойной тап по самой большой auto-зоне ===
+двойной тап по html.game-desktop: visualViewport.scale = 1 (1 = зум не сработал, >1 = воспроизведён)
+=== errors ===
+нет
