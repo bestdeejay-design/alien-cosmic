@@ -17,8 +17,9 @@
 //       вернулся к добыче; банк наполнили — ремонт возобновился.
 //   S9. Кристаллов нет вовсе: без денег — честный простой без маяты
 //       приказами; банк есть — ремонт от казны работает.
-//   S10. Ближние, не все: три битых здания, денег много → экипажей
-//       ≤ AUTOREPAIR_MAX_CREWS, приоритет самым битым, третье ждёт.
+//   S10. Ближние, не все: три битых здания, денег много → глобальный кап
+//       AUTOREPAIR_WORKERS_PER_SIDE=2: оба техника — на самую битую цель,
+//       остальные цели ждут (приоритет по доле HP), излишек добывает.
 //   S11. Ручной приказ свят: заказанный ремонт без денег стоит (не
 //       отзывается), по деньгам — доводит до конца.
 //   S12. Детерминизм v2: прогон с отзывом — побитовый дубль.
@@ -41,7 +42,7 @@ globalThis.document = {
   createElement: () => ({ width: 0, height: 0, getContext: () => ctxStub() }),
 };
 
-const { TILE, BUILDINGS, AUTOREPAIR_MAX_CREWS } = await import('../js/config.js');
+const { TILE, BUILDINGS, AUTOREPAIR_WORKERS_PER_SIDE } = await import('../js/config.js');
 const { GameMap } = await import('../js/map.js');
 const B = await import('../js/buildings.js');
 const U = await import('../js/units.js');
@@ -264,12 +265,13 @@ const repairersIn = (st, side) =>
   for (let i = 0; i < 3; i++) workers.push(U.spawnUnit(st, 'player', 'worker', (pad.x + 2 + i) * TILE, (pad.y + 4) * TILE, true));
   const toasts = [];
   st.game.ui.toast = (msg, kind) => toasts.push({ msg, kind });
-  runTicks(st, 30 * 10); // 10 c: старый код стянул бы ВСЕХ к депо и заморозил
+  runTicks(st, 30); // 1 c: при пустом банке задача не стартует — но и заморозки нет
   ok('S7a. при пустом банке никто не пущен в ремонт',
     repairersIn(st, 'player').length === 0, `ремонтников=${repairersIn(st, 'player').length}`);
   ok('S7b. рабочие не брошены — продолжают добычу',
     workers.every((w) => w.order.kind === 'gather'),
     workers.map((w) => w.order.kind).join(','));
+  runTicks(st, 30 * 4); // ещё 4 c: первые доставки кристаллов, банк далеко до полной стоимости задачи
   ok('S7c. доход капает: банк растёт с нуля', st.minerals.player > 0,
     `минералы=${Math.round(st.minerals.player)}`);
   ok('S7d. игроку объяснили ожидание: тост «ждёт минералов» ровно один',
@@ -284,6 +286,20 @@ const repairersIn = (st, side) =>
   ok('S7g. экипаж вернулся к добыче, а не застыл у стены',
     workers.every((w) => w.order.kind === 'gather'),
     workers.map((w) => w.order.kind).join(','));
+  // S7h. самовосстановление: без внешних денег — добыча сама копит полную
+  // стоимость задачи, и диспетчер сам назначает экипаж (выход из дедлока).
+  const depot2 = mkDamagedDepot(st, 'player', pad.x + 6, pad.y + 3, 0.5);
+  st.minerals.player = 0;
+  let sawCrew = false;
+  for (let i = 0; i < 30 * 14 && !sawCrew; i++) {
+    runTicks(st, 1);
+    sawCrew = repairersIn(st, 'player').length > 0;
+  }
+  ok('S7h. экипаж сам поехал, как только добыча покрыла полную стоимость',
+    sawCrew, 'за 14 c добычи экипаж так и не назначен');
+  runTicks(st, 30 * 22);
+  ok('S7i. депо долечено без единой внешней инъекции денег', depot2.hp >= depot2.maxHp,
+    `hp=${Math.round(depot2.hp)}`);
 }
 
 // ---------- S8. Отзыв голодных посреди сварки и возврат ----------
@@ -308,7 +324,7 @@ const repairersIn = (st, side) =>
   ok('S8d. отозванные добывают',
     st.units.some((u) => u.side === 'player' && u.type === 'worker' && u.order.kind === 'gather'));
   const frozen = depot.hp;
-  runTicks(st, 30 * 2);
+  runTicks(st, 15); // 0.5 c: для повторного старта нужно намайнить полную стоимость — мгновенного роста нет
   ok('S8e. без денег HP не растёт', depot.hp === frozen, `hp=${Math.round(depot.hp)}`);
   st.minerals.player = 300; // банк снова оплачен
   runTicks(st, 30 * 1); // 1 c: тик диспетчера 0.5 c — экипаж уже в ремонте
@@ -369,14 +385,15 @@ const repairersIn = (st, side) =>
   runTicks(st, 30 * 3);
   const reps = repairersIn(st, 'player');
   const targets = new Set(reps.map((w) => w.order.target));
-  ok('S10a. экипажей не больше AUTOREPAIR_MAX_CREWS',
-    reps.length <= AUTOREPAIR_MAX_CREWS, `ремонтников=${reps.length}`);
-  ok('S10b. триаж: варят два самых битых, третье ждёт',
-    targets.has(a) && targets.has(b) && !targets.has(c), `целей=${targets.size}`);
-  ok('S10c. на цели не больше двух техников',
-    U.repairersOf(st, a) <= 2 && U.repairersOf(st, b) <= 2);
+  ok('S10a. экипажей не больше глобального капа (2 на сторону)',
+    reps.length <= AUTOREPAIR_WORKERS_PER_SIDE, `ремонтников=${reps.length}`);
+  ok('S10b. триаж: кап целиком ушёл на самую битую цель, прочие ждут',
+    targets.has(a) && !targets.has(c) && targets.size === 1, `целей=${targets.size}`);
+  ok('S10c. на цели ровно два техника (REPAIRERS_PER_TARGET)',
+    U.repairersOf(st, a) === AUTOREPAIR_WORKERS_PER_SIDE,
+    `на цели=${U.repairersOf(st, a)}`);
   ok('S10d. остальные не брошены (добыча/простой), без толпы у стен',
-    st.units.filter((u) => u.side === 'player' && u.type === 'worker' && u.order.kind !== 'repair').length >= 4);
+    st.units.filter((u) => u.side === 'player' && u.type === 'worker' && u.order.kind !== 'repair').length >= 6);
 }
 
 // ---------- S11. Ручной приказ свят: без денег стоит, по деньгам доводит ----------
