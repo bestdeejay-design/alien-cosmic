@@ -102,11 +102,12 @@ else {
   else ok('OG/Twitter-теги + assets/og-image.png 1200×630 и скрипт генерации');
 }
 
-// 6) Версия (V): бейдж M на главной странице
+// 6) Версия (V): бейдж N на главной странице, дата фактической поставки
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'M'")) err("config.js: нет GAME_VERSION === 'M'");
-else ok("GAME_VERSION === 'M'");
-if (!/GAME_DATE = '\d{2}\.\d{2}\.\d{4}'/.test(src['config.js'])) err('config.js: GAME_DATE не задан в формате DD.MM.YYYY');
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'N'")) err("config.js: нет GAME_VERSION === 'N'");
+else ok("GAME_VERSION === 'N'");
+if (!exportsOf('config.js').has('GAME_DATE') || !src['config.js'].includes("GAME_DATE = '21.10.2026'")) err('config.js: дата не соответствует правилу V (21.10.2026)');
+else ok('GAME_DATE соответствует правилу V (21.10.2026)');
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
 else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 

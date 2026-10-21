@@ -431,11 +431,16 @@ camera keeps the target in the visible area in every panel position.
 ### The HQ (H: CC Tier II/III)
 The command center upgrades to Tier II (240, 30s) and Tier III (400,
 45s) — tier keys with no stat change: they unlock abilities. Tier II
-unlocks the laboratory research "Auto-Repair" (150, 60s): idle techs
-repair buildings and vehicles within 15 tiles of the CC, two per
-target; done — back to mining. Tier II also enables the siren: an
-attack near the base (15 tiles from the CC) sounds different from a
-skirmish in the field. Tier III gives two buttons: "Recon" (T) — every
+unlocks the laboratory research "Auto-Repair" (150, 60s): techs repair
+buildings and vehicles within 15 tiles of a living CC — at most two auto-
+repairers per side and two per target. The dispatcher picks the nearest
+workers for the most damaged target whose full remaining repair cost is
+covered, accounting for active jobs. If funds fall short, the auto order
+is released and the worker returns to its saved vein if it is live,
+otherwise to the nearest available vein; other idle workers go mining.
+Explicit manual orders are not canceled. Tier II also enables the siren:
+an attack within 15 tiles of the CC sounds different from a skirmish
+in the field. Tier III gives two buttons: "Recon" (T) — every
 pathfinder spreads into the fog, skirts enemies and reports veins and
 contacts; "Rally" (G) — every unit without orders heads for the rally
 point. Techs hold their ground during alarms — do not panic.

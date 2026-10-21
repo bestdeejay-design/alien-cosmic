@@ -1,6 +1,7 @@
 // ============================================================
 // sim_hq.mjs — H: штаб, авторемонт, тревога, разведка и сбор.
-// H1: затвор КЦ Г2 → ресерч → 2/цель → возврат к добыче.
+// H1: затвор КЦ Г2 → ресерч → repair/buildings+vehicles → возврат к добыче.
+// H1.6: full-cost affordability, priority/nearest, global cap 2/side, fallbacks.
 // H2: сирена только на базе Г2+, полевая тревога без сирены; рабочие стоят.
 // H3: завод/безоружность/разведка/отход/доклады/зеркало.
 // H4: idle к точке; приказы и гарнизон не затрагиваются.
@@ -185,12 +186,11 @@ try {
   idle.prevX = idle.x; idle.prevY = idle.y;
   gatherer.prevX = gatherer.x; gatherer.prevY = gatherer.y;
   st.autoRepairT = 0;
-  ticks(16); // > 0.5с: диспетчер назначил idle первым, затем gather.
+  ticks(16); // > 0.5с: диспетчер выбирает ближайших доступных рабочих.
   const assigned = st.units.filter((u) => u.side === 'player' && u.order.kind === 'repair' && u.order.target === inside);
   const outAssigned = st.units.filter((u) => u.side === 'player' && u.order.kind === 'repair' && u.order.target === outside);
   assert(assigned.length === 2, `на ближнюю цель назначено ${assigned.length}, ожидалось 2`);
   assert(outAssigned.length === 0, 'здание вне R=15 получило диспетчера');
-  assert(assigned.includes(idle), 'idle-техник не получил приоритет перед gather');
 
   const gatherResume = gatherer.order.resume;
   inside.hp = inside.maxHp - 1.5;
@@ -226,6 +226,199 @@ try {
   assert(vehicle.hp === vehicle.maxHp, 'авторемонт не восстановил повреждённую технику');
   pass('H1 grade lock 240/30 → research 150/60 → 2/цель, здания+техника, R15, платный ремонт и возврат к добыче');
 } catch (e) { fail('H1 autorepair', e); }
+
+// ---------- H1.6: доступный полный бюджет, общий лимит, ближайшие рабочие ----------
+try {
+  const st = start();
+  st.minerals.player = 99999;
+  const cc = st.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+  const first = atDistance(st, 'player', 'wall', cc, 200, 250);
+  const second = atDistance(st, 'player', 'wall', cc, 390, 440);
+  first.hp = first.maxHp - 90;
+  second.hp = second.maxHp - 90;
+  assert(Math.abs((first.maxHp - first.hp) / cfg.REPAIR_HP_PER_MINERAL - 15) < 1e-9,
+    'фикстура должна требовать ровно 15 минералов на полный ремонт');
+  st.tech.player.autoRepair = 1;
+
+  const workers = st.units.filter((u) => !u.dead && u.side === 'player' && u.type === 'worker');
+  assert(workers.length >= 4, `нужно минимум 4 рабочих для H1.6, найдено ${workers.length}`);
+  const used = [];
+  const distinctNear = (target, minD, maxD) => {
+    const tx0 = (target.x / cfg.TILE) | 0, ty0 = (target.y / cfg.TILE) | 0;
+    for (let r = 1; r <= 16; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const tx = tx0 + dx, ty = ty0 + dy;
+        if (!st.map.inBounds(tx, ty) || st.map.blockedAt(tx, ty)) continue;
+        const p = { x: (tx + 0.5) * cfg.TILE, y: (ty + 0.5) * cfg.TILE };
+        const d = Math.hypot(p.x - target.x, p.y - target.y);
+        if (d < minD || d > maxD || used.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 36)) continue;
+        used.push(p);
+        return p;
+      }
+    }
+    throw new Error(`нет отдельной точки рядом с ${target.type}`);
+  };
+  const resetIdleWorkers = () => {
+    used.length = 0;
+    workers.forEach((worker, i) => {
+      U.orderStop(worker);
+      worker.scanT = 999;
+      const target = i < 2 ? first : second;
+      const p = distinctNear(target, i % 2 === 0 ? 70 : 100, i % 2 === 0 ? 85 : 115);
+      worker.x = p.x; worker.y = p.y;
+      worker.prevX = p.x; worker.prevY = p.y;
+    });
+  };
+  const noRepairOrders = () => !workers.some((u) => u.order.kind === 'repair');
+  const crystalCount = st.map.crystals.filter((c) => !c.dead && c.amount > 0).length;
+  assert(crystalCount > 0, 'тесту нужен доступный кристалл для возврата к добыче');
+
+  // Ни один работник не должен парковаться на задании, которое нельзя
+  // полностью оплатить; свободные рабочие уходят на кристаллы.
+  resetIdleWorkers();
+  st.minerals.player = 0;
+  st.autoRepairT = 0;
+  ticks(20);
+  assert(noRepairOrders(), 'при нулевом бюджете выданы авто-приказы ремонта');
+  assert(workers.every((u) => u.order.kind === 'gather'), 'при спросе на ремонт idle-рабочие не ушли добывать');
+  assert(first.hp === first.maxHp - 90 && second.hp === second.maxHp - 90, 'ремонт прошёл без полной оплаты');
+
+  resetIdleWorkers();
+  st.minerals.player = 14.99;
+  st.autoRepairT = 0;
+  ticks(20);
+  assert(noRepairOrders(), 'ремонт назначен при бюджете ниже полной стоимости 15');
+
+  // Самая повреждённая цель недоступна по полной цене (15), поэтому
+  // диспетчер должен перейти к менее приоритетной, но доступной за 10.
+  first.hp = first.maxHp - 90;
+  second.hp = second.maxHp - 60;
+  resetIdleWorkers();
+  st.minerals.player = 10;
+  st.autoRepairT = 0;
+  const expectedForSecond = workers.slice().sort((a, b) =>
+    Math.hypot(a.x - second.x, a.y - second.y) - Math.hypot(b.x - second.x, b.y - second.y) || a.id - b.id)
+    .slice(0, 2).map((u) => u.id).sort((a, b) => a - b);
+  ticks(16);
+  const affordableRepairers = workers.filter((u) => u.order.kind === 'repair' && u.order.auto);
+  assert(!workers.some((u) => u.order.kind === 'repair' && u.order.target === first),
+    'неоплачиваемая приоритетная цель забрала ремонтников');
+  assert(affordableRepairers.length === 2 && affordableRepairers.every((u) => u.order.target === second),
+    'доступная цель после пропуска дорогой не получила два ближайших ремонтника');
+  assert(affordableRepairers.map((u) => u.id).sort((a, b) => a - b).join(',') === expectedForSecond.join(','),
+    'для доступной цели выбраны не ближайшие рабочие');
+  st.minerals.player = 0;
+  ticks(1);
+  assert(workers.every((u) => u.order.kind === 'gather'), 'после обнуления запаса авто-рабочие не вернулись к добыче');
+
+  // Ровно полный бюджет открывает только самую приоритетную цель; всего
+  // два ближайших работника на сторону, оставшиеся продолжают добычу.
+  first.hp = first.maxHp - 90;
+  second.hp = second.maxHp - 90;
+  resetIdleWorkers();
+  st.minerals.player = 15;
+  st.autoRepairT = 0;
+  const expectedNearest = workers.slice().sort((a, b) =>
+    Math.hypot(a.x - first.x, a.y - first.y) - Math.hypot(b.x - first.x, b.y - first.y) || a.id - b.id)
+    .slice(0, 2).map((u) => u.id).sort((a, b) => a - b);
+  ticks(16);
+  const onFirst = workers.filter((u) => u.order.kind === 'repair' && u.order.target === first);
+  const onSecond = workers.filter((u) => u.order.kind === 'repair' && u.order.target === second);
+  assert(onFirst.length === 2 && onSecond.length === 0,
+    `общий лимит/приоритет: цель 1=${onFirst.length}, цель 2=${onSecond.length}`);
+  assert(onFirst.map((u) => u.id).sort((a, b) => a - b).join(',') === expectedNearest.join(','),
+    'назначены не ближайшие к приоритетной цели рабочие');
+  assert(workers.filter((u) => u.order.kind === 'repair' && u.order.auto).length === 2,
+    'превышен лимит двух авто-ремонтников на сторону');
+  assert(workers.filter((u) => u.order.kind === 'gather').length === workers.length - 2,
+    'невыбранные рабочие не остались добывать');
+
+  // Имитируем другое списание ресурсов после назначения: авто-работа
+  // снимается до попытки ремонта и рабочие возвращаются к минералам.
+  st.minerals.player = 0;
+  ticks(1);
+  assert(!workers.some((u) => u.order.kind === 'repair' && u.order.auto),
+    'авто-заказ не снялся после потери бюджета');
+  assert(workers.every((u) => u.order.kind === 'gather'), 'снятые авто-ремонтники не вернулись добывать');
+
+  // Запас может закончиться уже после реального repair-tick: рабочий
+  // должен успеть оплатить фактически восстановленные HP, затем вернуться
+  // на сохранённый кристалл. Если он выработан — выбрать другой живой.
+  st.tech.player.autoRepair = 0; // здесь проверяем updateRepair напрямую, без диспетчера
+  const working = workers[0];
+  const savedCrystal = st.map.crystals.find((c) => !c.dead && c.amount > 0);
+  assert(savedCrystal, 'нет кристалла для проверки resume');
+  for (const worker of workers.slice(1)) { U.orderStop(worker); worker.scanT = 999; }
+  U.orderGather(st, working, savedCrystal);
+  U.orderRepair(st, working, first, true);
+  working.x = first.x - first.w * cfg.TILE / 2 - 24;
+  working.y = first.y;
+  working.prevX = working.x; working.prevY = working.y;
+  st.minerals.player = 15;
+  const hpBeforePaidTick = first.hp;
+  ticks(1);
+  assert(first.hp > hpBeforePaidTick && working.order.kind === 'repair',
+    'авто-ремонт не выполнил оплачиваемый repair-tick');
+  assert(st.minerals.player < 15, 'repair-tick не списал минералы пропорционально HP');
+  st.minerals.player = 0;
+  ticks(1);
+  assert(working.order.kind === 'gather' && working.order.target === savedCrystal,
+    'при нехватке ресурсов рабочий не вернулся на сохранённую жилу');
+
+  U.orderRepair(st, working, first, true); // запомнить текущую жилу
+  savedCrystal.amount = 0; savedCrystal.dead = true;
+  st.minerals.player = 0;
+  ticks(1);
+  assert(working.order.kind === 'gather' && working.order.target !== savedCrystal &&
+    !working.order.target.dead && working.order.target.amount > 0,
+    'при исчерпанной сохранённой жиле не выбран ближайший живой кристалл');
+
+  // Учитываем уже выданный ручной ремонт при резервировании бюджета:
+  // 30 покрывает две цели по 15, после внешнего списания до 15 авто-заказы
+  // снимаются, а явный приказ остаётся нетронутым.
+  first.hp = first.maxHp - 90;
+  second.hp = second.maxHp - 90;
+  st.tech.player.autoRepair = 1;
+  resetIdleWorkers();
+  const manual = workers[0];
+  const farFromTarget = positionNear(st, first, 200, 250);
+  manual.x = farFromTarget.x; manual.y = farFromTarget.y;
+  manual.prevX = manual.x; manual.prevY = manual.y;
+  U.orderRepair(st, manual, first, false);
+  st.minerals.player = 30;
+  st.autoRepairT = 0;
+  ticks(16);
+  const reservedJobs = workers.filter((u) => u.order.kind === 'repair' && u.order.auto);
+  assert(manual.order.kind === 'repair' && manual.order.auto === false, 'ручной приказ переписан диспетчером');
+  assert(reservedJobs.length === 2 && reservedJobs.some((u) => u.order.target === first) &&
+    reservedJobs.some((u) => u.order.target === second),
+    'диспетчер не зарезервировал полный бюджет ручной и авто-целей');
+  st.minerals.player = 15; // внешнее списание: ручная цель всё ещё оплачивается, вторая — уже нет
+  ticks(1);
+  const remainingAuto = workers.filter((u) => u.order.kind === 'repair' && u.order.auto);
+  assert(remainingAuto.length === 1 && remainingAuto[0].order.target === first,
+    'авто-заказ на отдельной цели не снят при нехватке aggregate reserve');
+  assert(manual.order.kind === 'repair' && manual.order.auto === false,
+    'ручной repair был отменён при нехватке бюджета');
+
+  // Если жил не осталось, авто-ремонт освобождает рабочего в idle, а не
+  // оставляет его на заблокированном ремонте или фиктивной добыче.
+  for (const c of st.map.crystals) { c.amount = 0; c.dead = true; }
+  st.minerals.player = 0;
+  const noCrystalAuto = workers[1];
+  U.orderRepair(st, noCrystalAuto, second, true);
+  st.autoRepairT = 0;
+  ticks(1);
+  assert(noCrystalAuto.order.kind === 'idle', 'авто-ремонт без ресурсов и кристаллов не остановился');
+  for (const worker of workers.slice(2)) { U.orderStop(worker); worker.scanT = 999; }
+  st.autoRepairT = 0;
+  ticks(16);
+  assert(noCrystalAuto.order.kind === 'idle', 'диспетчер оставил рабочего на ремонте без жил');
+  assert(manual.order.kind === 'repair' && manual.order.auto === false,
+    'ручной ремонт был отменён вместе с авто-приказом');
+  pass('H1.6: full-cost threshold/priority, aggregate reservation, cap=2/side, nearest, in-flight release, crystal fallback, manual preserved');
+} catch (e) { fail('H1.6 autorepair budget/cap', e); }
 
 // ---------- H2: полевой/базовый тир, сирена только Г2+, рабочие не дёргаются ----------
 try {

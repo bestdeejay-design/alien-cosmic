@@ -41,8 +41,9 @@ not in a stack but in a ring around the point (rally spread).
 ## Repair
 
 RMB your damaged own unit: buildings — 26 HP/s, vehicles — 18 HP/s,
-1 mineral per 6 HP. Without minerals repair stalls (a toast, at most
-once per 6s). When done the worker returns to mining by itself.
+1 mineral per 6 HP. Without minerals manual repair stalls (a toast, at
+most once per 6s); an auto order is released if the remaining full job is
+no longer affordable (see HQ). When done the worker returns to mining.
 
 Distribution: several techs + a click — **2 per target** (vehicles and
 buildings near the click within 256px), the surplus keeps mining. A
@@ -73,10 +74,14 @@ their repair is the player's call (minerals).
 
 The CC upgrades to Tier II (240/30s) and Tier III (400/45s) with no
 stat bonuses. Tier II unlocks the laboratory Auto-Repair (150/60s):
-idle workers repair buildings and vehicles, two per target, within 15
-tiles of a living CC; idle first, then miners. Repair costs minerals,
-move/attack/build orders are not interrupted, and the worker returns
-to mining after the fix.
+workers repair buildings and vehicles within 15 tiles of a living CC —
+up to two automatic repairers per side and two per target. The dispatcher
+picks the nearest workers for the most damaged target whose full remaining
+cost is covered, accounting for active jobs; unaffordable targets are
+skipped. If the budget falls short, the auto order is released and the
+worker returns to its saved/live or nearest vein; idle workers mine when
+repair demand exists. Explicit manual orders are not canceled, and move,
+attack, and build orders are not overwritten.
 
 From mission №3 the factory trains the Pathfinder/Listener for 60
 minerals and 12s: 50 HP, speed 185, sight 11, damage 0. The CC Tier III
