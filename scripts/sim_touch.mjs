@@ -329,6 +329,33 @@ try {
   pass('T17 политика жестов: CSS-политика, meta, gesturestart-гвард, кнопка reload');
 } catch (e) { fail('T17', e); }
 
+// ---------- T18: пакет S — клиллинг зданий по vw/vh + подтверждение «Заново» ----------
+// Живое доказательство — в scripts/v_verify.mjs (S8-пиксельная проба + диалог).
+try {
+  const read = (p) => import('node:fs').then((fs) =>
+    fs.readFileSync(new URL(p, import.meta.url), 'utf8'));
+  const gameSrc = await read('../js/game.js');
+  const uiSrc = await read('../js/ui.js');
+  const ru = await read('../locales/ru.js');
+  const en = await read('../locales/en.js');
+  assert(gameSrc.includes('bx > cam.x + vw || by > cam.y + vh'),
+    'клиллинг зданий не по vw/vh (пакет S потерян)');
+  assert(!/bx > cam\.x \+ W \|\|/.test(gameSrc), 'остался старый W-клиллинг зданий');
+  // S8-сценарий чистой математикой: W=390, z=0.5 → vw=780; здание в мире x=512
+  // лежит в (W, vw) — старый предикат отсекал, новый обязан рисовать.
+  {
+    const W = 390, z = 0.5, camX = 0, vw = W / z, bx = 512, bw = 96;
+    const oldCull = bx > camX + W || bx + bw < camX;
+    const newCull = bx > camX + vw || bx + bw < camX;
+    assert(oldCull === true && newCull === false,
+      'S8-математика изменилась: старый предикат должен отсекать, новый — нет');
+  }
+  assert(uiSrc.includes('ui.topbar.restartConfirm'), 'нет confirm-проводки на «Заново» (ui.js)');
+  assert(ru.includes('restartConfirm') && en.includes('restartConfirm'),
+    'нет ключа ui.topbar.restartConfirm в локалях RU/EN');
+  pass('T18 пакет S: клиллинг зданий vw/vh (S8-математика) + подтверждение «Заново»');
+} catch (e) { fail('T18', e); }
+
 // ---------- ИТОГ ----------
 console.log(failures.length
   ? `\nИТОГ SIM_TOUCH: ПРОВАЛЕНО ${failures.length}: ${failures.join(', ')}`

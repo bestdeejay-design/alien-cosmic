@@ -769,7 +769,12 @@ export function initUI(game) {
     hideEnd();
     showBrief(game, next);
   });
-  els.restart.addEventListener('click', () => game.restart());
+  // Пакет S (баг 5 проверки Q, развилка Р2а): подтверждение на оба профиля —
+  // ошибочный тап по «Заново» стоит миссии так же, как «Перезагрузить экран».
+  els.restart.addEventListener('click', () => {
+    if (!confirm(t('ui.topbar.restartConfirm'))) return;
+    game.restart();
+  });
   els.exit.addEventListener('click', () => game.toMenu());
   els.panelPosBtn.addEventListener('click', () => { cyclePanelPos(); game.resize(); game.sound.click(); });
   els.panelHideBtn.addEventListener('click', () => { setPanelHidden(true); game.resize(); game.sound.click(); });

@@ -1333,6 +1333,10 @@ export class Game {
       ctx.lineWidth = 2;
       ctx.strokeStyle = st.placing ? 'rgba(143,255,226,0.8)' : 'rgba(143,255,226,0.35)';
       for (const z of st.buildZone) {
+        // Пакет S: zx/zy — дельта-пространство (мир − камера), видимая ширина
+        // в нём = vw/vh (не W/H) при любом z. Аудит ZOOM_CULL §3 предположил
+        // здесь дефект «экранные vs мировые» — проверка показала, что сравнение
+        // корректно; комментарий держит систему координат явной.
         const zx = z.x * TILE - cam.x, zy = z.y * TILE - cam.y;
         if (zx > vw || zy > vh || zx + z.w * TILE < 0 || zy + z.h * TILE < 0) continue;
         ctx.strokeRect(zx, zy, z.w * TILE, z.h * TILE);
@@ -1351,7 +1355,10 @@ export class Game {
     for (const b of st.buildings) {
       if (b.dead) continue;
       const bx = b.tx * TILE, by = b.ty * TILE;
-      if (bx > cam.x + W || by > cam.y + H ||
+      // Пакет S (баг 3 проверки Q): клиллинг в МИРОВЫХ координатах — видимая
+      // область при зуме vw=W/z, vh=H/z (как inView у юнитов), а не экранная W/H.
+      // При z<1 W-вариант отсекал здания на видимой половине экрана (S8-репро).
+      if (bx > cam.x + vw || by > cam.y + vh ||
           bx + b.w * TILE < cam.x || by + b.h * TILE < cam.y) continue;
       const visibleNow = b.side === 'player' ||
         st.fog.tileVisible(b.tx + (b.w >> 1), b.ty + (b.h >> 1));

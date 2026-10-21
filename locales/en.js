@@ -103,6 +103,7 @@ export default {
       sound: 'Sound: on', soundOff: 'Sound: off',
       pause: 'Pause', resume: 'Resume',
       restart: 'Restart', exit: 'Exit',
+      restartConfirm: 'Restart? The current battle will be lost.',
     },
 
     panel: {

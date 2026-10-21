@@ -99,6 +99,7 @@ export default {
       sound: 'Звук: вкл', soundOff: 'Звук: выкл',
       pause: 'Пауза', resume: 'Продолжить',
       restart: 'Заново', exit: 'Выход',
+      restartConfirm: 'Начать заново? Текущая партия будет потеряна.',
     },
 
     panel: {
