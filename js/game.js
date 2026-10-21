@@ -19,6 +19,7 @@ import * as B from './buildings.js';
 import { AIController } from './ai.js';
 import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js';
 import * as ui from './ui.js';
+import { createProfile } from './profile.js';
 import { attachInput, updateCamera } from './input.js';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
 
@@ -101,6 +102,11 @@ export class Game {
     this.acc = 0;
     this.last = 0;
     this.grid = new U.SpatialGrid(64);
+    // Пакет U: профиль ввода — источник правды об афордансах (зум, отмена
+    // стройки, подсказки, kbd). Классы game-touch/game-desktop на <html>
+    // ставятся здесь, до первой отрисовки UI.
+    this.profile = createProfile();
+    this.placementCancelHintShown = false; // одноразовый хинт «ПКМ — отмена» на десктопе
 
     window.addEventListener('resize', () => this.resize());
     // Хотфикс M2: fullscreen/поворот экрана. resize-событие приходит ДО того,
@@ -354,6 +360,9 @@ export class Game {
     this.uiLeft = ins.left;
     this.uiRight = ins.right;
     this.clampCam();
+    // Пакет U: media-базис может смениться (подключили мышь к планшету) —
+    // пересчитываем профиль, классы и афордансы.
+    if (this.profile) this.profile.refresh();
     ui.refreshLayout(this);
   }
 
@@ -580,9 +589,28 @@ export class Game {
           cmds.push({ code: 'KeyX', icon: 'stop', label: t('ui.cmds.back'), on: () => { st.buildMenu = false; } });
         }
       }
+      // Пакет U (разилка 4 аудита адаптивности): атака-движение кнопкой —
+      // раньше было доступно только с клавиатуры (KeyA), тач-игрок был
+      // лишён боевой механики вовсе. Тоггл: повторный клик снимает режим.
+      const combat = sel.some((e) => e.kind === 'unit' && e.side === 'player' &&
+        !e.dead && !e.garrison && e.cfg.dmg > 0);
       // «Стоп» не показываем в открытом меню стройки: 7 зданий + «Назад»
       // заполняют компактную сетку 2×4 ровно целиком.
-      if (!st.buildMenu) cmds.push({ code: 'KeyS', icon: 'stop', label: t('ui.cmds.stop'), on: () => this.hooks.stopSelected() });
+      if (!st.buildMenu) {
+        if (combat) {
+          cmds.push({
+            code: 'KeyA', icon: 'attack', label: t('ui.cmds.attackMove'),
+            tip: { title: t('ui.cmds.attackMove'), lines: t('ui.cmds.attackMoveTip') },
+            selected: !!st.attackMoveMode,
+            on: () => {
+              st.attackMoveMode = !st.attackMoveMode;
+              this.canvas.style.cursor = st.attackMoveMode ? 'crosshair' : '';
+              this.sound.click();
+            },
+          });
+        }
+        cmds.push({ code: 'KeyS', icon: 'stop', label: t('ui.cmds.stop'), on: () => this.hooks.stopSelected() });
+      }
     }
     return cmds;
   }

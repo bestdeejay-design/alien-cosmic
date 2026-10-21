@@ -199,6 +199,19 @@ body.panel-hidden #panel-show { display: block; }
 }
 #zoom-controls[hidden] { display: none; }
 
+/* ------------------------------------------------------------
+   Пакет U: ownership по профилю ввода (design/ADAPTIVE_AUDIT.md).
+   Геометрические @media выше не тронуты — они про плотность и место.
+   Эти правила — про АФОРДАНСЫ: чем зумить, как отменять стройку,
+   нужны ли метки клавиш. Классы ставит js/ui/profile.js на <html>.
+   ------------------------------------------------------------ */
+/* Зум-кнопки: только тач-профиль (на десктопе колесо / +− / СКМ). */
+.game-desktop #zoom-controls { display: none; }
+/* Красный × отмены стройки: только тач (десктоп отменяет ПКМ/Esc). */
+.game-desktop #placement-cancel { display: none; }
+/* Метки клавиш на кнопках команд: только десктоп-профиль. */
+.game-touch #cmd-grid kbd { display: none; }
+
 body.panel-left #bottom-panel {
   left: 0; right: auto; top: 44px; bottom: 0; width: 236px; height: auto;
   flex-direction: column; border-top: none; border-right: 1px solid rgba(118, 227, 215, .32);
@@ -643,6 +656,16 @@ body.menu-active #zoom-controls { display: none; }
   padding: 5px 8px; font: inherit; font-size: 11px; cursor: pointer;
 }
 .lang-row select:hover { border-color: var(--cyan); }
+
+/* Пакет U: выбор профиля интерфейса в меню «Ещё» — стилистика lang-row. */
+.profile-row { display: flex; align-items: center; gap: 7px; }
+.profile-row label { color: #7fa39c; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.profile-row select {
+  background: #0d1f22; color: var(--cyan-light);
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  padding: 5px 8px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.profile-row select:hover { border-color: var(--cyan); }
 
 .hero-section {
   position: relative; isolation: isolate;

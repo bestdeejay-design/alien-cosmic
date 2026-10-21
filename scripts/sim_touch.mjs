@@ -14,6 +14,12 @@
 // T10 pointerdown тача возвращает мышь в sentinel −1.
 // T11 подсказка жестов показывается один раз (touchHintShown).
 //
+// Пакет U (профиль ввода):
+// T12 классы game-touch/game-desktop на <html>, зум-кнопки только в тач-профиле.
+// T13 смена профиля перестраивает панель (хинт ЛКМ/Тап).
+// T14 атака-движение: кнопка KeyA в панели, тап в режиме — приказ attackMove.
+// T15 override профиля сохраняется в localStorage, auto возвращает базис.
+//
 // Запуск: node scripts/sim_touch.mjs
 // ============================================================
 import './harness.mjs';
@@ -206,6 +212,100 @@ try {
     `текст тоста сломан: "${msg.slice(0, 60)}"`);
   pass('T11  подсказка жестов показана (один раз), текст тоста корректный');
 } catch (e) { fail('T11', e); }
+
+// ---------- T12: профиль ввода — классы на <html>, зум по профилю ----------
+try {
+  assert(game.profile && typeof game.profile.effective === 'function', 'game.profile не создан');
+  assert(game.profile.mode() === 'auto', `в симе override должен быть auto, факт ${game.profile.mode()}`);
+  assert(game.profile.effective() === 'desktop', 'в headless-симе базис должен быть desktop');
+  const root = document.documentElement;
+  assert(root.classList.contains('game-desktop'), 'класса game-desktop на <html> нет');
+  assert(root.getAttribute('data-input') === 'desktop', 'data-input не desktop');
+  // Тач-профиль: классы + зум-кнопки видимы в партии.
+  game.profile.set('touch');
+  assert(root.classList.contains('game-touch'), 'класс game-touch не встал');
+  assert(root.getAttribute('data-input') === 'touch', 'data-input не touch');
+  for (let i = 0; i < 3; i++) game.tick();
+  assert(el('zoom-controls').hidden === false, 'зум-кнопки скрыты в тач-профиле');
+  // Десктоп-профиль: зум-кнопки скрыты (дублируют колесо/клавиши/СКМ).
+  game.profile.set('desktop');
+  for (let i = 0; i < 3; i++) game.tick();
+  assert(el('zoom-controls').hidden === true, 'зум-кнопки не скрыты в десктоп-профиле');
+  pass('T12 профиль ввода: классы на <html>, зум-кнопки только в тач-профиле');
+} catch (e) { fail('T12', e); }
+
+// ---------- T13: панель перестраивается по профилю (хинт выделения) ----------
+try {
+  const ui = await import('../js/ui.js');
+  game.state.selection = [];
+  ui.update(game);
+  assert(String(el('sel-info').innerHTML).includes('ЛКМ'), 'десктоп-хинт не показан в десктоп-профиле');
+  game.profile.set('touch');
+  ui.update(game);
+  assert(String(el('sel-info').innerHTML).includes('Тап'), 'тач-хинт не показан в тач-профиле');
+  game.profile.set('desktop');
+  ui.update(game);
+  pass('T13 смена профиля перестраивает панель (хинт ЛКМ/Тап)');
+} catch (e) { fail('T13', e); }
+
+// ---------- T14: атака-движение кнопкой в cmd-grid + тап-приказ ----------
+try {
+  await sleep(420);
+  const ui = await import('../js/ui.js');
+  const st = game.state;
+  const m = U.spawnUnit(st, 'player', 'marine', st.buildings.find((b) => b.side === 'player').tx * 32 + 64,
+    st.buildings.find((b) => b.side === 'player').ty * 32 + 96);
+  st.selection = [m];
+  ui.update(game);
+  const grid = el('cmd-grid');
+  const btn = grid.children.find((c) => c.dataset && c.dataset.code === 'KeyA');
+  assert(btn, 'кнопка атака-движения (KeyA) не появилась при боевом выделении');
+  btn.click();
+  assert(st.attackMoveMode === true, 'кнопка не взвела attackMoveMode');
+  const spot = emptySpot(m);
+  const s = toScr(spot.x, spot.y);
+  tap(s.x, s.y); // тап в режиме — приказ и выход из режима
+  assert(m.order.kind === 'attackMove', `ожидал attackMove, факт ${m.order.kind}`);
+  assert(st.attackMoveMode === false, 'режим не снялся после тап-приказа');
+  // Регресс: без выделения панели команд нет вовсе (рабочий по канону игры
+  // тоже «боевой» — dmg 4, клавиша A с ним и раньше работала).
+  st.selection = [];
+  ui.update(game);
+  assert(!grid.children.some((c) => c.dataset && c.dataset.code === 'KeyA'), 'KeyA показана без выделения');
+  pass('T14 атака-движение: кнопка в панели, тап в режиме — приказ attackMove');
+} catch (e) { fail('T14', e); }
+
+// ---------- T15: override профиля сохраняется в localStorage ----------
+try {
+  game.profile.set('touch');
+  assert(globalThis.localStorage.getItem('terranrts.profile') === 'touch', 'override touch не сохранён');
+  game.profile.set('desktop');
+  assert(globalThis.localStorage.getItem('terranrts.profile') === 'desktop', 'override desktop не сохранён');
+  game.profile.set('auto');
+  assert(globalThis.localStorage.getItem('terranrts.profile') === 'auto', 'override auto не сохранён');
+  assert(game.profile.effective() === 'desktop', 'после auto базис сима должен быть desktop');
+  pass('T15 override профиля persisted + auto возвращает базис');
+} catch (e) { fail('T15', e); }
+
+// ---------- T16: runtime-сигналы профиля (pointer-события window) ----------
+try {
+  assert(game.profile.effective() === 'desktop', 'базис сима — desktop');
+  fireWin('pointerdown', { pointerType: 'touch' });
+  assert(game.profile.effective() === 'touch', 'тач-сигнал не поднял профиль');
+  assert(document.documentElement.getAttribute('data-input') === 'touch', 'data-input не обновлён сигналом');
+  fireWin('pointerdown', { pointerType: 'mouse' });
+  assert(game.profile.effective() === 'desktop', 'мышиный сигнал не поднял десктоп');
+  // Односторонняя политика: с десктопа тач больше не поднимается (без маяты).
+  fireWin('pointerdown', { pointerType: 'touch' });
+  assert(game.profile.effective() === 'desktop', 'односторонняя политика сломана: тач вернул');
+  // При override сигналы игнорируются.
+  game.profile.set('touch');
+  fireWin('pointerdown', { pointerType: 'mouse' });
+  assert(game.profile.effective() === 'touch', 'override не защитил от сигнала');
+  game.profile.set('auto');
+  assert(game.profile.effective() === 'desktop', 'auto должен вернуться к накопленному сигналу (desktop)');
+  pass('T16 runtime-сигналы: тач/мышь, односторонняя политика, гвард override');
+} catch (e) { fail('T16', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length

@@ -122,6 +122,7 @@ globalThis.localStorage = {
 globalThis.document = {
   hidden: false,
   body: new FakeEl('body'),
+  documentElement: new FakeEl('html'), // U: profile.js ставит game-touch/game-desktop на <html>
   getElementById: (id) => {
     if (!elCache[id]) {
       const isCanvas = id === 'game-canvas' || id === 'minimap';

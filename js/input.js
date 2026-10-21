@@ -500,6 +500,14 @@ export function clickSelect(game, st, w, shift) {
 // Двойной тап по пустому — снять выделение. Без выделения — как было:
 // осмотр врага, иначе пустой тап.
 function touchTap(game, st, w, dbl) {
+  // Пакет U: тап в режиме атака-движения — приказ и выход из режима
+  // (зеркало ЛКМ-пути десктопа). Драг/пинч режим не съедают: тапили — значит приказ.
+  if (st.attackMoveMode) {
+    st.attackMoveMode = false;
+    game.canvas.style.cursor = '';
+    game.hooks.issueAttackMove(w.x, w.y);
+    return;
+  }
   const ownUnit = unitAt(st, w.x, w.y, 'player');
   if (ownUnit) {
     if (dbl) doubleSelect(game, st, w);

@@ -413,7 +413,7 @@ try {
   assert(JSON.stringify(Object.keys(ru.ui.process)) === JSON.stringify(Object.keys(en.ui.process)), 'структура ui.process ru/en расходится');
   assert(ru.ui.process.refundLabel.includes('{n}') && en.ui.process.refundLabel.includes('{n}'), 'placeholder возврата пропал');
   assert(ru.ui.cmds.shortageHuman.includes('{n}') && en.ui.cmds.shortageHuman.includes('{n}'), 'placeholder дефицита пропал');
-  assert(cfg.GAME_VERSION === 'O', 'версия должна быть O');
+  assert(cfg.GAME_VERSION === 'P', 'версия должна быть P');
   pass('P1.8 локали 1:1, placeholders сохранены, бейдж O');
 } catch (e) { fail('P1.8 locale/version', e); }
 
