@@ -571,6 +571,13 @@ function setLandingPageActive(active, { resetScroll = false } = {}) {
   }
 }
 
+function updateModalChrome() {
+  if (!els || !document.body || !document.body.classList) return;
+  const open = [els.missionOverlay, els.briefOverlay, els.codexOverlay, els.endOverlay]
+    .some((overlay) => overlay && !overlay.classList.contains('hidden'));
+  document.body.classList.toggle('screen-modal-open', open);
+}
+
 function updateCampaignStartLabel() {
   if (!els || !els.startBtn) return;
   const progress = loadProgress();
@@ -629,6 +636,12 @@ export function initUI(game) {
   els = {
     canvas: $('game-canvas'),
     minimap: $('minimap'),
+    minimapBox: $('minimap-box'),
+    placementCancel: $('placement-cancel'),
+    zoomControls: $('zoom-controls'),
+    zoomIn: $('zoom-in'),
+    zoomOut: $('zoom-out'),
+    zoomValue: $('zoom-value'),
     minerals: $('res-minerals'),
     supply: $('res-supply'),
     supplyDot: $('res-supply-dot'),
@@ -641,6 +654,7 @@ export function initUI(game) {
     panelPosBtn: $('panel-pos'),
     panelHideBtn: $('panel-hide'),
     panelShow: $('panel-show'),
+    panelCompactToggle: $('panel-compact-toggle'),
     selInfo: $('sel-info'),
     cmdGrid: $('cmd-grid'),
     toasts: $('toasts'),
@@ -648,6 +662,7 @@ export function initUI(game) {
     missionOverlay: $('mission-overlay'),
     missionList: $('mission-list'),
     briefOverlay: $('brief-overlay'),
+    briefGo: $('btn-brief-go'),
     briefBadge: $('brief-badge'),
     briefTitle: $('brief-title'),
     briefPlace: $('brief-place'),
@@ -660,6 +675,8 @@ export function initUI(game) {
     endReason: $('end-reason'),
     endStats: $('end-stats'),
     endEpilogue: $('end-epilogue'),
+    endHomeBtn: $('btn-end-home'),
+    endNextBtn: $('btn-next'),
     codexOverlay: $('codex-overlay'),
     codexTabs: $('codex-tabs'),
     codexBody: $('codex-body'),
@@ -675,15 +692,19 @@ export function initUI(game) {
   $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
+    updateModalChrome();
     setLandingPageActive(true);
   });
   $('btn-codex').addEventListener('click', () => {
     setLandingPageActive(false);
     showCodex();
     els.codexOverlay.classList.remove('hidden');
+    updateModalChrome();
+    if (els.codexTabs.firstChild && els.codexTabs.firstChild.focus) els.codexTabs.firstChild.focus({ preventScroll: true });
   });
   $('btn-codex-back').addEventListener('click', () => {
     els.codexOverlay.classList.add('hidden');
+    updateModalChrome();
     setLandingPageActive(true);
   });
   // Брифинг: «В бой!».
@@ -693,6 +714,8 @@ export function initUI(game) {
   $('btn-brief-back').addEventListener('click', () => {
     els.briefOverlay.classList.add('hidden');
     els.missionOverlay.classList.remove('hidden');
+    updateModalChrome();
+    if (els.missionList.firstChild && els.missionList.firstChild.focus) els.missionList.firstChild.focus({ preventScroll: true });
   });
 
   updateCampaignStartLabel();
@@ -704,17 +727,39 @@ export function initUI(game) {
     updateCampaignStartLabel();
     game.sound.click();
   });
+  els.endHomeBtn.addEventListener('click', () => {
+    hideEnd();
+    game.toMenu();
+  });
   els.againBtn.addEventListener('click', () => {
-    els.endOverlay.classList.add('hidden');
-    if (pendingNext) { showBrief(game, pendingNext); pendingNext = null; }
-    else game.restart();
+    pendingNext = null;
+    hideEnd();
+    game.restart();
+  });
+  els.endNextBtn.addEventListener('click', () => {
+    const next = pendingNext;
+    if (!next) return;
+    pendingNext = null;
+    hideEnd();
+    showBrief(game, next);
   });
   els.restart.addEventListener('click', () => game.restart());
   els.exit.addEventListener('click', () => game.toMenu());
   els.panelPosBtn.addEventListener('click', () => { cyclePanelPos(); game.resize(); game.sound.click(); });
   els.panelHideBtn.addEventListener('click', () => { setPanelHidden(true); game.resize(); game.sound.click(); });
   els.panelShow.addEventListener('click', () => { setPanelHidden(false); game.resize(); game.sound.click(); });
+  els.panelCompactToggle.addEventListener('click', () => {
+    setPanelExpandedInShortLandscape(!panelExpandedInShortLandscape);
+    game.resize(); game.sound.click();
+  });
+  els.placementCancel.addEventListener('click', () => game.hooks.cancelPlacement());
+  els.zoomIn.addEventListener('click', () => zoomByButton(game, 1.2));
+  els.zoomOut.addEventListener('click', () => zoomByButton(game, 1 / 1.2));
   applyPanelPrefs();
+  syncPanelCompactButton();
+  installPanelBreakpointListener(game);
+  resizeMinimap(game);
+  refreshLayout(game);
   els.pause.addEventListener('click', () => game.togglePause());
   els.sound.addEventListener('click', () => game.toggleSound());
 
@@ -732,31 +777,43 @@ export function initUI(game) {
     langSel.addEventListener('change', () => setLocale(langSel.value));
   }
 
-  // Миникарта: ЛКМ — прыжок/перетаскивание камеры, ПКМ — приказ.
+  // Mini-map: tap/click jumps, pointer-captured drag pans; RMB still issues an order.
   const mm = els.minimap;
   const mmWorld = (e) => {
     const r = mm.getBoundingClientRect();
-    // C/П7: масштаб миникарты — от размера карты (фолбэк 64 до старта).
     const mp = (game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
-    // G.6: обратное преобразование letterbox-превью (minimapView):
-    // CSS-px → bitmap канваса → мир, с клампом в границы карты.
-    const view = minimapView(mp);
-    const bx = (e.clientX - r.left) * (view.S / r.width);
-    const by = (e.clientY - r.top) * (view.S / r.height);
+    const view = minimapView(mp, mm);
+    const bx = (e.clientX - r.left) * (view.width / Math.max(1, r.width));
+    const by = (e.clientY - r.top) * (view.height / Math.max(1, r.height));
     return {
       x: Math.max(0, Math.min(mp.pxW, (bx - view.ox) / view.k)),
       y: Math.max(0, Math.min(mp.pxH, (by - view.oy) / view.k)),
     };
   };
-  mm.addEventListener('mousedown', (e) => {
+  let minimapPointer = null;
+  mm.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button === 2) {
+      const w = mmWorld(e); game.hooks.issueRMB(w.x, w.y); return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    minimapPointer = { id: e.pointerId, pointerType: e.pointerType };
+    if (mm.setPointerCapture) mm.setPointerCapture(e.pointerId);
+    const w = mmWorld(e);
+    game.hooks.centerCamera(w.x, w.y);
+  }, { passive: false });
+  mm.addEventListener('pointermove', (e) => {
+    if (!minimapPointer || minimapPointer.id !== e.pointerId) return;
+    if (minimapPointer.pointerType === 'mouse' && !(e.buttons & 1)) return;
     e.preventDefault();
     const w = mmWorld(e);
-    if (e.button === 0) game.hooks.centerCamera(w.x, w.y);
-    else if (e.button === 2) game.hooks.issueRMB(w.x, w.y);
-  });
-  mm.addEventListener('mousemove', (e) => {
-    if (e.buttons & 1) { const w = mmWorld(e); game.hooks.centerCamera(w.x, w.y); }
-  });
+    game.hooks.centerCamera(w.x, w.y);
+  }, { passive: false });
+  const endMinimapPointer = (e) => {
+    if (minimapPointer && minimapPointer.id === e.pointerId) minimapPointer = null;
+  };
+  mm.addEventListener('pointerup', endMinimapPointer);
+  mm.addEventListener('pointercancel', endMinimapPointer);
   mm.addEventListener('contextmenu', (e) => e.preventDefault());
   setLandingPageActive(true);
 }
@@ -767,6 +824,7 @@ export function initUI(game) {
 export function showMissions(game) {
   setLandingPageActive(false);
   els.missionOverlay.classList.remove('hidden');
+  updateModalChrome();
   const unlocked = loadProgress();
   els.missionList.innerHTML = ''; // очистка (переводы в карточки идут через DOM)
   let lastAct = null;
@@ -859,6 +917,8 @@ export function showBrief(game, m) {
   }
   els.briefObjective.textContent = objLine;
   els.briefOverlay.classList.remove('hidden');
+  updateModalChrome();
+  if (els.briefGo && els.briefGo.focus) els.briefGo.focus({ preventScroll: true });
 }
 
 // Части кодекса → безопасный DOM (setRich: только <b>/<br> в переводах).
@@ -933,10 +993,90 @@ export function setVersionBadge(text) {
 // ------------------------------------------------------------
 const PANEL_KEY = 'terranrts.panel';
 const PANEL_POS = ['bottom', 'left', 'right', 'top'];
+const SHORT_LANDSCAPE = '(orientation: landscape) and (max-height: 520px)';
 let panelPos = 'bottom', panelHidden = false;
+let panelExpandedInShortLandscape = false;
+let minimapLayoutKey = '';
+
+function isShortLandscape() {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.matchMedia === 'function') return window.matchMedia(SHORT_LANDSCAPE).matches;
+  return Number(window.innerWidth) > Number(window.innerHeight) && Number(window.innerHeight) <= 520;
+}
+function canCompactPanel() {
+  return isShortLandscape() && !panelHidden && panelPos !== 'left' && panelPos !== 'right';
+}
+function syncPanelCompactButton() {
+  if (!els || !els.panelCompactToggle) return;
+  const compact = canCompactPanel() && !panelExpandedInShortLandscape;
+  const label = compact ? t('ui.panel.expand') : t('ui.panel.collapse');
+  const title = compact ? t('ui.panel.expandTitle') : t('ui.panel.collapseTitle');
+  els.panelCompactToggle.textContent = label;
+  els.panelCompactToggle.title = title;
+  els.panelCompactToggle.setAttribute('aria-label', title);
+  els.panelCompactToggle.setAttribute('aria-expanded', String(!compact));
+  document.body.classList.toggle('panel-compact-expanded', canCompactPanel() && panelExpandedInShortLandscape);
+}
+function setPanelExpandedInShortLandscape(expanded) {
+  panelExpandedInShortLandscape = !!expanded && canCompactPanel();
+  syncPanelCompactButton();
+}
+function installPanelBreakpointListener(game) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+  const mq = window.matchMedia(SHORT_LANDSCAPE);
+  const onChange = () => {
+    panelExpandedInShortLandscape = false;
+    syncPanelCompactButton();
+    game.resize();
+  };
+  if (mq.addEventListener) mq.addEventListener('change', onChange);
+  else if (mq.addListener) mq.addListener(onChange);
+}
 
 export function getPanelPos() { return panelPos; }
 export function isPanelHidden() { return panelHidden; }
+
+// T10: the minimap canvas/slot share the current map aspect and actual bitmap size.
+export function resizeMinimap(game) {
+  if (!els || !els.minimap || !els.minimapBox) return;
+  const map = (game && game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
+  const aspect = Math.max(0.25, Math.min(4, map.pxW / map.pxH));
+  const shortCompact = canCompactPanel() && !panelExpandedInShortLandscape;
+  let maxW, maxH;
+  if (shortCompact) { maxW = 180; maxH = 96; }
+  else if (panelPos === 'left' || panelPos === 'right') { maxW = 148; maxH = 148; }
+  else if (Number(window.innerWidth) <= 720) {
+    maxW = Math.min(150, Math.max(116, Number(window.innerWidth) * 0.36));
+    maxH = 150;
+  } else { maxW = 168; maxH = 168; }
+
+  const cssW = Math.max(64, Math.min(maxW, maxH * aspect));
+  const cssH = cssW / aspect;
+  const boxW = Math.round(cssW) + 2;
+  const boxH = Math.round(cssH) + 2;
+  const boxStyleW = boxW + 'px', boxStyleH = boxH + 'px';
+  const dpr = Math.max(1, Math.min(2, Number(window.devicePixelRatio) || 1));
+  const bitmapW = Math.max(1, Math.round((boxW - 2) * dpr));
+  const bitmapH = Math.max(1, Math.round((boxH - 2) * dpr));
+  const key = [map.pxW, map.pxH, boxStyleW, boxStyleH, bitmapW, bitmapH, panelPos, shortCompact].join('|');
+  if (key === minimapLayoutKey) return;
+  minimapLayoutKey = key;
+  els.minimapBox.style.width = boxStyleW;
+  els.minimapBox.style.height = boxStyleH;
+  if (els.minimap.width !== bitmapW) els.minimap.width = bitmapW;
+  if (els.minimap.height !== bitmapH) els.minimap.height = bitmapH;
+  els.minimap.setAttribute('aria-label', t('ui.minimap.label'));
+}
+
+export function refreshLayout(game) {
+  if (!els) return;
+  resizeMinimap(game);
+  updatePlacementCancel(game);
+  updateZoomControls(game);
+  updatePauseOverlay(game);
+  updateToastPosition(game);
+}
+
 export function getPanelInsets() {
   if (panelHidden) return { top: 0, bottom: 0, left: 0, right: 0 };
   // E.1 → G.6: инсеты — из реального размера панели, а не из зашитых
@@ -964,8 +1104,18 @@ function applyPanelClass() {
   cl.remove('panel-left', 'panel-right', 'panel-top', 'panel-hidden');
   if (panelPos !== 'bottom') cl.add('panel-' + panelPos);
   if (panelHidden) cl.add('panel-hidden');
-  if (els && els.panelPosBtn) els.panelPosBtn.textContent = t('ui.panel.posState', { where: t('ui.panel.posNames.' + panelPos) });
-  if (els && els.panelShow) els.panelShow.textContent = t('ui.panel.show');
+  if (els && els.panelPosBtn) {
+    const title = t('ui.panel.posTitle');
+    els.panelPosBtn.textContent = t('ui.panel.posState', { where: t('ui.panel.posNames.' + panelPos) });
+    els.panelPosBtn.title = title;
+    els.panelPosBtn.setAttribute('aria-label', els.panelPosBtn.textContent + '. ' + title);
+  }
+  if (els && els.panelShow) {
+    els.panelShow.textContent = t('ui.panel.show');
+    els.panelShow.title = t('ui.panel.showTitle');
+    els.panelShow.setAttribute('aria-label', t('ui.panel.showTitle'));
+  }
+  syncPanelCompactButton();
 }
 export function applyPanelPrefs() {
   try {
@@ -973,11 +1123,13 @@ export function applyPanelPrefs() {
     if (PANEL_POS.includes(p.pos)) panelPos = p.pos;
     panelHidden = !!p.hidden;
   } catch (e) { /* битый JSON — дефолты */ }
+  panelExpandedInShortLandscape = false;
   applyPanelClass();
 }
 export function setPanelPos(pos) {
   if (!PANEL_POS.includes(pos)) return;
   panelPos = pos;
+  panelExpandedInShortLandscape = false;
   savePanelPrefs();
   applyPanelClass();
 }
@@ -986,13 +1138,28 @@ export function cyclePanelPos() {
 }
 export function setPanelHidden(h) {
   panelHidden = !!h;
+  if (panelHidden) panelExpandedInShortLandscape = false;
   savePanelPrefs();
   applyPanelClass();
 }
 export function togglePanel() { setPanelHidden(!panelHidden); }
-export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
-export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
-export function hideEnd() { els.endOverlay.classList.add('hidden'); }
+export function hideMissions() {
+  if (els && els.missionOverlay) els.missionOverlay.classList.add('hidden');
+  updateModalChrome();
+}
+export function hideBrief() {
+  if (els && els.briefOverlay) els.briefOverlay.classList.add('hidden');
+  updateModalChrome();
+}
+export function hideCodex() {
+  if (els && els.codexOverlay) els.codexOverlay.classList.add('hidden');
+  updateModalChrome();
+}
+export function hideEnd() {
+  if (els && els.endOverlay) els.endOverlay.classList.add('hidden');
+  pendingNext = null;
+  updateModalChrome();
+}
 
 export function toast(msg, kind = 'info') {
   if (!els) return;
@@ -1019,6 +1186,20 @@ function fmtElapsed(sec) {
   return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 }
 
+function syncEndActions() {
+  if (!els) return;
+  const home = t('ui.end.home');
+  const again = t('ui.end.again');
+  els.endHomeBtn.textContent = home;
+  els.endHomeBtn.setAttribute('aria-label', home);
+  els.againBtn.textContent = again;
+  els.againBtn.setAttribute('aria-label', again);
+  els.endNextBtn.hidden = !pendingNext;
+  els.endNextBtn.disabled = !pendingNext;
+  els.endNextBtn.textContent = t('ui.end.next');
+  els.endNextBtn.setAttribute('aria-label', t('ui.end.next'));
+}
+
 export function showEnd(win, stats, opts = {}) {
   els.endTitle.textContent = win ? t('ui.end.win') : t('ui.end.lose');
   els.endTitle.className = win ? 'win' : 'lose';
@@ -1043,17 +1224,32 @@ export function showEnd(win, stats, opts = {}) {
   row(t('ui.end.statsLosses'), stats.losses);
   row(message('mined', opts.faction), stats.mined);
   pendingNext = opts.next || null;
-  els.againBtn.textContent = opts.next ? t('ui.end.next') : t('ui.end.again');
+  syncEndActions();
   els.endOverlay.classList.remove('hidden');
+  updateModalChrome();
+  if (els.endHomeBtn && els.endHomeBtn.focus) els.endHomeBtn.focus({ preventScroll: true });
 }
 
 // Сброс кэша панели при новой партии — заставит её перестроиться.
 export function resetPanel() { sig = ''; dyn = null; }
 export function setPausedUI(p) {
+  if (!els) return;
+  const label = p ? t('ui.topbar.resume') : t('ui.topbar.pause');
   els.pauseOverlay.classList.toggle('hidden', !p);
-  els.pause.textContent = p ? t('ui.topbar.resume') : t('ui.topbar.pause');
+  els.pause.textContent = label;
+  els.pause.title = label;
+  els.pause.setAttribute('aria-label', label);
+  els.pause.classList.toggle('is-resume', !!p);
+  if (uiGame) updatePauseOverlay(uiGame);
 }
-export function setSoundUI(muted) { els.sound.textContent = muted ? t('ui.topbar.soundOff') : t('ui.topbar.sound'); }
+export function setSoundUI(muted) {
+  if (!els) return;
+  const label = muted ? t('ui.topbar.soundOff') : t('ui.topbar.sound');
+  els.sound.textContent = label;
+  els.sound.title = label;
+  els.sound.setAttribute('aria-label', label);
+  els.sound.classList.toggle('is-muted', !!muted);
+}
 
 // Клавиатурные хоткеи панели: нажимаем «виртуальную кнопку».
 export function handleHotkey(code) {
@@ -1070,6 +1266,12 @@ export function handleHotkey(code) {
 export function update(game) {
   const st = game.state;
   if (!st || !els) return;
+
+  resizeMinimap(game);
+  updatePlacementCancel(game);
+  updateZoomControls(game);
+  updatePauseOverlay(game);
+  updateToastPosition(game);
 
   // Верхняя панель.
   els.minerals.textContent = Math.floor(st.minerals.player);
@@ -1098,6 +1300,88 @@ export function update(game) {
   refreshDynamic(game, sel);
 }
 
+function updatePlacementCancel(game) {
+  if (!els || !els.placementCancel) return;
+  const st = game.state;
+  const pl = st && st.placing;
+  if (!game.started || !pl || st.gameOver || pl.tx <= -900 || pl.ty <= -900) {
+    els.placementCancel.hidden = true;
+    return;
+  }
+  const cfg = BUILDINGS[pl.type];
+  if (!cfg) { els.placementCancel.hidden = true; return; }
+  const topLeft = game.worldToScreen(pl.tx * TILE, pl.ty * TILE);
+  const topRight = game.worldToScreen((pl.tx + cfg.w) * TILE, pl.ty * TILE);
+  const bottomRight = game.worldToScreen((pl.tx + cfg.w) * TILE, (pl.ty + cfg.h) * TILE);
+  const minX = (game.uiLeft || 0) + 4;
+  const minY = (game.uiTop || 0) + 4;
+  const maxX = game.cssW - (game.uiRight || 0) - 52;
+  const maxY = game.cssH - (game.uiBottom || 0) - 52;
+  let x = topRight.x + 6;
+  let y = topLeft.y - 52;
+  if (x > maxX) x = topLeft.x - 54;
+  if (y < minY) y = bottomRight.y + 4;
+  x = Math.max(minX, Math.min(Math.max(minX, maxX), x));
+  y = Math.max(minY, Math.min(Math.max(minY, maxY), y));
+  els.placementCancel.style.left = Math.round(x) + 'px';
+  els.placementCancel.style.top = Math.round(y) + 'px';
+  els.placementCancel.hidden = false;
+  const label = t('ui.placement.cancel');
+  els.placementCancel.title = t('ui.placement.cancelTitle');
+  els.placementCancel.setAttribute('aria-label', label);
+  els.placementCancel.setAttribute('aria-hidden', 'false');
+}
+
+function updateZoomControls(game) {
+  if (!els || !els.zoomControls) return;
+  const st = game.state;
+  const visible = !!(game.started && st && !st.gameOver);
+  els.zoomControls.hidden = !visible;
+  if (!visible) return;
+  const width = els.zoomControls.offsetWidth || 152;
+  const minX = (game.uiLeft || 0) + 8;
+  const maxX = game.cssW - (game.uiRight || 0) - width - 8;
+  const left = Math.max(4, Math.min(Math.max(4, maxX), minX));
+  const minY = (game.uiTop || 0) + 8;
+  const maxY = game.cssH - (game.uiBottom || 0) - 56;
+  const top = Math.max(4, Math.min(Math.max(4, maxY), minY));
+  els.zoomControls.style.left = Math.round(left) + 'px';
+  els.zoomControls.style.top = Math.round(top) + 'px';
+  const label = t('ui.zoom.label');
+  els.zoomControls.setAttribute('aria-label', label);
+  els.zoomIn.title = t('ui.zoom.in');
+  els.zoomIn.setAttribute('aria-label', t('ui.zoom.in'));
+  els.zoomOut.title = t('ui.zoom.out');
+  els.zoomOut.setAttribute('aria-label', t('ui.zoom.out'));
+  const zoomText = Math.round((st.camera.z || 1) * 100) + '%';
+  if (els.zoomValue.textContent !== zoomText) els.zoomValue.textContent = zoomText;
+}
+
+function zoomByButton(game, factor) {
+  const st = game.state;
+  if (!st) return;
+  const x = (game.uiLeft || 0) + (game.cssW - (game.uiLeft || 0) - (game.uiRight || 0)) / 2;
+  const y = (game.uiTop || 0) + (game.cssH - (game.uiTop || 0) - (game.uiBottom || 0)) / 2;
+  game.setZoom((st.camera.z || 1) * factor, x, y);
+  game.sound.click();
+}
+
+function updatePauseOverlay(game) {
+  if (!els || !els.pauseOverlay || !game || !game.paused) return;
+  els.pauseOverlay.style.top = Math.max(0, game.uiTop || 0) + 'px';
+  els.pauseOverlay.style.bottom = Math.max(0, game.uiBottom || 0) + 'px';
+  els.pauseOverlay.style.left = Math.max(0, game.uiLeft || 0) + 'px';
+  els.pauseOverlay.style.right = Math.max(0, game.uiRight || 0) + 'px';
+}
+
+function updateToastPosition(game) {
+  if (!els || !els.toasts || !game) return;
+  const bottom = panelPos === 'bottom' && !panelHidden ? (game.uiBottom || 0) + 12 : 12;
+  const centerX = (game.uiLeft || 0) + (game.cssW - (game.uiLeft || 0) - (game.uiRight || 0)) / 2;
+  els.toasts.style.bottom = Math.max(12, bottom) + 'px';
+  els.toasts.style.left = Math.round(centerX) + 'px';
+}
+
 function rebuildPanel(game, sel) {
   const st = game.state;
   const previousDyn = dyn;
@@ -1112,23 +1396,20 @@ function rebuildPanel(game, sel) {
   els.cmdGrid.innerHTML = '';
   els.selInfo.innerHTML = '';
 
-  // Режим размещения здания.
+  // Placement keeps a concise hint while the live build palette remains available.
   if (st.placing) {
     const hint = document.createElement('div');
     hint.className = 'hint';
     setRich(hint, t('ui.hints.buildMode'));
     els.selInfo.appendChild(hint);
-    return;
-  }
-  if (!sel.length) {
+  } else if (!sel.length) {
     const hint = document.createElement('div');
     hint.className = 'hint';
     setRich(hint, t('ui.hints.select'));
     els.selInfo.appendChild(hint);
     return;
-  }
-
-  const first = sel[0];
+  } else {
+    const first = sel[0];
 
   // --- Выделено здание ---
   if (first.kind === 'building') {
@@ -1227,18 +1508,20 @@ function rebuildPanel(game, sel) {
     sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: first.cfg.dmg, cd: first.cfg.cooldown });
     box.appendChild(sub);
     els.selInfo.appendChild(box);
+    }
   }
 
   // --- Кнопки команд (от игры — контекстный список) ---
-  // Меню стройки — 8 кнопок: в компактной сетке 2×4 они гарантированно
-  // помещаются в панель (обычные ряды по 82px обрезали всё ниже второго).
-  els.cmdGrid.classList.toggle('compact', !!st.buildMenu && !st.placing);
+  // Build/placement palettes use a denser grid without shrinking touch targets.
+  els.cmdGrid.classList.toggle('compact', !!st.buildMenu || !!st.placing);
   const cmds = game.getCommands();
   for (const c of cmds) {
     const btn = document.createElement('button');
     btn.className = 'cmd';
+    if (c.selected) btn.classList.add('is-selected');
     btn.dataset.code = c.code;
     btn.setAttribute('aria-describedby', 'cmd-tip');
+    if (c.selected !== undefined) btn.setAttribute('aria-pressed', String(!!c.selected));
     btn.appendChild(iconEl(c.icon));
     const label = document.createElement('span');
     label.className = 'cmd-label';
@@ -1853,10 +2136,15 @@ export function refreshLocale() {
   applyStaticDOM(); // Маркеры index.html (меню, экраны, кнопки).
   updateCampaignStartLabel();
   renderQuickBattleMenu();
+  syncEndActions();
+  syncPanelCompactButton();
+  if (els.minimap) els.minimap.setAttribute('aria-label', t('ui.minimap.label'));
+  updateModalChrome();
   if (uiGame) {
     setPausedUI(!!uiGame.paused);
     if (uiGame.sound) setSoundUI(!!uiGame.sound.muted);
     applyPanelClass();
+    refreshLayout(uiGame);
     resetPanel(); // панель команд пересоберётся на следующем кадре
     if (!els.missionOverlay.classList.contains('hidden')) showMissions(uiGame);
     if (!els.briefOverlay.classList.contains('hidden') && pendingMission) showBrief(uiGame, pendingMission);
@@ -1867,31 +2155,28 @@ export function refreshLocale() {
 // ------------------------------------------------------------
 // Миникарта: террейн-кэш + точки сущностей + туман + рамка камеры.
 // ------------------------------------------------------------
-// G.6: превращение миникарты — ВСЯ карта вписывается в квадрат канваса
-// с сохранением пропорций (letterbox): k = min(S/pxW, S/pxH), карта
-// центрируется смещением (ox, oy). Неквадратные карты (G.5: wide/tall)
-// больше не срезаются снизу и не растягиваются; край карты виден рамкой.
-// Одно и то же преобразование используют рендер (drawMinimap) и клики
-// (mmWorld) — превью и ввод всегда согласованы.
-export function minimapView(map) {
+// T10: rendering and hit-testing share the live bitmap dimensions. CSS sizes the
+// canvas slot to the map aspect; a tolerance-sized residual letterbox is harmless.
+export function minimapView(map, canvas = (els && els.minimap)) {
   const pxW = (map && map.pxW) || WORLD_W;
   const pxH = (map && map.pxH) || WORLD_H;
-  const S = 176; // bitmap #minimap (index.html)
-  const k = Math.min(S / pxW, S / pxH);
-  return { S, k, ox: (S - pxW * k) / 2, oy: (S - pxH * k) / 2 };
+  const width = Math.max(1, Number(canvas && canvas.width) || pxW);
+  const height = Math.max(1, Number(canvas && canvas.height) || pxH);
+  const k = Math.min(width / pxW, height / pxH);
+  return { width, height, k, ox: (width - pxW * k) / 2, oy: (height - pxH * k) / 2 };
 }
 
 export function drawMinimap(game) {
   const st = game.state;
   if (!st || !els) return;
+  resizeMinimap(game);
   const g = els.minimap.getContext('2d');
-  const { S, k, ox, oy } = minimapView(st.map);
+  const { width, height, k, ox, oy } = minimapView(st.map, els.minimap);
   const mw = st.map.pxW * k, mh = st.map.pxH * k;
   g.imageSmoothingEnabled = false;
-  // Поля за краем карты (letterbox) — глухой тёмный фон.
-  g.clearRect(0, 0, S, S);
+  g.clearRect(0, 0, width, height);
   g.fillStyle = '#0a161c';
-  g.fillRect(0, 0, S, S);
+  g.fillRect(0, 0, width, height);
   g.drawImage(st.map.miniCanvas, ox, oy, mw, mh);
 
   // Кристаллы (только разведанные). F.1: яркость — по доле остатка.

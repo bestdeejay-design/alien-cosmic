@@ -340,6 +340,9 @@ export class Game {
     this.canvas.style.width = this.cssW + 'px';
     this.canvas.style.height = this.cssH + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Aspect-aware minimap sizing may change panel geometry; update it before
+    // reading the actual DOM insets so camera clamps use the final layout.
+    ui.resizeMinimap(this);
     // Размеры панелей UI — чтобы краевой скролл не срабатывал над ними.
     // Инсеты командной панели — из её положения E.1 (DOM-метрики врут
     // при боковых положениях: offsetHeight там во весь экран).
@@ -349,6 +352,7 @@ export class Game {
     this.uiLeft = ins.left;
     this.uiRight = ins.right;
     this.clampCam();
+    ui.refreshLayout(this);
   }
 
   // Видимый размер мира в пикселях при текущем зуме.
@@ -424,6 +428,7 @@ export class Game {
     ui.hideEnd();
     ui.hideMissions();
     ui.hideBrief();
+    ui.hideCodex();
     ui.showStart();
     this.sound.click();
   }
@@ -436,7 +441,20 @@ export class Game {
     const sel = st.selection.filter((e) => !e.dead);
     const cmds = [];
     if (st.placing) {
-      cmds.push({ code: 'Escape', icon: 'stop', label: t('ui.cmds.cancel'), on: () => { st.placing = null; } });
+      cmds.push({
+        code: 'KeyX', icon: 'stop', label: t('ui.placement.cancel'),
+        on: () => this.hooks.cancelPlacement(),
+      });
+      for (const [code, type] of BUILD_ORDER) {
+        if (!isUnlocked(this.mission, type)) continue;
+        const cfg = BUILDINGS[type];
+        cmds.push({
+          code, icon: st.factions.player === 'alien' ? 'a_' + type : type,
+          label: fname(cfg, st.factions.player), cost: cfg.cost,
+          tip: buildingTip(type, st.factions.player), selected: st.placing.type === type,
+          on: () => this.hooks.beginPlace(type),
+        });
+      }
       return cmds;
     }
     const b = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
@@ -563,8 +581,26 @@ export class Game {
       issueRMB: (wx, wy) => this.issueRMB(wx, wy),
 
       beginPlace: (type) => {
-        st().buildMenu = false;
-        st().placing = { type, tx: -999, ty: -999 };
+        const s = st();
+        s.buildMenu = false;
+        if (s.placing) {
+          s.placing.type = type;
+          if (s.placing.tx > -900) {
+            const cfg = BUILDINGS[type];
+            s.placing.tx = Math.max(0, Math.min(s.map.w - cfg.w, s.placing.tx));
+            s.placing.ty = Math.max(0, Math.min(s.map.h - cfg.h, s.placing.ty));
+          }
+        } else {
+          s.placing = { type, tx: -999, ty: -999 };
+        }
+        this.sound.click();
+      },
+
+      cancelPlacement: () => {
+        const s = st();
+        s.placing = null;
+        s.wallDrag = null;
+        s.buildMenu = false;
         this.sound.click();
       },
 
