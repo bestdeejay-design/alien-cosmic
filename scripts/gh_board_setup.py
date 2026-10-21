@@ -39,10 +39,13 @@ def gql(query, variables=None):
     with urllib.request.urlopen(r) as res:
         d = json.load(res)
     if d.get('errors'):
-        msgs = '; '.join(e.get('message', '')[:160] for e in d['errors'])
-        if 'INSUFFICIENT_SCOPES' in msgs:
-            sys.exit('НЕТ СКОУПА project. Добавь его: https://github.com/settings/tokens → '
-                     'Regenerate token → отметить project (repo/workflow оставить). Потом перезапусти.')
+        msgs = '; '.join((e.get('message', '') + ' ' + e.get('type', ''))[:160] for e in d['errors'])
+        if 'scopes' in msgs.lower() or 'INSUFFICIENT_SCOPES' in msgs:
+            sys.exit('\nНЕТ СКОУПА project у токена.\nИсправление (1 минута):\n'
+                     '  1. https://github.com/settings/tokens → твой токен → Regenerate token\n'
+                     '  2. отметить галочку «project» (repo и workflow оставить)\n'
+                     '  3. обновить токен в remote этого репо (git remote set-url origin https://<НОВЫЙ_ТОКЕН>@github.com/bestdeejay-design/alien-cosmic.git)\n'
+                     '  4. сказать мне «токен обновил» — я запущу борд\nИли создать борд руками: github.com → Projects → New project.')
         sys.exit('GraphQL error: ' + msgs)
     return d['data']
 
