@@ -145,6 +145,88 @@ const browser = await chromium.launch();
   await bootBattle(page);
   log('=== Бой (десктоп): инвариант ===');
   await checkAudit(page, 'battle-desktop', false, ['#sel-info']);
+
+  // Пакет S, инвариант S8 (перманентная проба репро zoom_buildings):
+  // при z=0.5 здание ПРАВЕЕ экранной границы W (но в пределах vw=W/z)
+  // обязано рисоваться — клиллинг зданий по vw/vh, не по W/H.
+  log('=== Пакет S: клиллинг зданий при z=0.5 (S8-инвариант) ===');
+  await page.evaluate(async () => {
+    const g = window.game, st = g.state, TILE = 32;
+    const Bm = await import('./js/buildings.js');
+    st.minerals.player = 9000;
+    const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc' && !b.dead);
+    // недострой-депо у базы (контроль слева)
+    const putNear = () => {
+      for (let d = 4; d < 12; d++) for (const [dx, dy] of [[d, 6], [-d, 6], [6, d], [6, -d]]) {
+        const tx = cc.tx + dx, ty = cc.ty + dy;
+        if (Bm.canPlace(st.map, tx, ty, 3, 2)) return Bm.placeBuildingCmd(st, 'player', 'depot', tx, ty, []);
+      }
+      return null;
+    };
+    window.__depotL = putNear();
+    // камера/зум СНАЧАЛА — мёртвый сектор ищем от фактической камеры
+    st.camera.z = 0.5;
+    st.camera.x = 0; st.camera.y = (cc.ty - 4) * TILE;
+    g.clampCam();
+    const z = st.camera.z || 1, W = g.cssW, camX = st.camera.x;
+    // депо строго в мёртвом секторе старого клиллинга (cam.x+W, cam.x+vw)
+    let R = null;
+    for (let ty = 3; ty < 58 && !R; ty++) for (let tx = 2; tx < 58 && !R; tx++) {
+      const bx = tx * TILE;
+      if (bx <= camX + W + 40 || bx >= camX + W / z - 100) continue;
+      if (Bm.canPlace(st.map, tx, ty, 3, 2)) R = Bm.placeBuildingCmd(st, 'player', 'depot', tx, ty, []);
+    }
+    // вертикаль: подводим камеру к ряду депо — иначе скан может выбрать
+    // строку вне видимой полосы и проба станет недостоверной
+    if (R) { st.camera.y = R.ty * TILE - 80; g.clampCam(); }
+    window.__depotR = R;
+  });
+  await page.waitForTimeout(400);
+  const s8 = await page.evaluate(() => {
+    const g = window.game, st = g.state, cv = document.getElementById('game-canvas');
+    const ctx2 = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cam = st.camera, z = cam.z || 1, TILE = 32;
+    const W = g.cssW, vw = W / z;
+    const grey = (d) => Math.abs(d[0] - d[1]) < 26 && Math.abs(d[1] - d[2]) < 26 && d[0] > 25 && d[0] < 205;
+    const probe1 = (b) => {
+      if (!b) return null;
+      const bx = b.tx * TILE, by = b.ty * TILE, bw = b.w * TILE, bh = b.h * TILE;
+      const x0 = Math.max(0, ((bx - cam.x) * z * dpr) | 0), y0 = Math.max(0, ((by - cam.y) * z * dpr) | 0);
+      const x1 = Math.min(cv.width, ((bx - cam.x + bw) * z * dpr) | 0), y1 = Math.min(cv.height, ((by - cam.y + bh) * z * dpr) | 0);
+      if (x1 - x0 < 4 || y1 - y0 < 4) return { onScreen: false, px: -1, sx: Math.round((bx - cam.x) * z), sy: Math.round((by - cam.y) * z) };
+      const img = ctx2.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+      let n = 0;
+      for (let i = 0; i < img.length; i += 16) { if (grey([img[i], img[i + 1], img[i + 2]])) n++; }
+      return { onScreen: true, px: n, sx: Math.round((bx - cam.x) * z), sy: Math.round((by - cam.y) * z) };
+    };
+    return { W: Math.round(W), vw: Math.round(vw), L: probe1(window.__depotL), R: probe1(window.__depotR) };
+  });
+  if (!s8.R) bad('S8-стенд: депо в мёртвом секторе не поставлено (скан пуст)');
+  else if (!s8.R.onScreen) bad(`S8-стенд: депо вне экрана (screenX=${s8.R.sx}/${s8.W}, screenY=${s8.R.sy})`);
+  else if (s8.R.px > 30) ok(`S8-инвариант: здание за экранной границей W видно при z=0.5 (screenX=${s8.R.sx}/${s8.W}, px=${s8.R.px})`);
+  else bad(`S8-инвариант сломан: здание в мёртвом секторе не нарисовано (screenX=${s8.R.sx}/${s8.W}, px=${s8.R.px})`);
+  if (s8.L && s8.L.onScreen && s8.L.px > 30) ok(`контроль слева жив (px=${s8.L.px})`);
+  else bad('S8-стенд: контрольное депо слева не видно — проба недостоверна');
+
+  // Пакет S, баг 5: «Заново» в хедере спрашивает подтверждение (Р2а — оба профиля).
+  log('=== Пакет S: «Заново» с подтверждением ===');
+  await page.evaluate(() => { window.game.state.minerals.player = 7777; });
+  let rmsg = null;
+  page.once('dialog', (d) => { rmsg = d.message(); d.dismiss(); });
+  await page.evaluate(() => document.getElementById('btn-restart').click());
+  await page.waitForTimeout(400);
+  if (rmsg && rmsg.length > 10) ok('«Заново» открыл confirm: ' + rmsg.slice(0, 44) + '…');
+  else bad('«Заново» молчит — confirm не открылся');
+  const m1 = await page.evaluate(() => window.game.state.minerals.player);
+  if (m1 === 7777) ok('отмена подтверждения: партия жива (минералы не сброшены)');
+  else bad(`отмена не сработала: партия сброшена (minerals=${m1})`);
+  page.once('dialog', (d) => d.accept());
+  await page.evaluate(() => document.getElementById('btn-restart').click());
+  await page.waitForTimeout(600);
+  const m2 = await page.evaluate(() => window.game.state.minerals.player);
+  if (m2 !== 7777) ok(`подтверждение: партия перезапущена (minerals=${m2})`);
+  else bad('рестарт не выполнился после подтверждения');
 }
 
 // ---------- Контекст 2: тач (iPhone-эмуляция) ----------
