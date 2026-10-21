@@ -5,7 +5,7 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS } from './config.js';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js';
 import { unitAt } from './units.js';
 import { buildingAt } from './buildings.js';
 
@@ -37,6 +37,183 @@ export function attachInput(game) {
     return game.screenToWorld(e.clientX - r.left, e.clientY - r.top);
   };
 
+  // Pointer-based touch arbitration: tap selects/places, empty drag pans,
+  // friendly-unit drag box-selects, pinch zooms around its moving midpoint,
+  // and a stationary 450ms press issues the RMB-equivalent order.
+  const touchPointers = new Map();
+  let touchGesture = null;
+  let longPressTimer = null;
+  let ignoreCompatMouseUntil = 0;
+  let lastTouchPoint = null;
+  let lastTouchTap = { t: 0, x: 0, y: 0 };
+  const isCompatMouse = (e) => {
+    const source = e.sourceCapabilities;
+    if (source && typeof source.firesTouchEvents === 'boolean') return source.firesTouchEvents;
+    if (performance.now() >= ignoreCompatMouseUntil || !lastTouchPoint) return false;
+    return Math.hypot(e.clientX - lastTouchPoint.x, e.clientY - lastTouchPoint.y) <= 24;
+  };
+  const clearLongPress = () => {
+    if (longPressTimer !== null) clearTimeout(longPressTimer);
+    longPressTimer = null;
+  };
+  const localPoint = (e) => {
+    const r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  cv.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    const st = game.state;
+    if (!st || !game.started || st.gameOver || game.paused) return;
+    if (e.cancelable) e.preventDefault();
+    ignoreCompatMouseUntil = performance.now() + 700;
+    lastTouchPoint = { x: e.clientX, y: e.clientY };
+    const point = localPoint(e);
+    touchPointers.set(e.pointerId, point);
+    try { if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId); } catch { /* capture may be unavailable in embedded browsers */ }
+
+    if (touchPointers.size >= 2) {
+      clearLongPress();
+      game.box = null;
+      st.wallDrag = null;
+      const pair = [...touchPointers.entries()].slice(0, 2);
+      const a = pair[0][1], b = pair[1][1], mid = midpoint(a, b);
+      const z = st.camera.z || 1;
+      touchGesture = {
+        mode: 'pinch', ids: pair.map(([id]) => id),
+        startDistance: Math.max(1, distance(a, b)), startZoom: z,
+        anchorWorld: game.screenToWorld(mid.x, mid.y),
+      };
+      return;
+    }
+
+    const world = game.screenToWorld(point.x, point.y);
+    st.mouseWorld = world;
+    if (st.placing) {
+      updatePlacing(st, world);
+      touchGesture = { mode: 'placement', id: e.pointerId, start: point, startWorld: world };
+      return;
+    }
+    const friendly = unitAt(st, world.x, world.y, 'player');
+    touchGesture = {
+      mode: 'pending', id: e.pointerId, start: point, startWorld: world,
+      startCameraX: st.camera.x, startCameraY: st.camera.y, startZoom: st.camera.z || 1,
+      friendly: !!friendly, startedAt: performance.now(),
+    };
+    longPressTimer = setTimeout(() => {
+      if (!touchGesture || touchGesture.mode !== 'pending' || !touchPointers.has(e.pointerId)) return;
+      touchGesture.mode = 'context';
+      game.box = null;
+      game.hooks.issueRMB(touchGesture.startWorld.x, touchGesture.startWorld.y);
+      game.sound.ack();
+    }, 450);
+  }, { passive: false });
+
+  cv.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
+    if (e.cancelable) e.preventDefault();
+    const point = localPoint(e);
+    touchPointers.set(e.pointerId, point);
+    const st = game.state;
+    if (!st || !touchGesture) return;
+
+    if (touchGesture.mode === 'pinch') {
+      if (!touchGesture.ids.includes(e.pointerId)) return;
+      const a = touchPointers.get(touchGesture.ids[0]);
+      const b = touchPointers.get(touchGesture.ids[1]);
+      if (!a || !b) return;
+      const mid = midpoint(a, b);
+      const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX,
+        touchGesture.startZoom * distance(a, b) / touchGesture.startDistance));
+      st.camera.z = z;
+      st.camera.x = touchGesture.anchorWorld.x - mid.x / z;
+      st.camera.y = touchGesture.anchorWorld.y - mid.y / z;
+      game.clampCam();
+      return;
+    }
+    if (touchGesture.id !== e.pointerId) return;
+    const dx = point.x - touchGesture.start.x, dy = point.y - touchGesture.start.y;
+    const moved = Math.hypot(dx, dy);
+    const world = game.screenToWorld(point.x, point.y);
+    st.mouseWorld = world;
+
+    if (touchGesture.mode === 'placement') {
+      updatePlacing(st, world);
+      return;
+    }
+    if (touchGesture.mode === 'pending' && moved > 9) {
+      clearLongPress();
+      if (touchGesture.friendly) {
+        touchGesture.mode = 'box';
+        game.box = {
+          x0: touchGesture.startWorld.x, y0: touchGesture.startWorld.y,
+          x1: world.x, y1: world.y,
+        };
+      } else {
+        touchGesture.mode = 'pan';
+      }
+    }
+    if (touchGesture.mode === 'box' && game.box) {
+      game.box.x1 = world.x; game.box.y1 = world.y;
+    } else if (touchGesture.mode === 'pan') {
+      const z = touchGesture.startZoom;
+      st.camera.x = touchGesture.startCameraX - dx / z;
+      st.camera.y = touchGesture.startCameraY - dy / z;
+      game.clampCam();
+    }
+  }, { passive: false });
+
+  cv.addEventListener('pointerup', (e) => {
+    if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
+    if (e.cancelable) e.preventDefault();
+    const point = localPoint(e);
+    lastTouchPoint = { x: e.clientX, y: e.clientY };
+    ignoreCompatMouseUntil = performance.now() + 700;
+    const st = game.state;
+    clearLongPress();
+    touchPointers.delete(e.pointerId);
+    try { if (cv.hasPointerCapture && cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    if (!st || !touchGesture) return;
+
+    if (touchGesture.mode === 'pinch') {
+      if (touchGesture.ids.includes(e.pointerId)) {
+        touchGesture = touchPointers.size ? { mode: 'consumed' } : null;
+      }
+      return;
+    }
+    if (touchGesture.id !== e.pointerId) return;
+    const world = game.screenToWorld(point.x, point.y);
+    if (touchGesture.mode === 'placement' && st.placing) {
+      updatePlacing(st, world);
+      if (st.placing.tx > -900) game.hooks.tryPlace(st.placing.tx, st.placing.ty);
+    } else if (touchGesture.mode === 'pending') {
+      const now = performance.now();
+      const isDouble = now - lastTouchTap.t < 350 && distance(point, lastTouchTap) < 16;
+      if (isDouble) doubleSelect(game, st, world);
+      else clickSelect(game, st, world, false);
+      lastTouchTap = { t: now, x: point.x, y: point.y };
+      game.sound.click();
+    } else if (touchGesture.mode === 'box' && game.box) {
+      game.box.x1 = world.x; game.box.y1 = world.y;
+      boxSelect(game, st, game.box, false);
+      game.box = null;
+      game.sound.click();
+    }
+    touchGesture = null;
+  }, { passive: false });
+
+  const cancelTouchGesture = (e) => {
+    if (e && e.pointerType && e.pointerType !== 'touch') return;
+    clearLongPress();
+    touchPointers.clear();
+    touchGesture = null;
+    game.box = null;
+  };
+  cv.addEventListener('pointercancel', cancelTouchGesture);
+  cv.addEventListener('lostpointercapture', cancelTouchGesture);
+
   window.addEventListener('mousemove', (e) => {
     game.mouse.x = e.clientX;
     game.mouse.y = e.clientY;
@@ -67,6 +244,7 @@ export function attachInput(game) {
   });
 
   cv.addEventListener('mousedown', (e) => {
+    if (isCompatMouse(e)) { e.preventDefault(); return; }
     const st = game.state;
     if (!st || !game.started || st.gameOver) return;
     const w = screenToWorld(e);
@@ -107,6 +285,7 @@ export function attachInput(game) {
   cv.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 
   window.addEventListener('mouseup', (e) => {
+    if (isCompatMouse(e)) return;
     if (e.button === 1 && game.pan) {
       game.pan = null;
       cv.style.cursor = '';

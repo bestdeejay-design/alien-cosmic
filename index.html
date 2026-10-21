@@ -26,27 +26,34 @@
 
     <div id="topbar">
       <div class="brand">ALIEN <b>COSMIC</b><small>RTS</small></div>
-      <div class="res"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
-      <div class="res"><span class="dot supply" id="res-supply-dot"></span><span id="res-supply">0/0</span></div>
-      <div class="res"><span id="res-time">00:00</span></div>
+      <div class="res res-minerals"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
+      <div class="res res-supply"><span class="dot supply" id="res-supply-dot"></span><span id="res-supply">0/0</span></div>
+      <div class="res res-time"><span id="res-time">00:00</span></div>
       <div class="res objective" id="res-objective"></div>
       <div class="spacer"></div>
-      <button id="btn-sound" class="tb-btn"></button>
-      <button id="btn-pause" class="tb-btn" data-i18n="ui.topbar.pause"></button>
-      <button id="btn-restart" class="tb-btn" data-i18n="ui.topbar.restart"></button>
-      <button id="btn-exit" class="tb-btn" data-i18n="ui.topbar.exit"></button>
+      <button id="btn-sound" class="tb-btn" type="button"></button>
+      <button id="btn-pause" class="tb-btn" type="button" data-i18n="ui.topbar.pause"></button>
+      <button id="btn-restart" class="tb-btn" type="button" data-i18n="ui.topbar.restart" data-i18n-title="ui.topbar.restart"></button>
+      <button id="btn-exit" class="tb-btn" type="button" data-i18n="ui.topbar.exit" data-i18n-title="ui.topbar.exit"></button>
     </div>
 
     <div id="bottom-panel">
-      <div id="minimap-box"><canvas id="minimap" width="176" height="176"></canvas></div>
+      <div id="minimap-box"><canvas id="minimap" aria-label="Minimap"></canvas></div>
       <div id="sel-info"><div class="hint" data-i18n="ui.loading"></div></div>
       <div id="cmd-grid"></div>
       <div id="panel-ctl">
-        <button id="panel-pos" class="mini-btn" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
-        <button id="panel-hide" class="mini-btn" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
+        <button id="panel-compact-toggle" class="mini-btn" type="button" data-i18n-title="ui.panel.expandTitle"></button>
+        <button id="panel-pos" class="mini-btn" type="button" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
+        <button id="panel-hide" class="mini-btn" type="button" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
       </div>
     </div>
-    <button id="panel-show" class="mini-btn" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
+    <button id="panel-show" class="mini-btn" type="button" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
+    <button id="placement-cancel" class="placement-cancel" type="button" hidden aria-label="Cancel placement" data-i18n-title="ui.placement.cancelTitle">×</button>
+    <div id="zoom-controls" role="group" aria-label="Zoom controls">
+      <button id="zoom-out" type="button" aria-label="Zoom out" data-i18n-title="ui.zoom.out">−</button>
+      <output id="zoom-value" aria-live="polite">100%</output>
+      <button id="zoom-in" type="button" aria-label="Zoom in" data-i18n-title="ui.zoom.in">+</button>
+    </div>
 
     <div id="toasts"></div>
 
@@ -92,7 +99,11 @@
         <div id="end-reason" class="end-reason"></div>
         <div id="end-stats"></div>
         <div id="end-epilogue" class="end-epilogue"></div>
-        <button id="btn-again" class="big-btn" data-i18n="ui.end.again"></button>
+        <div id="end-actions" class="end-actions">
+          <button id="btn-end-home" class="big-btn ghost-btn" type="button" data-i18n="ui.end.home"></button>
+          <button id="btn-again" class="big-btn" type="button" data-i18n="ui.end.again"></button>
+          <button id="btn-next" class="big-btn" type="button" data-i18n="ui.end.next" hidden></button>
+        </div>
       </div>
     </div>
 

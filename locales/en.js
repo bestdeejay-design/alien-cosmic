@@ -83,9 +83,9 @@ export default {
       facTeaserHuman: 'HELIOS — hover tech and plasma',
       facTeaserAlien: 'KHARID — crystal-born organics',
       help: [
-        '<b>LMB</b> — select, drag a box · <b>double-click</b> — every matching unit on screen · <b>RMB</b> — move / mine / attack / repair',
-        '<b>A + LMB</b> — attack-move: advance and engage everything en route · <b>wheel / two fingers</b> — pan the map · <b>Arrows / screen edge</b> — camera · <b>Space</b> — jump to base · <b>+ / −</b> — zoom · <b>V</b> — panel · <b>P</b> — pause (Esc releases/cancels)',
-        '<b>Ctrl/Alt + 1…9</b> — assign a squad, <b>digit</b> — select, <b>press twice</b> — jump to it · <b>B</b> — build: all 8 structures (CC, home, barracks, turret, wall, bunker, factory, laboratory) · <b>S</b> — stop',
+        '<b>LMB / tap</b> — select · <b>double-click / double-tap</b> — every matching unit on screen · <b>RMB / hold the field for 450ms</b> — move / mine / attack / repair',
+        '<b>Swipe empty terrain</b> — pan · <b>drag from a friendly unit</b> — box-select · <b>pinch / + / −</b> — anchored zoom · <b>A + LMB</b> — attack-move · <b>wheel / arrows / screen edge</b> — camera · <b>V</b> — panel · <b>P</b> — pause',
+        '<b>Ctrl/Alt + 1…9</b> — assign a squad, <b>digit</b> — select, <b>press twice</b> — jump to it · <b>B</b> — build: all 8 structures · while placing, tap <b>✕</b> to cancel or another type to switch · <b>S</b> — stop',
         '<b>.</b> — next idle worker · <b>,</b> — select the whole army · <b>Tab</b> — cycle fighters · <b>H</b> — jump to the last alarm · on a trackpad RMB is a two-finger tap or Ctrl+tap',
         '<b>Laboratory</b> — research: infantry weapons and armor, vehicle guns and plating · a rally point on a crystal puts new workers straight to mining',
         'Tech drones walk back to mining on their own after a build · without orders fighters engage enemies within sight range · nanites heal the nearest infantry and stop while healing · hover a button for the full briefing',
@@ -105,7 +105,12 @@ export default {
       posNames: { bottom: 'bottom', left: 'left', right: 'right', top: 'top' },
       hide: 'Hide', hideTitle: 'Hide panel (V)',
       show: 'Panel', showTitle: 'Show panel (V)',
+      expand: 'Expand', expandTitle: 'Expand the command panel',
+      collapse: 'Collapse', collapseTitle: 'Collapse the command panel',
     },
+    minimap: { label: 'Minimap' },
+    zoom: { label: 'Map zoom', in: 'Zoom in', out: 'Zoom out' },
+    placement: { cancel: 'Cancel placement', cancelTitle: 'Cancel building placement' },
 
     loading: 'Loading…',
     pauseText: 'PAUSED',
@@ -149,12 +154,12 @@ export default {
     end: {
       win: 'Victory!', lose: 'Defeat',
       campaignDone: 'Campaign complete — the Kharid fields are free!',
-      again: 'Play again', next: 'Next mission →',
+      home: 'Main menu', again: 'Play again', next: 'Next mission →',
       statsTime: 'Battle time', statsKills: 'Enemies destroyed', statsLosses: 'Losses',
     },
 
     hints: {
-      buildMode: 'Click to place (serial mode: it stays on).<br>Wall/turret: drag LMB — a line with the price.<br>Arrows move the ghost, Enter places it.<br>RMB / ESC — cancel.',
+      buildMode: '<b>Tap</b> to place; serial mode stays on.<br>Tap the ghost <b>✕</b> or the Cancel chip to exit; tap another building in the palette to switch type.<br>Mouse: LMB places; drag walls/turrets to draw a line. Arrows move the ghost, Enter places it.<br>RMB / Esc cancels.',
       select: 'Select a unit with LMB or a drag-box.<br>RMB — move / mine / attack / repair.<br>RMB on a bunker — garrison it.',
       construction: 'The assigned worker raises it.',
       buildWip: ' — under construction',
