@@ -292,6 +292,15 @@ export function icon(type) {
       g.fillStyle = amber;
       g.beginPath(); g.moveTo(-4, -9); g.lineTo(8, -5); g.lineTo(-4, -1); g.closePath(); g.fill();
       break;
+    case 'attack': // Пакет U: прицел атака-движения — круг с рисками и точкой.
+      g.strokeStyle = amber; g.lineWidth = 2;
+      g.beginPath(); g.arc(0, 0, 6, 0, Math.PI * 2); g.stroke();
+      g.beginPath();
+      g.moveTo(0, -9); g.lineTo(0, -4); g.moveTo(0, 4); g.lineTo(0, 9);
+      g.moveTo(-9, 0); g.lineTo(-4, 0); g.moveTo(4, 0); g.lineTo(9, 0);
+      g.stroke();
+      g.fillStyle = red; g.beginPath(); g.arc(0, 0, 1.8, 0, Math.PI * 2); g.fill();
+      break;
     // ===== Кхарид: органика (своя геометрия у каждого) =====
     case 'a_worker':
       // Маленький жук на ножках — самый мелкий силуэт.
@@ -727,6 +736,15 @@ export function initUI(game) {
     updateCampaignStartLabel();
     game.sound.click();
   });
+  // Пакет U: override профиля интерфейса (меню «Ещё») — Авто/Тач/Мышь.
+  const profileSel = $('ui-profile-select');
+  if (profileSel && game.profile) {
+    profileSel.value = game.profile.mode();
+    profileSel.addEventListener('change', () => {
+      game.profile.set(profileSel.value);
+      game.sound.click();
+    });
+  }
   els.endHomeBtn.addEventListener('click', () => {
     hideEnd();
     game.toMenu();
@@ -1290,6 +1308,8 @@ export function update(game) {
   const firstB = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
   const newSig = sel.map((e) => e.id + (e.done === false ? 'c' : '')).join(',') +
     '|' + (st.buildMenu ? 'B' : '') + (st.placing ? 'P' + st.placing.type : '') +
+    (st.attackMoveMode ? 'A' : '') +
+    '|' + (game.profile ? game.profile.effective() : '') +
     '|' + (firstB ? 'Q' + firstB.queue.map((item) => item.type).join(',') +
       (firstB.res ? 'R' + firstB.res.key : '') +
       'G' + (firstB.gradeUp ? firstB.gradeUp.to : '') + 'L' + (firstB.level || 1) : '');
@@ -1304,7 +1324,14 @@ function updatePlacementCancel(game) {
   if (!els || !els.placementCancel) return;
   const st = game.state;
   const pl = st && st.placing;
-  if (!game.started || !pl || st.gameOver || pl.tx <= -900 || pl.ty <= -900) {
+  // Пакет U (разилка 2): на десктопе × отмены дублирует ПКМ/Esc — не
+  // показываем; вместо него одноразовая подсказка при первой стройке.
+  const touchUI = !game.profile || game.profile.isTouchUI();
+  if (pl && !touchUI && game.started && st && !st.gameOver && !game.placementCancelHintShown) {
+    game.placementCancelHintShown = true;
+    toast(message('placementCancelHint', st.factions.player));
+  }
+  if (!game.started || !pl || st.gameOver || pl.tx <= -900 || pl.ty <= -900 || !touchUI) {
     els.placementCancel.hidden = true;
     return;
   }
@@ -1335,7 +1362,10 @@ function updatePlacementCancel(game) {
 function updateZoomControls(game) {
   if (!els || !els.zoomControls) return;
   const st = game.state;
-  const visible = !!(game.started && st && !st.gameOver);
+  // Пакет U (разилка 1): на десктопе зум-кнопки дублируют колесо/клавиши/СКМ —
+  // показываем только в тач-профиле (пинч есть, но кнопки дают точность и 44px).
+  const visible = !!(game.started && st && !st.gameOver) &&
+    (!game.profile || game.profile.isTouchUI());
   els.zoomControls.hidden = !visible;
   if (!visible) return;
   const width = els.zoomControls.offsetWidth || 152;
@@ -1405,9 +1435,9 @@ function rebuildPanel(game, sel) {
   } else if (!sel.length) {
     const hint = document.createElement('div');
     hint.className = 'hint';
-    // Хотфикс T1: на тач-устройствах подсказка про ЛКМ/ПКМ бессмысленна.
-    const coarse = typeof window !== 'undefined' && window.matchMedia &&
-      window.matchMedia('(pointer: coarse)').matches;
+    // Хотфикс T1 + пакет U: подсказка по ПРОФИЛЮ ввода (не по media-запросу
+    // первичного устройства — на гибридах тот лжёт).
+    const coarse = game.profile ? game.profile.isTouchUI() : false;
     setRich(hint, t(coarse ? 'ui.hints.selectTouch' : 'ui.hints.select'));
     els.selInfo.appendChild(hint);
     return;
