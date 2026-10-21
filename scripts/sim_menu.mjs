@@ -199,7 +199,7 @@ await check('D1 landing page: full-height hero, single primary, scroll sections,
   for (const tag of ['property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"']) {
     assert(html.includes(tag), `social metadata is missing ${tag}`);
   }
-  assert(html.includes('content="./assets/og-image.png"') && html.includes('content="1200"') && html.includes('content="630"'), 'OG image path or declared dimensions are wrong');
+  assert(html.includes('content="https://bestdeejay-design.github.io/alien-cosmic/assets/og-image.png"') && html.includes('content="1200"') && html.includes('content="630"'), 'OG image path or declared dimensions are wrong');
   const og = readFileSync(new URL('../assets/og-image.png', import.meta.url));
   assert(og.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'OG asset is not a PNG');
   assert(og.readUInt32BE(16) === 1200 && og.readUInt32BE(20) === 630, 'OG PNG must be exactly 1200×630');
