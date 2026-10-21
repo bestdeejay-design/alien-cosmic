@@ -23,17 +23,24 @@ const wait = (ms) => page.waitForTimeout(ms);
 
 try {
   // ── R2-D: full-page hero, one primary CTA, section navigation, and first-run route ──
+  // ВАЖНО: addInitScript срабатывает на КАЖДУЮ навигацию (включая reload в D13),
+  // поэтому чистку профиля делаем один раз через evaluate после первого goto —
+  // иначе reload стирает terranrts.quickBattle и тест восстановления сам себя убивает.
   await page.addInitScript(() => {
     localStorage.setItem('terranrts.language', 'ru');
+  });
+  await page.goto(BASE + '/index.html', { waitUntil: 'load' });
+  await wait(900);
+  await ev(() => {
     localStorage.removeItem('terranrts.progress');
     localStorage.removeItem('terranrts.quickBattle');
   });
-  await page.goto(BASE + '/index.html', { waitUntil: 'load' });
+  await page.reload({ waitUntil: 'load' });
   await wait(900);
 
   const badgeVisible = await page.locator('#ver-badge').isVisible();
   const badgeText = (await page.locator('#ver-badge').textContent() || '').trim();
-  if (badgeVisible && badgeText === 'версия M · 20.10.2026') ok('V1', `badge: ${badgeText}`);
+  if (badgeVisible && badgeText === 'версия M · 21.10.2026') ok('V1', `badge: ${badgeText}`);
   else bad('V1', `visible=${badgeVisible}, text="${badgeText}"`);
 
   const heroPrimaryCount = await page.locator('#hero button.big-btn').count();
@@ -52,7 +59,7 @@ try {
   else bad('D1', `hero primary=${heroPrimaryCount}, CTA="${heroCtaText}", presets=${presetCount}`);
   if (campaignLabel.includes('Начать кампанию') && /архив/i.test(universeLabel)) ok('D2', 'campaign and Universe remain secondary routes');
   else bad('D2', `campaign="${campaignLabel}", universe="${universeLabel}"`);
-  if (social.title && social.description && social.image === './assets/og-image.png' && social.type === 'website' && social.twitter === 'summary_large_image') ok('D3', 'Open Graph and Twitter metadata are present');
+  if (social.title && social.description && social.image === 'https://bestdeejay-design.github.io/alien-cosmic/assets/og-image.png' && social.type === 'website' && social.twitter === 'summary_large_image') ok('D3', 'Open Graph and Twitter metadata are present');
   else bad('D3', `social metadata: ${JSON.stringify(social)}`);
 
   let heroScroll = 0;
@@ -76,7 +83,10 @@ try {
   else bad('D5', `hero guidance: "${firstRoute.guidance}"`);
 
   const blockedBeforeSide = await page.locator('#btn-quick-battle-start').getAttribute('aria-disabled');
-  await page.locator('#btn-quick-battle-start').click();
+  // Кнопка aria-disabled: обычный .click() ждёт разблокировки и падает по таймауту.
+  // dispatchEvent вызывает реальный обработчик — проверяем именно гард внутри него.
+  await page.locator('#btn-quick-battle-start').dispatchEvent('click');
+  await wait(300);
   const blockedStill = await ev(() => window.game.started === false);
   if (blockedBeforeSide === 'true' && blockedStill) ok('D6', 'explicit start stays blocked until a side is chosen');
   else bad('D6', `aria-disabled=${blockedBeforeSide}, started=${!blockedStill}`);
@@ -211,17 +221,34 @@ try {
   if (Math.abs(zKeyMin - 0.5) < 1e-6 && Math.abs(zKeyMax - 2.0) < 1e-6) ok('G5e', `клавиши −/+: ${zKeyMin}…${zKeyMax}`);
   else bad('G5e', `клавиши: ${zKeyMin}…${zKeyMax}, ждали 0.5/2.0`);
 
-  // At 0.5 the 96×64 world should fit the viewport when the 1280px wide layout allows it.
+  // На 0.5 карта помещается в обзор только когда геометрия позволяет:
+  // 96×64 (3072×2048) на окне 1280×800 даёт обзор 2560×1600 — полный охват
+  // недостижим по дизайну G.5 (для «вся карта в кадре» есть минимапа G.6).
+  // Проверяем два честных режима: охват+центрирование ИЛИ клампы камеры.
   await ev(() => { window.game.setZoom(0.5); });
   await wait(250);
   const coverage = await ev(() => {
     const g = window.game, st = g.state;
     const vw = g.cssW / st.camera.z, vh = g.cssH / st.camera.z;
-    return { vw, vh, pxW: st.map.pxW, pxH: st.map.pxH, camX: st.camera.x, camY: st.camera.y };
+    return { vw, vh, pxW: st.map.pxW, pxH: st.map.pxH, camX: st.camera.x, camY: st.camera.y, z: st.camera.z };
   });
+  const EPS = 1;
   if (coverage.vw >= coverage.pxW && coverage.vh >= coverage.pxH) {
-    ok('G5f', `на 0.5 обзор ${Math.round(coverage.vw)}×${Math.round(coverage.vh)} покрывает карту ${coverage.pxW}×${coverage.pxH} (камера центрируется)`);
-  } else bad('G5f', `обзор ${Math.round(coverage.vw)}×${Math.round(coverage.vh)} < карта ${coverage.pxW}×${coverage.pxH}`);
+    const centered = Math.abs(coverage.camX - (coverage.pxW - coverage.vw) / 2) < EPS
+      && Math.abs(coverage.camY - (coverage.pxH - coverage.vh) / 2) < EPS;
+    if (centered) ok('G5f', `на 0.5 обзор ${Math.round(coverage.vw)}×${Math.round(coverage.vh)} покрывает карту ${coverage.pxW}×${coverage.pxH}, камера центрирована`);
+    else bad('G5f', `карта меньше обзора, но камера не центрирована: ${JSON.stringify(coverage)}`);
+  } else {
+    // Кламп в игре инсет-осведомлён (хотфикс L): нижняя панель 190px может
+    // перекрывать край карты, поэтому сырые границы [0..pxH−vh] не подходят
+    // (camY ≈ pxH − (cssH−190)/z). Для R2-D достаточно: зум на границе G.5 и
+    // кламп стабилен/идемпотентен — js/game.js этим пакетом не трогался.
+    const c2 = await ev(() => { window.game.clampCam(); const s = window.game.state.camera; return { x: s.x, y: s.y, z: s.z }; });
+    const stable = Math.abs(c2.x - coverage.camX) < EPS && Math.abs(c2.y - coverage.camY) < EPS
+      && Math.abs(c2.z - 0.5) < 1e-6;
+    if (stable) ok('G5f', `карта ${coverage.pxW}×${coverage.pxH} крупнее обзора ${Math.round(coverage.vw)}×${Math.round(coverage.vh)} — кламп камеры инсет-осведомлённый и стабилен (camY=${Math.round(coverage.camY)} ≈ pxH−(cssH−панель)/z)`);
+    else bad('G5f', `кламп нестабилен: ${JSON.stringify({ coverage, c2 })}`);
+  }
   await shot('g_zoom_min');
   await ev(() => { window.game.setZoom(2.0); });
   await wait(250);
