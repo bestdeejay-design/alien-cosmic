@@ -7,7 +7,7 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
 import { message } from './i18n.js';
 
@@ -259,8 +259,8 @@ export function orderBuild(st, u, building, auto = false) {
 }
 
 // Ремонт: рабочий «сваривает» здание или технику до полного HP.
-// auto:true — приказ найден самим рабочим в простое (не игроком):
-// логика та же, маркер — для отладки и будущих приоритетов.
+// auto:true — приказ автоматической логики (idle-поиск или диспетчер),
+// не команда игрока; маркер нужен для бюджета, лимита и безопасного снятия.
 export function orderRepair(st, u, target, auto = false) {
   if (u.garrison) return;
   u.order = { kind: 'repair', target, resume: currentCrystal(u), auto };
@@ -310,6 +310,67 @@ export function repairersOf(st, t, self) {
     if (o.kind === 'repair' && o.target === t) n++;
   }
   return n;
+}
+
+const REPAIR_BUDGET_EPSILON = 1e-6;
+function remainingRepairCost(target) {
+  if (!target || !Number.isFinite(target.maxHp) || !Number.isFinite(target.hp)) return Infinity;
+  return Math.max(0, target.maxHp - target.hp) / REPAIR_HP_PER_MINERAL;
+}
+function activeRepairTargets(st, side) {
+  const targets = new Set();
+  for (const u of st.units) {
+    const o = u.order, target = o && o.target;
+    if (u.dead || u.side !== side || !u.cfg.canRepair || o.kind !== 'repair' ||
+        !target || target.dead || target.side !== side || target.hp >= target.maxHp) continue;
+    targets.add(target);
+  }
+  return targets;
+}
+function reservedRepairMinerals(st, side, extraTarget = null) {
+  const targets = activeRepairTargets(st, side);
+  if (extraTarget) targets.add(extraTarget);
+  let total = 0;
+  for (const target of targets) total += remainingRepairCost(target);
+  return total;
+}
+function repairTargetPriorityCompare(a, b) {
+  return (a.hp / a.maxHp) - (b.hp / b.maxHp) || (a.id || 0) - (b.id || 0);
+}
+function autoRepairBudgetThrough(st, side, target) {
+  const manualTargets = new Set(), autoTargets = new Set();
+  for (const u of st.units) {
+    const o = u.order, t = o && o.target;
+    if (u.dead || u.side !== side || !u.cfg.canRepair || o.kind !== 'repair' ||
+        !t || t.dead || t.side !== side || t.hp >= t.maxHp) continue;
+    (o.auto ? autoTargets : manualTargets).add(t);
+  }
+  let total = 0;
+  for (const manual of manualTargets) total += remainingRepairCost(manual);
+  if (manualTargets.has(target)) return total;
+  const orderedAutoTargets = [...autoTargets].filter((t) => !manualTargets.has(t)).sort(repairTargetPriorityCompare);
+  for (const autoTarget of orderedAutoTargets) {
+    total += remainingRepairCost(autoTarget);
+    if (autoTarget === target) return total;
+  }
+  return Infinity;
+}
+function autoRepairerCount(st, side) {
+  return st.units.filter((u) => !u.dead && !u.garrison && u.side === side && u.cfg.canRepair &&
+    u.order.kind === 'repair' && u.order.auto).length;
+}
+function canStartAutoRepair(st, side, target) {
+  if (!target || target.dead || target.side !== side || target.hp >= target.maxHp) return false;
+  if (autoRepairerCount(st, side) >= AUTOREPAIR_WORKERS_PER_SIDE) return false;
+  if (repairersOf(st, target) >= REPAIRERS_PER_TARGET) return false;
+  const budget = Number(st.minerals[side]) || 0;
+  return budget + REPAIR_BUDGET_EPSILON >= reservedRepairMinerals(st, side, target);
+}
+function sendIdleRepairerToGather(st, u) {
+  if (!u.cfg.canMine) { orderStop(u); return; }
+  const crystal = nearestCrystal(st, u);
+  if (crystal) orderGather(st, u, crystal);
+  else orderStop(u);
 }
 
 // G.4: распределение ручного ремонта — кликнутая цель первая, дальше
@@ -622,10 +683,10 @@ export function updateUnits(st, dt, grid) {
   updateAutoRepair(st, dt); // H.1
 }
 
-// H.1: диспетчер авторемонта — тик AUTOREPAIR_TICK; цели (здания + техника)
-// в радиусе от своих КЦ; чинят свободные (idle, потом gather), кап 2/цель
-// живым учётом; приказы attack/move/build/garrison святы. По готовности —
-// resumeGather (встроен в updateRepair).
+// H.1: диспетчер авторемонта — тратит только на полностью оплачиваемые
+// работы, резервирует активные цели и набирает не более двух авто-ремонтников
+// на сторону. Сначала самые повреждённые доступные цели, внутри — ближайшие
+// свободные рабочие; остальные продолжают/начинают добывать.
 function updateAutoRepair(st, dt) {
   st.autoRepairT = (st.autoRepairT || 0) + dt;
   if (st.autoRepairT < AUTOREPAIR_TICK) return;
@@ -646,31 +707,62 @@ function updateAutoRepair(st, dt) {
       if (near(u.x, u.y)) targets.push(u);
     }
     if (!targets.length) continue;
-    targets.sort((p, q) => (p.hp / p.maxHp) - (q.hp / q.maxHp)); // триаж: сначала самые битые
-    const idlePool = [], minePool = [];
-    for (const u of st.units) {
-      if (u.dead || u.garrison || u.side !== side || !u.cfg.canRepair) continue;
-      if (u.order.kind === 'idle') idlePool.push(u);
-      else if (u.order.kind === 'gather') minePool.push(u);
+    targets.sort(repairTargetPriorityCompare); // триаж: сначала самые битые, стабильный id при равной доле HP
+    const priority = new Map(targets.map((t, i) => [t, i]));
+
+    // Нормализуем старые/загруженные состояния, в которых авто-приказов
+    // уже больше нового глобального лимита; сохраняем ремонт самых важных
+    // целей, а излишек сразу возвращаем к кристаллам.
+    const autoWorkers = st.units.filter((u) => !u.dead && !u.garrison && u.side === side &&
+      u.cfg.canRepair && u.order.kind === 'repair' && u.order.auto);
+    const released = new Set();
+    if (autoWorkers.length > AUTOREPAIR_WORKERS_PER_SIDE) {
+      autoWorkers.sort((a, b) => {
+        const ap = priority.has(a.order.target) ? priority.get(a.order.target) : Number.MAX_SAFE_INTEGER;
+        const bp = priority.has(b.order.target) ? priority.get(b.order.target) : Number.MAX_SAFE_INTEGER;
+        return ap - bp || Math.hypot(a.x - a.order.target.x, a.y - a.order.target.y) -
+          Math.hypot(b.x - b.order.target.x, b.y - b.order.target.y) || a.id - b.id;
+      });
+      for (const u of autoWorkers.slice(AUTOREPAIR_WORKERS_PER_SIDE)) {
+        released.add(u);
+        resumeGather(st, u);
+      }
     }
-    const take = (t) => {
-      for (const arr of [idlePool, minePool]) {
-        if (!arr.length) continue;
-        let bi = 0, bdd = Infinity;
-        for (let i = 0; i < arr.length; i++) {
-          const d = Math.hypot(arr[i].x - t.x, arr[i].y - t.y);
-          if (d < bdd) { bdd = d; bi = i; }
+
+    const repairTargets = activeRepairTargets(st, side);
+    let reservedCost = 0;
+    for (const target of repairTargets) reservedCost += remainingRepairCost(target);
+    let autoCount = autoRepairerCount(st, side);
+    const pool = st.units.filter((u) => !released.has(u) && !u.dead && !u.garrison &&
+      u.side === side && u.cfg.canRepair && (u.order.kind === 'idle' || u.order.kind === 'gather'));
+    const minerals = Number(st.minerals[side]) || 0;
+
+    for (const target of targets) {
+      let assigned = repairersOf(st, target);
+      if (assigned >= REPAIRERS_PER_TARGET || autoCount >= AUTOREPAIR_WORKERS_PER_SIDE) continue;
+      const alreadyReserved = repairTargets.has(target);
+      const extraCost = alreadyReserved ? 0 : remainingRepairCost(target);
+      if (minerals + REPAIR_BUDGET_EPSILON < reservedCost + extraCost) continue;
+      while (assigned < REPAIRERS_PER_TARGET && autoCount < AUTOREPAIR_WORKERS_PER_SIDE && pool.length) {
+        pool.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) -
+          Math.hypot(b.x - target.x, b.y - target.y) ||
+          (a.order.kind === 'idle' ? 0 : 1) - (b.order.kind === 'idle' ? 0 : 1) || a.id - b.id);
+        const worker = pool.shift();
+        orderRepair(st, worker, target, true);
+        assigned++;
+        autoCount++;
+        if (!repairTargets.has(target)) {
+          repairTargets.add(target);
+          reservedCost += extraCost;
         }
-        return arr.splice(bi, 1)[0];
       }
-      return null;
-    };
-    for (const t of targets) {
-      while (repairersOf(st, t) < REPAIRERS_PER_TARGET) {
-        const w = take(t);
-        if (!w) return;
-        orderRepair(st, w, t, true);
-      }
+    }
+
+    // Если ремонт востребован, но полный job не в бюджете, не оставляем
+    // простаивающих рабочих вокруг базы: отправляем их добывать. Gatherers
+    // уже добывают и не меняют кристалл.
+    for (const worker of pool) {
+      if (worker.order.kind === 'idle') sendIdleRepairerToGather(st, worker);
     }
   }
 }
@@ -697,7 +789,22 @@ function updateOrderByKind(st, u, dt, grid) {
         if (u.scanT <= 0) {
           u.scanT = 0.5;
           const veh = findRepairTarget(st, u);
-          if (veh) { orderRepair(st, u, veh, true); break; }
+          if (veh) {
+            // В радиусе активного H.1 приоритеты и ближайших работников
+            // выбирает общий диспетчер после обхода всех юнитов.
+            const coveredByDispatcher = (st.tech[u.side] && st.tech[u.side].autoRepair) > 0 &&
+              st.buildings.some((cc) => !cc.dead && cc.side === u.side && cc.type === 'cc' &&
+                Math.hypot(veh.x - cc.x, veh.y - cc.y) <= AUTOREPAIR_RADIUS);
+            if (coveredByDispatcher) break;
+            if (canStartAutoRepair(st, u.side, veh)) {
+              const nearestIdle = st.units.filter((worker) => !worker.dead && !worker.garrison &&
+                worker.side === u.side && worker.cfg.canRepair && worker.order.kind === 'idle')
+                .sort((a, b) => Math.hypot(a.x - veh.x, a.y - veh.y) -
+                  Math.hypot(b.x - veh.x, b.y - veh.y) || a.id - b.id)[0];
+              if (nearestIdle === u) orderRepair(st, u, veh, true);
+            } else sendIdleRepairerToGather(st, u);
+            break;
+          }
           // П3 (B.7.6): некому строить — рабочий в простое подхватывает
           // ближайший голодный недострой сам. Приказ игрока свят:
           // подхват только из idle, после ремонта техники.
@@ -1284,11 +1391,28 @@ function updateBuild(st, u, dt) {
 }
 
 // Ремонт: рабочий варит повреждённое здание или технику своей стороны.
-// Скорость зависит от цели; минералы тратятся пропорционально HP.
+// Скорость зависит от цели; минералы тратятся пропорционально фактически
+// восстановленным HP. Авто-заказ держится только пока можно оплатить всю
+// оставшуюся работу; ручной заказ при нехватке ресурсов не меняется.
 const REPAIR_RATE = { building: 26, unit: 18 }; // HP/сек
+function toastRepairShortage(st, u) {
+  if (u.side === 'player' && st.time - (st.lastRepairToast ?? -99) > 6) {
+    st.lastRepairToast = st.time;
+    st.game.ui.toast(message('repairStop', st.factions.player) + message('noMinerals', st.factions.player).toLowerCase(), 'error');
+  }
+}
 function updateRepair(st, u, dt) {
   const t = u.order.target;
   if (!t || t.dead || t.side !== u.side || t.hp >= t.maxHp) { resumeGather(st, u); return; }
+  const auto = !!u.order.auto;
+  const minerals = Number(st.minerals[u.side]) || 0;
+  // Резервируем ручные работы и более приоритетные автоцели: после
+  // внешнего списания низкоприоритетные авто-заказы снимаются первыми.
+  if (auto && minerals + REPAIR_BUDGET_EPSILON < autoRepairBudgetThrough(st, u.side, t)) {
+    toastRepairShortage(st, u);
+    resumeGather(st, u);
+    return;
+  }
   const isB = t.kind === 'building';
   const rx = isB ? t.tx * TILE : t.x - t.r;
   const ry = isB ? t.ty * TILE : t.y - t.r;
@@ -1298,17 +1422,17 @@ function updateRepair(st, u, dt) {
     u.path = null; u.moving = false;
     u.angle = Math.atan2(t.y - u.y, t.x - u.x);
     const rate = REPAIR_RATE[isB ? 'building' : 'unit'];
-    const cost = (rate * dt) / REPAIR_HP_PER_MINERAL;
-    if (st.minerals[u.side] < cost) {
-      // Нет минералов — простой (игроку подсказка не чаще раза в 6 c).
-      if (u.side === 'player' && st.time - (st.lastRepairToast || -99) > 6) {
-        st.lastRepairToast = st.time;
-        st.game.ui.toast(message('repairStop', st.factions.player) + message('noMinerals', st.factions.player).toLowerCase(), 'error');
-      }
+    const hpToRestore = Math.min(rate * dt, Math.max(0, t.maxHp - t.hp));
+    const cost = hpToRestore / REPAIR_HP_PER_MINERAL;
+    if (minerals + REPAIR_BUDGET_EPSILON < cost) {
+      // Ручной приказ остаётся при нехватке; авто-работник освобождается
+      // и возвращается к добыче (либо спокойно останавливается без жил).
+      toastRepairShortage(st, u);
+      if (auto) resumeGather(st, u);
       return;
     }
-    st.minerals[u.side] -= cost;
-    t.hp = Math.min(t.maxHp, t.hp + rate * dt);
+    st.minerals[u.side] = Math.max(0, minerals - cost);
+    t.hp = Math.min(t.maxHp, t.hp + hpToRestore);
     if (Math.random() < dt * 5) {
       addEffect(st, { kind: 'spark', x: rx + Math.random() * rw, y: ry + Math.random() * rh, ang: Math.random() * Math.PI, t: 0, life: 0.2 });
     }
