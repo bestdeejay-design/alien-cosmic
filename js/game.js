@@ -103,6 +103,23 @@ export class Game {
     this.grid = new U.SpatialGrid(64);
 
     window.addEventListener('resize', () => this.resize());
+    // Хотфикс M2: fullscreen/поворот экрана. resize-событие приходит ДО того,
+    // как панель перестроилась под новые размеры (рефлоу по контенту, перенос
+    // строк, шрифты) — getPanelInsets() запоминает устаревшие метрики, кламп
+    // камеры фиксируется на них и край карты становится недостижим, пока не
+    // передёрнешь панель (скрыть/показать). Домеряем по факту: события
+    // fullscreen/orientation + ResizeObserver на панели (панель растёт по
+    // содержимому — G.6). Канвас абсолютен (#game-canvas inset:0) и на размер
+    // панелей не влияет — цикла наблюдения нет.
+    window.addEventListener('orientationchange', () => this.resize());
+    document.addEventListener('fullscreenchange', () => this.resize());
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => this.resize());
+      const bp = document.getElementById('bottom-panel');
+      const tb = document.getElementById('topbar');
+      if (bp) ro.observe(bp);
+      if (tb) ro.observe(tb);
+    }
     this.resize();
     // При возврате на вкладку не накапливаем «долгие» тики.
     document.addEventListener('visibilitychange', () => { this.last = performance.now(); });
