@@ -381,6 +381,10 @@ export default {
     builtDone: { human: 'Construction complete: ', alien: 'The nest has grown: ' },
     repairStop: { human: 'Repair halted: ', alien: 'Mending interrupted: ' },
     repairDone: { human: 'Repair complete: ', alien: 'Mended: ' },
+    autoRepairWait: {
+      human: 'Auto-repair awaits minerals — workers sent to mine',
+      alien: 'The mending song awaits facets — gatherers went to the facets',
+    },
     mined: { human: 'Minerals mined', alien: 'Facets gathered' },
     winKill: { human: 'Enemy wiped out! The Frontier holds.', alien: 'The foe is scattered! The hive sings victory.' },
     loseBase: { human: 'The base is lost. The signal has gone quiet.', alien: 'The nest is torn open. The song has broken off…' },

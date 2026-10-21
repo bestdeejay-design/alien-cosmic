@@ -257,7 +257,9 @@ export class AIController {
         const target = hurtV || hurtB;
         if (target) {
           const w = nearestTo(workers, target.x, target.y);
-          if (w && w.order.kind !== 'build') orderRepair(st, w, target);
+          // H.1v2: ремонтный приказ ИИ — auto:true (отзываемый): без
+          // минералов рабочий вернётся к добыче, а не замрёт у цели.
+          if (w && w.order.kind !== 'build') orderRepair(st, w, target, true);
         }
       }
     }
