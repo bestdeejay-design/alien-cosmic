@@ -104,6 +104,17 @@ ISSUES = [
             '- «Перезагрузить экран» в «Ещё» (ui.js:742) \u2014 С подтверждением (пакет Q)\n\n'
             'Фикс (развилка Р2 в аудите): confirm перед game.restart() \u2014 рекомендую оба профиля. '
             f'Аудит: {CULL} (\u00a74, \u00a76). Пакет S.'),
+  dict(title='[TASK] CI и единый раннер Ф1\u2013Ф3 (TASK_CI_AND_TESTS.md)',
+       labels=['agent/zai'],
+       body='Задание владельца: TASK_CI_AND_TESTS.md (21.10, вечер). Порядок документа обязателен: план и вопросы \u2192 ответ владельца \u2192 код.\n\n'
+            '\u04241: scripts/test.mjs \u2014 check \u2192 smoke \u2192 все sim_*.mjs последовательно с таймаутом; сводка, коды выхода 0/1/2, --only=, --verbose, --with-browser (repro_stuck не в обязательном прогоне). Без новых зависимостей.\n'
+            '\u04242: .github/workflows/ci.yml \u2014 push/PR/workflow_dispatch, Node 22, node scripts/test.mjs, 15 мин, лог в артефакт, без секретов.\n'
+            '\u04243: раскладка scripts/ \u2014 sim/, verify/, ops/ (gh_*.py \u2014 только перенос), oneoff/ (ac_*, touch_*, *_repro); правка путей в доках и комментариях запуска.\n\n'
+            'Границы: js/*.js не менять; симы не переписывать; Playwright/Jest в обязательный прогон не тащить; контракты из \u00a75 не ломать.'),
+  dict(title='Токен читается из git remote (.git/config) \u2014 перейти на env/gh auth token',
+       labels=['agent/zai'],
+       body='Пометка владельца в TASK_CI_AND_TESTS.md (\u00a76): токен GitHub лежит в .git/config (remote URL) \u2014 известное слабое место.\n\n'
+            'Отдельная задача: чтение токена в gh_issues_seed.py / gh_board_setup.py \u2192 переменная окружения (GH_TOKEN) или gh auth token. В рамках TASK-задачи не переписывать.'),
 ]
 
 created = {}

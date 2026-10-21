@@ -87,8 +87,8 @@ item_by_issue = {n['content']['id']: n['id'] for n in proj_items
                  if n.get('content') and n['content'].get('id')}
 linked = set(item_by_issue)
 STATUS_MAP = {  # по номерам из gh_issues_seed.py; новые — по ключевым словам в заголовке
-    3: 'Готово', 4: 'К работе', 5: 'Бэклог', 6: 'В работе', 7: 'Ждёт', 8: 'Бэклог',
-    14: 'К работе', 15: 'К работе',
+    3: 'Готово', 4: 'К работе', 5: 'Бэклог', 6: 'Готово', 7: 'Ждёт', 8: 'Бэклог',
+    14: 'К работе', 15: 'К работе', 16: 'К работе', 17: 'Бэклог',
 }
 for it in items:
     iid, num, state = it['id'], it['number'], it['state']
