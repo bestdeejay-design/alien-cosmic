@@ -84,6 +84,8 @@ export default {
       quickStartPlain: 'Quick start',
       reset: 'Reset progress',
       resetConfirm: 'Reset campaign progress? The lore archive will close and the Chronicle chapters will hide again.',
+      reload: 'Reload screen',
+      reloadConfirm: 'Reload the screen? The current battle will be lost.',
       facTeaserHuman: 'HELIOS — hover tech and plasma',
       facTeaserAlien: 'KHARID — crystal-born organics',
       help: [

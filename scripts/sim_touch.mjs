@@ -20,6 +20,9 @@
 // T14 атака-движение: кнопка KeyA в панели, тап в режиме — приказ attackMove.
 // T15 override профиля сохраняется в localStorage, auto возвращает базис.
 //
+// Пакет Q (жесты страницы):
+// T17 touch-action-политика, meta-ограничения, gesturestart-гвард, кнопка reload.
+//
 // Запуск: node scripts/sim_touch.mjs
 // ============================================================
 import './harness.mjs';
@@ -306,6 +309,25 @@ try {
   assert(game.profile.effective() === 'desktop', 'auto должен вернуться к накопленному сигналу (desktop)');
   pass('T16 runtime-сигналы: тач/мышь, односторонняя политика, гвард override');
 } catch (e) { fail('T16', e); }
+
+// ---------- T17: политика жестов страницы (пакет Q) ----------
+// Статическая гарантия: touch-action-политика в CSS, meta-ограничения,
+// gesturestart-гвард. Живое поведение — в scripts/v_verify.mjs (браузер).
+try {
+  const css = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8'));
+  const html = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8'));
+  const gameSrc = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../js/game.js', import.meta.url), 'utf8'));
+  assert(/html\s*{\s*touch-action:\s*manipulation/.test(css), 'нет html manipulation (double-tap глобально)');
+  assert(/body\s*>\s*\*\s*{\s*touch-action:\s*pan-y/.test(css), 'нет body>* pan-y (pinch не закрыт)');
+  assert(/touch-action:\s*none/.test(css), 'канвас touch-action:none пропал');
+  assert(html.includes('maximum-scale=1') && html.includes('user-scalable=no'), 'meta-ограничения зума отсутствуют');
+  assert(html.includes('btn-reload-screen'), 'кнопка «Перезагрузить экран» отсутствует');
+  assert(gameSrc.includes("addEventListener('gesturestart'"), 'нет gesturestart-гварда в game.js');
+  pass('T17 политика жестов: CSS-политика, meta, gesturestart-гвард, кнопка reload');
+} catch (e) { fail('T17', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length

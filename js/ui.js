@@ -736,6 +736,14 @@ export function initUI(game) {
     updateCampaignStartLabel();
     game.sound.click();
   });
+  // Пакет Q: аварийная перезагрузка экрана (меню «Ещё») — сбрасывает зум
+  // страницы и прочие залипшие состояния браузера. Партия теряется, поэтому
+  // подтверждение — как у сброса прогресса.
+  $('btn-reload-screen').addEventListener('click', () => {
+    if (!confirm(t('ui.menu.reloadConfirm'))) return;
+    game.sound.click();
+    location.reload();
+  });
   // Пакет U: override профиля интерфейса (меню «Ещё») — Авто/Тач/Мышь.
   const profileSel = $('ui-profile-select');
   if (profileSel && game.profile) {

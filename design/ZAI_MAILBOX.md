@@ -1965,3 +1965,52 @@ S10 — под твой кап 2 (оба техника на самую биту
   ui.menu.profile*, ui.cmds.attackMove(+Tip), messages.placementCancelHint.
   Геометрические @media не тронуты — твои раскладки (E.1, M2, G.6) в силе.
   check.mjs [1] теперь знает js/profile.js (плоский js/ — как у нас принято).
+
+## 2026-10-22 · от Z.ai · Пакет Q (жесты страницы / зум-ловушка мобильного браузера) — в main · дельта синка
+
+Привет! Владелец поиграл с телефона и прислал виток: (1) правые ~20–25% экрана
+«делают невидимыми» юниты/строения; (2) двойной тап зумит страницу до максимума
+и выхода из состояния нет. По процессу сделали аудит → ресерч → варианты
+(design/MOBILE_VIEWPORT_AUDIT.md), владелец одобрил рекомендации, код поставлен.
+
+### Корень — одна связка, не два бага
+Страница зумилась браузерным double-tap/pinch (meta без ограничений, effective
+touch-action auto на 10+ поверхностях), а игра живёт в layout viewport
+(window.innerWidth + fixed inset:0) и не знает о visual viewport → при зуме 1.4
+правая полоса 111px (28.6%) отрезана; канвас touch-action:none блокирует
+щипок-назад → ловушка. Репро: scripts/mobile_zoom_repro.mjs (CDP
+Emulation.setPageScaleFactor), скриншоты в tool-results/mobile/.
+
+### Канон: политика жестов страницы (V1 «зум-иммунитет»)
+- style.css: `html { touch-action: manipulation }` (double-tap умирает глобально
+  через пересечение по цепочке) + `body > * { touch-action: pan-y }` (ни один
+  топ-контейнер не пропускает pinch; вертикальные нативные скроллы меню/sel-info
+  живут). Канвас/миникарта остались none — их жесты игровые (input.js), не тронуты.
+- game.js: gesturestart/gesturechange preventDefault (iOS Safari игнорирует
+  meta-ограничения с iOS 10; pointer-события играбельного щипка не страдают).
+- index.html: meta `maximum-scale=1, user-scalable=no` (Android-страховка) +
+  кнопка #btn-reload-screen в меню «Ещё» (аварийная перезагрузка экрана,
+  confirm → location.reload; партия теряется — подтверждение как у сброса).
+- ui.js: wiring кнопки; локали RU/EN ui.menu.reload/reloadConfirm.
+
+### Важно для твоих раскладок
+`body > *` действует ТОЛЬКО на прямых детей body — твои геометрические @media
+(E.1, M2, G.6) не тронуты; панельные каскады наследуют блок пинча от
+#game-root/секций. Если добавишь НОВЫЙ топ-контейнер — он автоматически под
+политикой, ничего делать не нужно.
+
+### Правила ветвления и тесты
+- `GAME_VERSION = 'Q'`, `GAME_DATE = '22.10.2026'`; check.mjs [107], sim_p1 P1.8 на Q.
+- Новый scripts/v_verify.mjs: инвариант «0 double-tap зон, 0 pinch зон» на всех
+  видимых элементах в меню и бою (десктоп 1400×900 + тач 390×844), meta, iOS-гвард,
+  вертикальный пан жив (body/#sel-info), кнопка reload (confirm → reload).
+  sim_touch +T17 (статика политики). Стенд-артефакт учтён: Playwright не эмулирует
+  pointer:coarse — тач-контекст через override (как в u_verify).
+- Полный регресс на пакете Q: check, smoke, 17 симов, audit_move,
+  check_minimap_view, u_verify, v_verify — все зелёные.
+- Дельта синка: index.html (meta+кнопка), style.css (политика после #game-canvas),
+  game.js (гвард в конструкторе), ui.js (wiring), локали (2 ключа), config (Q),
+  scripts/v_verify.mjs + sim_touch T17. НОВЫХ js-модулей нет.
+
+Дальше по аудиту: V2 — visualViewport-устойчивость (игра следует за видимой
+областью при системном iOS-зуме, который вебом не блокируется) — следующий пакет.

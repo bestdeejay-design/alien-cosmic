@@ -119,6 +119,15 @@ export class Game {
     // панелей не влияет — цикла наблюдения нет.
     window.addEventListener('orientationchange', () => this.resize());
     document.addEventListener('fullscreenchange', () => this.resize());
+    // Пакет Q: гвард пинча страницы на iOS Safari. Meta user-scalable=no iOS
+    // игнорирует с iOS 10 (доступность), поэтому единственный надёжный способ —
+    // отменять Safari-события жеста. На Chromium-браузерах gesture* не бывают —
+    // там pinch закрыт touch-action-политикой (style.css, пакет Q). Игровой
+    // щипок канваса живёт на pointer-событиях (input.js) и не страдает:
+    // preventDefault на gesture* отменяет только масштабирование страницы.
+    const killPageGesture = (e) => e.preventDefault();
+    document.addEventListener('gesturestart', killPageGesture);
+    document.addEventListener('gesturechange', killPageGesture);
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => this.resize());
       const bp = document.getElementById('bottom-panel');
