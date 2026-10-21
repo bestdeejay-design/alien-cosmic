@@ -1,0 +1,1533 @@
+diff --git a/index.html b/index.html
+index d2de804..b73cbb2 100644
+--- a/index.html
++++ b/index.html
+@@ -26,27 +26,34 @@
+ 
+     <div id="topbar">
+       <div class="brand">ALIEN <b>COSMIC</b><small>RTS</small></div>
+-      <div class="res"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
+-      <div class="res"><span class="dot supply" id="res-supply-dot"></span><span id="res-supply">0/0</span></div>
+-      <div class="res"><span id="res-time">00:00</span></div>
++      <div class="res res-minerals"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
++      <div class="res res-supply"><span class="dot supply" id="res-supply-dot"></span><span id="res-supply">0/0</span></div>
++      <div class="res res-time"><span id="res-time">00:00</span></div>
+       <div class="res objective" id="res-objective"></div>
+       <div class="spacer"></div>
+-      <button id="btn-sound" class="tb-btn"></button>
+-      <button id="btn-pause" class="tb-btn" data-i18n="ui.topbar.pause"></button>
+-      <button id="btn-restart" class="tb-btn" data-i18n="ui.topbar.restart"></button>
+-      <button id="btn-exit" class="tb-btn" data-i18n="ui.topbar.exit"></button>
++      <button id="btn-sound" class="tb-btn" type="button"></button>
++      <button id="btn-pause" class="tb-btn" type="button" data-i18n="ui.topbar.pause"></button>
++      <button id="btn-restart" class="tb-btn" type="button" data-i18n="ui.topbar.restart" data-i18n-title="ui.topbar.restart"></button>
++      <button id="btn-exit" class="tb-btn" type="button" data-i18n="ui.topbar.exit" data-i18n-title="ui.topbar.exit"></button>
+     </div>
+ 
+     <div id="bottom-panel">
+-      <div id="minimap-box"><canvas id="minimap" width="176" height="176"></canvas></div>
++      <div id="minimap-box"><canvas id="minimap" aria-label="Minimap"></canvas></div>
+       <div id="sel-info"><div class="hint" data-i18n="ui.loading"></div></div>
+       <div id="cmd-grid"></div>
+       <div id="panel-ctl">
+-        <button id="panel-pos" class="mini-btn" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
+-        <button id="panel-hide" class="mini-btn" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
++        <button id="panel-compact-toggle" class="mini-btn" type="button" data-i18n-title="ui.panel.expandTitle"></button>
++        <button id="panel-pos" class="mini-btn" type="button" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
++        <button id="panel-hide" class="mini-btn" type="button" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
+       </div>
+     </div>
+-    <button id="panel-show" class="mini-btn" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
++    <button id="panel-show" class="mini-btn" type="button" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
++    <button id="placement-cancel" class="placement-cancel" type="button" hidden aria-label="Cancel placement" data-i18n-title="ui.placement.cancelTitle">×</button>
++    <div id="zoom-controls" role="group" aria-label="Zoom controls">
++      <button id="zoom-out" type="button" aria-label="Zoom out" data-i18n-title="ui.zoom.out">−</button>
++      <output id="zoom-value" aria-live="polite">100%</output>
++      <button id="zoom-in" type="button" aria-label="Zoom in" data-i18n-title="ui.zoom.in">+</button>
++    </div>
+ 
+     <div id="toasts"></div>
+ 
+@@ -92,7 +99,11 @@
+         <div id="end-reason" class="end-reason"></div>
+         <div id="end-stats"></div>
+         <div id="end-epilogue" class="end-epilogue"></div>
+-        <button id="btn-again" class="big-btn" data-i18n="ui.end.again"></button>
++        <div id="end-actions" class="end-actions">
++          <button id="btn-end-home" class="big-btn ghost-btn" type="button" data-i18n="ui.end.home"></button>
++          <button id="btn-again" class="big-btn" type="button" data-i18n="ui.end.again"></button>
++          <button id="btn-next" class="big-btn" type="button" data-i18n="ui.end.next" hidden></button>
++        </div>
+       </div>
+     </div>
+ 
+diff --git a/js/config.js b/js/config.js
+index a05db3b..62d2a1f 100644
+--- a/js/config.js
++++ b/js/config.js
+@@ -13,7 +13,7 @@
+ import { entityText } from './i18n.js';
+ 
+ // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
+-export const GAME_VERSION = 'M';
++export const GAME_VERSION = 'N';
+ export const GAME_DATE = '21.10.2026'; // дата фактической поставки (правило V)
+ 
+ // --- Мир ---
+diff --git a/js/game.js b/js/game.js
+index 56b5e53..3b5d291 100644
+--- a/js/game.js
++++ b/js/game.js
+@@ -340,6 +340,9 @@ export class Game {
+     this.canvas.style.width = this.cssW + 'px';
+     this.canvas.style.height = this.cssH + 'px';
+     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
++    // Aspect-aware minimap sizing may change panel geometry; update it before
++    // reading the actual DOM insets so camera clamps use the final layout.
++    ui.resizeMinimap(this);
+     // Размеры панелей UI — чтобы краевой скролл не срабатывал над ними.
+     // Инсеты командной панели — из её положения E.1 (DOM-метрики врут
+     // при боковых положениях: offsetHeight там во весь экран).
+@@ -349,6 +352,7 @@ export class Game {
+     this.uiLeft = ins.left;
+     this.uiRight = ins.right;
+     this.clampCam();
++    ui.refreshLayout(this);
+   }
+ 
+   // Видимый размер мира в пикселях при текущем зуме.
+@@ -424,6 +428,7 @@ export class Game {
+     ui.hideEnd();
+     ui.hideMissions();
+     ui.hideBrief();
++    ui.hideCodex();
+     ui.showStart();
+     this.sound.click();
+   }
+@@ -436,7 +441,20 @@ export class Game {
+     const sel = st.selection.filter((e) => !e.dead);
+     const cmds = [];
+     if (st.placing) {
+-      cmds.push({ code: 'Escape', icon: 'stop', label: t('ui.cmds.cancel'), on: () => { st.placing = null; } });
++      cmds.push({
++        code: 'KeyX', icon: 'stop', label: t('ui.placement.cancel'),
++        on: () => this.hooks.cancelPlacement(),
++      });
++      for (const [code, type] of BUILD_ORDER) {
++        if (!isUnlocked(this.mission, type)) continue;
++        const cfg = BUILDINGS[type];
++        cmds.push({
++          code, icon: st.factions.player === 'alien' ? 'a_' + type : type,
++          label: fname(cfg, st.factions.player), cost: cfg.cost,
++          tip: buildingTip(type, st.factions.player), selected: st.placing.type === type,
++          on: () => this.hooks.beginPlace(type),
++        });
++      }
+       return cmds;
+     }
+     const b = sel.length === 1 && sel[0].kind === 'building' ? sel[0] : null;
+@@ -563,8 +581,26 @@ export class Game {
+       issueRMB: (wx, wy) => this.issueRMB(wx, wy),
+ 
+       beginPlace: (type) => {
+-        st().buildMenu = false;
+-        st().placing = { type, tx: -999, ty: -999 };
++        const s = st();
++        s.buildMenu = false;
++        if (s.placing) {
++          s.placing.type = type;
++          if (s.placing.tx > -900) {
++            const cfg = BUILDINGS[type];
++            s.placing.tx = Math.max(0, Math.min(s.map.w - cfg.w, s.placing.tx));
++            s.placing.ty = Math.max(0, Math.min(s.map.h - cfg.h, s.placing.ty));
++          }
++        } else {
++          s.placing = { type, tx: -999, ty: -999 };
++        }
++        this.sound.click();
++      },
++
++      cancelPlacement: () => {
++        const s = st();
++        s.placing = null;
++        s.wallDrag = null;
++        s.buildMenu = false;
+         this.sound.click();
+       },
+ 
+diff --git a/js/input.js b/js/input.js
+index c55e2f2..c07dd8d 100644
+--- a/js/input.js
++++ b/js/input.js
+@@ -5,7 +5,7 @@
+ // зданий, камера (края экрана, стрелки, колесо / два пальца),
+ // горячие клавиши панели команд, трекпад-набор (. , Tab H).
+ // ============================================================
+-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS } from './config.js';
++import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js';
+ import { unitAt } from './units.js';
+ import { buildingAt } from './buildings.js';
+ 
+@@ -37,6 +37,184 @@ export function attachInput(game) {
+     return game.screenToWorld(e.clientX - r.left, e.clientY - r.top);
+   };
+ 
++  // Pointer-based touch arbitration: tap selects/places, empty drag pans,
++  // friendly-unit drag box-selects, pinch zooms around its moving midpoint,
++  // and a stationary 450ms press issues the RMB-equivalent order.
++  const touchPointers = new Map();
++  let touchGesture = null;
++  let longPressTimer = null;
++  let ignoreCompatMouseUntil = 0;
++  let lastTouchPoint = null;
++  let lastTouchTap = { t: 0, x: 0, y: 0 };
++  const isCompatMouse = (e) => {
++    const source = e.sourceCapabilities;
++    if (source && typeof source.firesTouchEvents === 'boolean') return source.firesTouchEvents;
++    if (performance.now() >= ignoreCompatMouseUntil || !lastTouchPoint) return false;
++    return Math.hypot(e.clientX - lastTouchPoint.x, e.clientY - lastTouchPoint.y) <= 24;
++  };
++  const clearLongPress = () => {
++    if (longPressTimer !== null) clearTimeout(longPressTimer);
++    longPressTimer = null;
++  };
++  const localPoint = (e) => {
++    const r = cv.getBoundingClientRect();
++    return { x: e.clientX - r.left, y: e.clientY - r.top };
++  };
++  const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
++  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
++
++  cv.addEventListener('pointerdown', (e) => {
++    if (e.pointerType !== 'touch') return;
++    const st = game.state;
++    if (!st || !game.started || st.gameOver || game.paused) return;
++    if (e.cancelable) e.preventDefault();
++    ignoreCompatMouseUntil = performance.now() + 700;
++    lastTouchPoint = { x: e.clientX, y: e.clientY };
++    const point = localPoint(e);
++    touchPointers.set(e.pointerId, point);
++    try { if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId); } catch { /* capture may be unavailable in embedded browsers */ }
++
++    if (touchPointers.size >= 2) {
++      clearLongPress();
++      game.box = null;
++      st.wallDrag = null;
++      const pair = [...touchPointers.entries()].slice(0, 2);
++      const a = pair[0][1], b = pair[1][1], mid = midpoint(a, b);
++      const z = st.camera.z || 1;
++      touchGesture = {
++        mode: 'pinch', ids: pair.map(([id]) => id),
++        startDistance: Math.max(1, distance(a, b)), startZoom: z,
++        anchorWorld: game.screenToWorld(mid.x, mid.y),
++      };
++      return;
++    }
++
++    const world = game.screenToWorld(point.x, point.y);
++    st.mouseWorld = world;
++    if (st.placing) {
++      updatePlacing(st, world);
++      touchGesture = { mode: 'placement', id: e.pointerId, start: point, startWorld: world };
++      return;
++    }
++    const friendly = unitAt(st, world.x, world.y, 'player');
++    touchGesture = {
++      mode: 'pending', id: e.pointerId, start: point, startWorld: world,
++      startCameraX: st.camera.x, startCameraY: st.camera.y, startZoom: st.camera.z || 1,
++      friendly: !!friendly, startedAt: performance.now(),
++    };
++    longPressTimer = setTimeout(() => {
++      if (!touchGesture || touchGesture.mode !== 'pending' || !touchPointers.has(e.pointerId)) return;
++      touchGesture.mode = 'context';
++      game.box = null;
++      game.hooks.issueRMB(touchGesture.startWorld.x, touchGesture.startWorld.y);
++      game.sound.ack();
++    }, 450);
++  }, { passive: false });
++
++  cv.addEventListener('pointermove', (e) => {
++    if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
++    if (e.cancelable) e.preventDefault();
++    const point = localPoint(e);
++    touchPointers.set(e.pointerId, point);
++    const st = game.state;
++    if (!st || !touchGesture) return;
++
++    if (touchGesture.mode === 'pinch') {
++      if (!touchGesture.ids.includes(e.pointerId)) return;
++      const a = touchPointers.get(touchGesture.ids[0]);
++      const b = touchPointers.get(touchGesture.ids[1]);
++      if (!a || !b) return;
++      const mid = midpoint(a, b);
++      const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX,
++        touchGesture.startZoom * distance(a, b) / touchGesture.startDistance));
++      st.camera.z = z;
++      st.camera.x = touchGesture.anchorWorld.x - mid.x / z;
++      st.camera.y = touchGesture.anchorWorld.y - mid.y / z;
++      game.clampCam();
++      return;
++    }
++    if (touchGesture.id !== e.pointerId) return;
++    const dx = point.x - touchGesture.start.x, dy = point.y - touchGesture.start.y;
++    const moved = Math.hypot(dx, dy);
++    const world = game.screenToWorld(point.x, point.y);
++    st.mouseWorld = world;
++
++    if (touchGesture.mode === 'placement') {
++      updatePlacing(st, world);
++      return;
++    }
++    if (touchGesture.mode === 'pending' && moved > 9) {
++      clearLongPress();
++      if (touchGesture.friendly) {
++        touchGesture.mode = 'box';
++        game.box = {
++          x0: touchGesture.startWorld.x, y0: touchGesture.startWorld.y,
++          x1: world.x, y1: world.y,
++        };
++      } else {
++        touchGesture.mode = 'pan';
++      }
++    }
++    if (touchGesture.mode === 'box' && game.box) {
++      game.box.x1 = world.x; game.box.y1 = world.y;
++    } else if (touchGesture.mode === 'pan') {
++      const z = touchGesture.startZoom;
++      st.camera.x = touchGesture.startCameraX - dx / z;
++      st.camera.y = touchGesture.startCameraY - dy / z;
++      game.clampCam();
++    }
++  }, { passive: false });
++
++  cv.addEventListener('pointerup', (e) => {
++    if (e.pointerType !== 'touch' || !touchPointers.has(e.pointerId)) return;
++    if (e.cancelable) e.preventDefault();
++    const point = localPoint(e);
++    lastTouchPoint = { x: e.clientX, y: e.clientY };
++    ignoreCompatMouseUntil = performance.now() + 700;
++    const st = game.state;
++    clearLongPress();
++    touchPointers.delete(e.pointerId);
++    // Pointer capture is released by the browser after pointerup. Defer no
++    // synthetic lostpointercapture into this handler before the tap/box commit.
++    if (!st || !touchGesture) return;
++
++    if (touchGesture.mode === 'pinch') {
++      if (touchGesture.ids.includes(e.pointerId)) {
++        touchGesture = touchPointers.size ? { mode: 'consumed' } : null;
++      }
++      return;
++    }
++    if (touchGesture.id !== e.pointerId) return;
++    const world = game.screenToWorld(point.x, point.y);
++    if (touchGesture.mode === 'placement' && st.placing) {
++      updatePlacing(st, world);
++      if (st.placing.tx > -900) game.hooks.tryPlace(st.placing.tx, st.placing.ty);
++    } else if (touchGesture.mode === 'pending') {
++      const now = performance.now();
++      const isDouble = now - lastTouchTap.t < 350 && distance(point, lastTouchTap) < 16;
++      if (isDouble) doubleSelect(game, st, world);
++      else clickSelect(game, st, world, false);
++      lastTouchTap = { t: now, x: point.x, y: point.y };
++      game.sound.click();
++    } else if (touchGesture.mode === 'box' && game.box) {
++      game.box.x1 = world.x; game.box.y1 = world.y;
++      boxSelect(game, st, game.box, false);
++      game.box = null;
++      game.sound.click();
++    }
++    touchGesture = null;
++  }, { passive: false });
++
++  const cancelTouchGesture = (e) => {
++    if (e && e.pointerType && e.pointerType !== 'touch') return;
++    clearLongPress();
++    touchPointers.clear();
++    touchGesture = null;
++    game.box = null;
++  };
++  cv.addEventListener('pointercancel', cancelTouchGesture);
++  cv.addEventListener('lostpointercapture', cancelTouchGesture);
++
+   window.addEventListener('mousemove', (e) => {
+     game.mouse.x = e.clientX;
+     game.mouse.y = e.clientY;
+@@ -67,6 +245,7 @@ export function attachInput(game) {
+   });
+ 
+   cv.addEventListener('mousedown', (e) => {
++    if (isCompatMouse(e)) { e.preventDefault(); return; }
+     const st = game.state;
+     if (!st || !game.started || st.gameOver) return;
+     const w = screenToWorld(e);
+@@ -107,6 +286,7 @@ export function attachInput(game) {
+   cv.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+ 
+   window.addEventListener('mouseup', (e) => {
++    if (isCompatMouse(e)) return;
+     if (e.button === 1 && game.pan) {
+       game.pan = null;
+       cv.style.cursor = '';
+@@ -336,6 +516,7 @@ export function boxSelect(game, st, box, shift) {
+       b.tx * TILE < x1 && (b.tx + b.w) * TILE > x0 &&
+       b.ty * TILE < y1 && (b.ty + b.h) * TILE > y0).slice(0, 1);
+   }
++  game.__debugBoxSelect = { box: { ...box }, picked: picked.map((p) => p.id) };
+   if (shift) {
+     const set = new Set(st.selection);
+     for (const p of picked) { if (set.has(p)) set.delete(p); else set.add(p); }
+diff --git a/js/ui.js b/js/ui.js
+index 6e03628..9715846 100644
+--- a/js/ui.js
++++ b/js/ui.js
+@@ -571,6 +571,13 @@ function setLandingPageActive(active, { resetScroll = false } = {}) {
+   }
+ }
+ 
++function updateModalChrome() {
++  if (!els || !document.body || !document.body.classList) return;
++  const open = [els.missionOverlay, els.briefOverlay, els.codexOverlay, els.endOverlay]
++    .some((overlay) => overlay && !overlay.classList.contains('hidden'));
++  document.body.classList.toggle('screen-modal-open', open);
++}
++
+ function updateCampaignStartLabel() {
+   if (!els || !els.startBtn) return;
+   const progress = loadProgress();
+@@ -629,6 +636,12 @@ export function initUI(game) {
+   els = {
+     canvas: $('game-canvas'),
+     minimap: $('minimap'),
++    minimapBox: $('minimap-box'),
++    placementCancel: $('placement-cancel'),
++    zoomControls: $('zoom-controls'),
++    zoomIn: $('zoom-in'),
++    zoomOut: $('zoom-out'),
++    zoomValue: $('zoom-value'),
+     minerals: $('res-minerals'),
+     supply: $('res-supply'),
+     supplyDot: $('res-supply-dot'),
+@@ -641,6 +654,7 @@ export function initUI(game) {
+     panelPosBtn: $('panel-pos'),
+     panelHideBtn: $('panel-hide'),
+     panelShow: $('panel-show'),
++    panelCompactToggle: $('panel-compact-toggle'),
+     selInfo: $('sel-info'),
+     cmdGrid: $('cmd-grid'),
+     toasts: $('toasts'),
+@@ -648,6 +662,7 @@ export function initUI(game) {
+     missionOverlay: $('mission-overlay'),
+     missionList: $('mission-list'),
+     briefOverlay: $('brief-overlay'),
++    briefGo: $('btn-brief-go'),
+     briefBadge: $('brief-badge'),
+     briefTitle: $('brief-title'),
+     briefPlace: $('brief-place'),
+@@ -660,6 +675,8 @@ export function initUI(game) {
+     endReason: $('end-reason'),
+     endStats: $('end-stats'),
+     endEpilogue: $('end-epilogue'),
++    endHomeBtn: $('btn-end-home'),
++    endNextBtn: $('btn-next'),
+     codexOverlay: $('codex-overlay'),
+     codexTabs: $('codex-tabs'),
+     codexBody: $('codex-body'),
+@@ -675,15 +692,19 @@ export function initUI(game) {
+   $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
+   $('btn-missions-back').addEventListener('click', () => {
+     els.missionOverlay.classList.add('hidden');
++    updateModalChrome();
+     setLandingPageActive(true);
+   });
+   $('btn-codex').addEventListener('click', () => {
+     setLandingPageActive(false);
+     showCodex();
+     els.codexOverlay.classList.remove('hidden');
++    updateModalChrome();
++    if (els.codexTabs.firstChild && els.codexTabs.firstChild.focus) els.codexTabs.firstChild.focus({ preventScroll: true });
+   });
+   $('btn-codex-back').addEventListener('click', () => {
+     els.codexOverlay.classList.add('hidden');
++    updateModalChrome();
+     setLandingPageActive(true);
+   });
+   // Брифинг: «В бой!».
+@@ -693,6 +714,8 @@ export function initUI(game) {
+   $('btn-brief-back').addEventListener('click', () => {
+     els.briefOverlay.classList.add('hidden');
+     els.missionOverlay.classList.remove('hidden');
++    updateModalChrome();
++    if (els.missionList.firstChild && els.missionList.firstChild.focus) els.missionList.firstChild.focus({ preventScroll: true });
+   });
+ 
+   updateCampaignStartLabel();
+@@ -704,17 +727,39 @@ export function initUI(game) {
+     updateCampaignStartLabel();
+     game.sound.click();
+   });
++  els.endHomeBtn.addEventListener('click', () => {
++    hideEnd();
++    game.toMenu();
++  });
+   els.againBtn.addEventListener('click', () => {
+-    els.endOverlay.classList.add('hidden');
+-    if (pendingNext) { showBrief(game, pendingNext); pendingNext = null; }
+-    else game.restart();
++    pendingNext = null;
++    hideEnd();
++    game.restart();
++  });
++  els.endNextBtn.addEventListener('click', () => {
++    const next = pendingNext;
++    if (!next) return;
++    pendingNext = null;
++    hideEnd();
++    showBrief(game, next);
+   });
+   els.restart.addEventListener('click', () => game.restart());
+   els.exit.addEventListener('click', () => game.toMenu());
+   els.panelPosBtn.addEventListener('click', () => { cyclePanelPos(); game.resize(); game.sound.click(); });
+   els.panelHideBtn.addEventListener('click', () => { setPanelHidden(true); game.resize(); game.sound.click(); });
+   els.panelShow.addEventListener('click', () => { setPanelHidden(false); game.resize(); game.sound.click(); });
++  els.panelCompactToggle.addEventListener('click', () => {
++    setPanelExpandedInShortLandscape(!panelExpandedInShortLandscape);
++    game.resize(); game.sound.click();
++  });
++  els.placementCancel.addEventListener('click', () => game.hooks.cancelPlacement());
++  els.zoomIn.addEventListener('click', () => zoomByButton(game, 1.2));
++  els.zoomOut.addEventListener('click', () => zoomByButton(game, 1 / 1.2));
+   applyPanelPrefs();
++  syncPanelCompactButton();
++  installPanelBreakpointListener(game);
++  resizeMinimap(game);
++  refreshLayout(game);
+   els.pause.addEventListener('click', () => game.togglePause());
+   els.sound.addEventListener('click', () => game.toggleSound());
+ 
+@@ -732,31 +777,43 @@ export function initUI(game) {
+     langSel.addEventListener('change', () => setLocale(langSel.value));
+   }
+ 
+-  // Миникарта: ЛКМ — прыжок/перетаскивание камеры, ПКМ — приказ.
++  // Mini-map: tap/click jumps, pointer-captured drag pans; RMB still issues an order.
+   const mm = els.minimap;
+   const mmWorld = (e) => {
+     const r = mm.getBoundingClientRect();
+-    // C/П7: масштаб миникарты — от размера карты (фолбэк 64 до старта).
+     const mp = (game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
+-    // G.6: обратное преобразование letterbox-превью (minimapView):
+-    // CSS-px → bitmap канваса → мир, с клампом в границы карты.
+-    const view = minimapView(mp);
+-    const bx = (e.clientX - r.left) * (view.S / r.width);
+-    const by = (e.clientY - r.top) * (view.S / r.height);
++    const view = minimapView(mp, mm);
++    const bx = (e.clientX - r.left) * (view.width / Math.max(1, r.width));
++    const by = (e.clientY - r.top) * (view.height / Math.max(1, r.height));
+     return {
+       x: Math.max(0, Math.min(mp.pxW, (bx - view.ox) / view.k)),
+       y: Math.max(0, Math.min(mp.pxH, (by - view.oy) / view.k)),
+     };
+   };
+-  mm.addEventListener('mousedown', (e) => {
++  let minimapPointer = null;
++  mm.addEventListener('pointerdown', (e) => {
++    if (e.pointerType === 'mouse' && e.button === 2) {
++      const w = mmWorld(e); game.hooks.issueRMB(w.x, w.y); return;
++    }
++    if (e.pointerType === 'mouse' && e.button !== 0) return;
+     e.preventDefault();
++    minimapPointer = { id: e.pointerId, pointerType: e.pointerType };
++    if (mm.setPointerCapture) mm.setPointerCapture(e.pointerId);
+     const w = mmWorld(e);
+-    if (e.button === 0) game.hooks.centerCamera(w.x, w.y);
+-    else if (e.button === 2) game.hooks.issueRMB(w.x, w.y);
+-  });
+-  mm.addEventListener('mousemove', (e) => {
+-    if (e.buttons & 1) { const w = mmWorld(e); game.hooks.centerCamera(w.x, w.y); }
+-  });
++    game.hooks.centerCamera(w.x, w.y);
++  }, { passive: false });
++  mm.addEventListener('pointermove', (e) => {
++    if (!minimapPointer || minimapPointer.id !== e.pointerId) return;
++    if (minimapPointer.pointerType === 'mouse' && !(e.buttons & 1)) return;
++    e.preventDefault();
++    const w = mmWorld(e);
++    game.hooks.centerCamera(w.x, w.y);
++  }, { passive: false });
++  const endMinimapPointer = (e) => {
++    if (minimapPointer && minimapPointer.id === e.pointerId) minimapPointer = null;
++  };
++  mm.addEventListener('pointerup', endMinimapPointer);
++  mm.addEventListener('pointercancel', endMinimapPointer);
+   mm.addEventListener('contextmenu', (e) => e.preventDefault());
+   setLandingPageActive(true);
+ }
+@@ -767,6 +824,7 @@ export function initUI(game) {
+ export function showMissions(game) {
+   setLandingPageActive(false);
+   els.missionOverlay.classList.remove('hidden');
++  updateModalChrome();
+   const unlocked = loadProgress();
+   els.missionList.innerHTML = ''; // очистка (переводы в карточки идут через DOM)
+   let lastAct = null;
+@@ -859,6 +917,8 @@ export function showBrief(game, m) {
+   }
+   els.briefObjective.textContent = objLine;
+   els.briefOverlay.classList.remove('hidden');
++  updateModalChrome();
++  if (els.briefGo && els.briefGo.focus) els.briefGo.focus({ preventScroll: true });
+ }
+ 
+ // Части кодекса → безопасный DOM (setRich: только <b>/<br> в переводах).
+@@ -933,10 +993,90 @@ export function setVersionBadge(text) {
+ // ------------------------------------------------------------
+ const PANEL_KEY = 'terranrts.panel';
+ const PANEL_POS = ['bottom', 'left', 'right', 'top'];
++const SHORT_LANDSCAPE = '(orientation: landscape) and (max-height: 520px)';
+ let panelPos = 'bottom', panelHidden = false;
++let panelExpandedInShortLandscape = false;
++let minimapLayoutKey = '';
++
++function isShortLandscape() {
++  if (typeof window === 'undefined') return false;
++  if (typeof window.matchMedia === 'function') return window.matchMedia(SHORT_LANDSCAPE).matches;
++  return Number(window.innerWidth) > Number(window.innerHeight) && Number(window.innerHeight) <= 520;
++}
++function canCompactPanel() {
++  return isShortLandscape() && !panelHidden && panelPos !== 'left' && panelPos !== 'right';
++}
++function syncPanelCompactButton() {
++  if (!els || !els.panelCompactToggle) return;
++  const compact = canCompactPanel() && !panelExpandedInShortLandscape;
++  const label = compact ? t('ui.panel.expand') : t('ui.panel.collapse');
++  const title = compact ? t('ui.panel.expandTitle') : t('ui.panel.collapseTitle');
++  els.panelCompactToggle.textContent = label;
++  els.panelCompactToggle.title = title;
++  els.panelCompactToggle.setAttribute('aria-label', title);
++  els.panelCompactToggle.setAttribute('aria-expanded', String(!compact));
++  document.body.classList.toggle('panel-compact-expanded', canCompactPanel() && panelExpandedInShortLandscape);
++}
++function setPanelExpandedInShortLandscape(expanded) {
++  panelExpandedInShortLandscape = !!expanded && canCompactPanel();
++  syncPanelCompactButton();
++}
++function installPanelBreakpointListener(game) {
++  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
++  const mq = window.matchMedia(SHORT_LANDSCAPE);
++  const onChange = () => {
++    panelExpandedInShortLandscape = false;
++    syncPanelCompactButton();
++    game.resize();
++  };
++  if (mq.addEventListener) mq.addEventListener('change', onChange);
++  else if (mq.addListener) mq.addListener(onChange);
++}
+ 
+ export function getPanelPos() { return panelPos; }
+ export function isPanelHidden() { return panelHidden; }
++
++// T10: the minimap canvas/slot share the current map aspect and actual bitmap size.
++export function resizeMinimap(game) {
++  if (!els || !els.minimap || !els.minimapBox) return;
++  const map = (game && game.state && game.state.map) || { pxW: WORLD_W, pxH: WORLD_H };
++  const aspect = Math.max(0.25, Math.min(4, map.pxW / map.pxH));
++  const shortCompact = canCompactPanel() && !panelExpandedInShortLandscape;
++  let maxW, maxH;
++  if (shortCompact) { maxW = 180; maxH = 96; }
++  else if (panelPos === 'left' || panelPos === 'right') { maxW = 148; maxH = 148; }
++  else if (Number(window.innerWidth) <= 720) {
++    maxW = Math.min(150, Math.max(116, Number(window.innerWidth) * 0.36));
++    maxH = 150;
++  } else { maxW = 168; maxH = 168; }
++
++  const cssW = Math.max(64, Math.min(maxW, maxH * aspect));
++  const cssH = cssW / aspect;
++  const boxW = Math.round(cssW) + 2;
++  const boxH = Math.round(cssH) + 2;
++  const boxStyleW = boxW + 'px', boxStyleH = boxH + 'px';
++  const dpr = Math.max(1, Math.min(2, Number(window.devicePixelRatio) || 1));
++  const bitmapW = Math.max(1, Math.round((boxW - 2) * dpr));
++  const bitmapH = Math.max(1, Math.round((boxH - 2) * dpr));
++  const key = [map.pxW, map.pxH, boxStyleW, boxStyleH, bitmapW, bitmapH, panelPos, shortCompact].join('|');
++  if (key === minimapLayoutKey) return;
++  minimapLayoutKey = key;
++  els.minimapBox.style.width = boxStyleW;
++  els.minimapBox.style.height = boxStyleH;
++  if (els.minimap.width !== bitmapW) els.minimap.width = bitmapW;
++  if (els.minimap.height !== bitmapH) els.minimap.height = bitmapH;
++  els.minimap.setAttribute('aria-label', t('ui.minimap.label'));
++}
++
++export function refreshLayout(game) {
++  if (!els) return;
++  resizeMinimap(game);
++  updatePlacementCancel(game);
++  updateZoomControls(game);
++  updatePauseOverlay(game);
++  updateToastPosition(game);
++}
++
+ export function getPanelInsets() {
+   if (panelHidden) return { top: 0, bottom: 0, left: 0, right: 0 };
+   // E.1 → G.6: инсеты — из реального размера панели, а не из зашитых
+@@ -964,8 +1104,18 @@ function applyPanelClass() {
+   cl.remove('panel-left', 'panel-right', 'panel-top', 'panel-hidden');
+   if (panelPos !== 'bottom') cl.add('panel-' + panelPos);
+   if (panelHidden) cl.add('panel-hidden');
+-  if (els && els.panelPosBtn) els.panelPosBtn.textContent = t('ui.panel.posState', { where: t('ui.panel.posNames.' + panelPos) });
+-  if (els && els.panelShow) els.panelShow.textContent = t('ui.panel.show');
++  if (els && els.panelPosBtn) {
++    const title = t('ui.panel.posTitle');
++    els.panelPosBtn.textContent = t('ui.panel.posState', { where: t('ui.panel.posNames.' + panelPos) });
++    els.panelPosBtn.title = title;
++    els.panelPosBtn.setAttribute('aria-label', els.panelPosBtn.textContent + '. ' + title);
++  }
++  if (els && els.panelShow) {
++    els.panelShow.textContent = t('ui.panel.show');
++    els.panelShow.title = t('ui.panel.showTitle');
++    els.panelShow.setAttribute('aria-label', t('ui.panel.showTitle'));
++  }
++  syncPanelCompactButton();
+ }
+ export function applyPanelPrefs() {
+   try {
+@@ -973,11 +1123,13 @@ export function applyPanelPrefs() {
+     if (PANEL_POS.includes(p.pos)) panelPos = p.pos;
+     panelHidden = !!p.hidden;
+   } catch (e) { /* битый JSON — дефолты */ }
++  panelExpandedInShortLandscape = false;
+   applyPanelClass();
+ }
+ export function setPanelPos(pos) {
+   if (!PANEL_POS.includes(pos)) return;
+   panelPos = pos;
++  panelExpandedInShortLandscape = false;
+   savePanelPrefs();
+   applyPanelClass();
+ }
+@@ -986,13 +1138,28 @@ export function cyclePanelPos() {
+ }
+ export function setPanelHidden(h) {
+   panelHidden = !!h;
++  if (panelHidden) panelExpandedInShortLandscape = false;
+   savePanelPrefs();
+   applyPanelClass();
+ }
+ export function togglePanel() { setPanelHidden(!panelHidden); }
+-export function hideMissions() { if (els.missionOverlay) els.missionOverlay.classList.add('hidden'); }
+-export function hideBrief() { if (els.briefOverlay) els.briefOverlay.classList.add('hidden'); }
+-export function hideEnd() { els.endOverlay.classList.add('hidden'); }
++export function hideMissions() {
++  if (els && els.missionOverlay) els.missionOverlay.classList.add('hidden');
++  updateModalChrome();
++}
++export function hideBrief() {
++  if (els && els.briefOverlay) els.briefOverlay.classList.add('hidden');
++  updateModalChrome();
++}
++export function hideCodex() {
++  if (els && els.codexOverlay) els.codexOverlay.classList.add('hidden');
++  updateModalChrome();
++}
++export function hideEnd() {
++  if (els && els.endOverlay) els.endOverlay.classList.add('hidden');
++  pendingNext = null;
++  updateModalChrome();
++}
+ 
+ export function toast(msg, kind = 'info') {
+   if (!els) return;
+@@ -1019,6 +1186,20 @@ function fmtElapsed(sec) {
+   return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+ }
+ 
++function syncEndActions() {
++  if (!els) return;
++  const home = t('ui.end.home');
++  const again = t('ui.end.again');
++  els.endHomeBtn.textContent = home;
++  els.endHomeBtn.setAttribute('aria-label', home);
++  els.againBtn.textContent = again;
++  els.againBtn.setAttribute('aria-label', again);
++  els.endNextBtn.hidden = !pendingNext;
++  els.endNextBtn.disabled = !pendingNext;
++  els.endNextBtn.textContent = t('ui.end.next');
++  els.endNextBtn.setAttribute('aria-label', t('ui.end.next'));
++}
++
+ export function showEnd(win, stats, opts = {}) {
+   els.endTitle.textContent = win ? t('ui.end.win') : t('ui.end.lose');
+   els.endTitle.className = win ? 'win' : 'lose';
+@@ -1043,17 +1224,32 @@ export function showEnd(win, stats, opts = {}) {
+   row(t('ui.end.statsLosses'), stats.losses);
+   row(message('mined', opts.faction), stats.mined);
+   pendingNext = opts.next || null;
+-  els.againBtn.textContent = opts.next ? t('ui.end.next') : t('ui.end.again');
++  syncEndActions();
+   els.endOverlay.classList.remove('hidden');
++  updateModalChrome();
++  if (els.endHomeBtn && els.endHomeBtn.focus) els.endHomeBtn.focus({ preventScroll: true });
+ }
+ 
+ // Сброс кэша панели при новой партии — заставит её перестроиться.
+ export function resetPanel() { sig = ''; dyn = null; }
+ export function setPausedUI(p) {
++  if (!els) return;
++  const label = p ? t('ui.topbar.resume') : t('ui.topbar.pause');
+   els.pauseOverlay.classList.toggle('hidden', !p);
+-  els.pause.textContent = p ? t('ui.topbar.resume') : t('ui.topbar.pause');
++  els.pause.textContent = label;
++  els.pause.title = label;
++  els.pause.setAttribute('aria-label', label);
++  els.pause.classList.toggle('is-resume', !!p);
++  if (uiGame) updatePauseOverlay(uiGame);
++}
++export function setSoundUI(muted) {
++  if (!els) return;
++  const label = muted ? t('ui.topbar.soundOff') : t('ui.topbar.sound');
++  els.sound.textContent = label;
++  els.sound.title = label;
++  els.sound.setAttribute('aria-label', label);
++  els.sound.classList.toggle('is-muted', !!muted);
+ }
+-export function setSoundUI(muted) { els.sound.textContent = muted ? t('ui.topbar.soundOff') : t('ui.topbar.sound'); }
+ 
+ // Клавиатурные хоткеи панели: нажимаем «виртуальную кнопку».
+ export function handleHotkey(code) {
+@@ -1071,6 +1267,12 @@ export function update(game) {
+   const st = game.state;
+   if (!st || !els) return;
+ 
++  resizeMinimap(game);
++  updatePlacementCancel(game);
++  updateZoomControls(game);
++  updatePauseOverlay(game);
++  updateToastPosition(game);
++
+   // Верхняя панель.
+   els.minerals.textContent = Math.floor(st.minerals.player);
+   const sup = st.supply.player;
+@@ -1098,6 +1300,88 @@ export function update(game) {
+   refreshDynamic(game, sel);
+ }
+ 
++function updatePlacementCancel(game) {
++  if (!els || !els.placementCancel) return;
++  const st = game.state;
++  const pl = st && st.placing;
++  if (!game.started || !pl || st.gameOver || pl.tx <= -900 || pl.ty <= -900) {
++    els.placementCancel.hidden = true;
++    return;
++  }
++  const cfg = BUILDINGS[pl.type];
++  if (!cfg) { els.placementCancel.hidden = true; return; }
++  const topLeft = game.worldToScreen(pl.tx * TILE, pl.ty * TILE);
++  const topRight = game.worldToScreen((pl.tx + cfg.w) * TILE, pl.ty * TILE);
++  const bottomRight = game.worldToScreen((pl.tx + cfg.w) * TILE, (pl.ty + cfg.h) * TILE);
++  const minX = (game.uiLeft || 0) + 4;
++  const minY = (game.uiTop || 0) + 4;
++  const maxX = game.cssW - (game.uiRight || 0) - 52;
++  const maxY = game.cssH - (game.uiBottom || 0) - 52;
++  let x = topRight.x + 6;
++  let y = topLeft.y - 52;
++  if (x > maxX) x = topLeft.x - 54;
++  if (y < minY) y = bottomRight.y + 4;
++  x = Math.max(minX, Math.min(Math.max(minX, maxX), x));
++  y = Math.max(minY, Math.min(Math.max(minY, maxY), y));
++  els.placementCancel.style.left = Math.round(x) + 'px';
++  els.placementCancel.style.top = Math.round(y) + 'px';
++  els.placementCancel.hidden = false;
++  const label = t('ui.placement.cancel');
++  els.placementCancel.title = t('ui.placement.cancelTitle');
++  els.placementCancel.setAttribute('aria-label', label);
++  els.placementCancel.setAttribute('aria-hidden', 'false');
++}
++
++function updateZoomControls(game) {
++  if (!els || !els.zoomControls) return;
++  const st = game.state;
++  const visible = !!(game.started && st && !st.gameOver);
++  els.zoomControls.hidden = !visible;
++  if (!visible) return;
++  const width = els.zoomControls.offsetWidth || 152;
++  const minX = (game.uiLeft || 0) + 8;
++  const maxX = game.cssW - (game.uiRight || 0) - width - 8;
++  const left = Math.max(4, Math.min(Math.max(4, maxX), minX));
++  const minY = (game.uiTop || 0) + 8;
++  const maxY = game.cssH - (game.uiBottom || 0) - 56;
++  const top = Math.max(4, Math.min(Math.max(4, maxY), minY));
++  els.zoomControls.style.left = Math.round(left) + 'px';
++  els.zoomControls.style.top = Math.round(top) + 'px';
++  const label = t('ui.zoom.label');
++  els.zoomControls.setAttribute('aria-label', label);
++  els.zoomIn.title = t('ui.zoom.in');
++  els.zoomIn.setAttribute('aria-label', t('ui.zoom.in'));
++  els.zoomOut.title = t('ui.zoom.out');
++  els.zoomOut.setAttribute('aria-label', t('ui.zoom.out'));
++  const zoomText = Math.round((st.camera.z || 1) * 100) + '%';
++  if (els.zoomValue.textContent !== zoomText) els.zoomValue.textContent = zoomText;
++}
++
++function zoomByButton(game, factor) {
++  const st = game.state;
++  if (!st) return;
++  const x = (game.uiLeft || 0) + (game.cssW - (game.uiLeft || 0) - (game.uiRight || 0)) / 2;
++  const y = (game.uiTop || 0) + (game.cssH - (game.uiTop || 0) - (game.uiBottom || 0)) / 2;
++  game.setZoom((st.camera.z || 1) * factor, x, y);
++  game.sound.click();
++}
++
++function updatePauseOverlay(game) {
++  if (!els || !els.pauseOverlay || !game || !game.paused) return;
++  els.pauseOverlay.style.top = Math.max(0, game.uiTop || 0) + 'px';
++  els.pauseOverlay.style.bottom = Math.max(0, game.uiBottom || 0) + 'px';
++  els.pauseOverlay.style.left = Math.max(0, game.uiLeft || 0) + 'px';
++  els.pauseOverlay.style.right = Math.max(0, game.uiRight || 0) + 'px';
++}
++
++function updateToastPosition(game) {
++  if (!els || !els.toasts || !game) return;
++  const bottom = panelPos === 'bottom' && !panelHidden ? (game.uiBottom || 0) + 12 : 12;
++  const centerX = (game.uiLeft || 0) + (game.cssW - (game.uiLeft || 0) - (game.uiRight || 0)) / 2;
++  els.toasts.style.bottom = Math.max(12, bottom) + 'px';
++  els.toasts.style.left = Math.round(centerX) + 'px';
++}
++
+ function rebuildPanel(game, sel) {
+   const st = game.state;
+   const previousDyn = dyn;
+@@ -1112,23 +1396,20 @@ function rebuildPanel(game, sel) {
+   els.cmdGrid.innerHTML = '';
+   els.selInfo.innerHTML = '';
+ 
+-  // Режим размещения здания.
++  // Placement keeps a concise hint while the live build palette remains available.
+   if (st.placing) {
+     const hint = document.createElement('div');
+     hint.className = 'hint';
+     setRich(hint, t('ui.hints.buildMode'));
+     els.selInfo.appendChild(hint);
+-    return;
+-  }
+-  if (!sel.length) {
++  } else if (!sel.length) {
+     const hint = document.createElement('div');
+     hint.className = 'hint';
+     setRich(hint, t('ui.hints.select'));
+     els.selInfo.appendChild(hint);
+     return;
+-  }
+-
+-  const first = sel[0];
++  } else {
++    const first = sel[0];
+ 
+   // --- Выделено здание ---
+   if (first.kind === 'building') {
+@@ -1227,18 +1508,20 @@ function rebuildPanel(game, sel) {
+     sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: first.cfg.dmg, cd: first.cfg.cooldown });
+     box.appendChild(sub);
+     els.selInfo.appendChild(box);
++    }
+   }
+ 
+   // --- Кнопки команд (от игры — контекстный список) ---
+-  // Меню стройки — 8 кнопок: в компактной сетке 2×4 они гарантированно
+-  // помещаются в панель (обычные ряды по 82px обрезали всё ниже второго).
+-  els.cmdGrid.classList.toggle('compact', !!st.buildMenu && !st.placing);
++  // Build/placement palettes use a denser grid without shrinking touch targets.
++  els.cmdGrid.classList.toggle('compact', !!st.buildMenu || !!st.placing);
+   const cmds = game.getCommands();
+   for (const c of cmds) {
+     const btn = document.createElement('button');
+     btn.className = 'cmd';
++    if (c.selected) btn.classList.add('is-selected');
+     btn.dataset.code = c.code;
+     btn.setAttribute('aria-describedby', 'cmd-tip');
++    if (c.selected !== undefined) btn.setAttribute('aria-pressed', String(!!c.selected));
+     btn.appendChild(iconEl(c.icon));
+     const label = document.createElement('span');
+     label.className = 'cmd-label';
+@@ -1853,10 +2136,15 @@ export function refreshLocale() {
+   applyStaticDOM(); // Маркеры index.html (меню, экраны, кнопки).
+   updateCampaignStartLabel();
+   renderQuickBattleMenu();
++  syncEndActions();
++  syncPanelCompactButton();
++  if (els.minimap) els.minimap.setAttribute('aria-label', t('ui.minimap.label'));
++  updateModalChrome();
+   if (uiGame) {
+     setPausedUI(!!uiGame.paused);
+     if (uiGame.sound) setSoundUI(!!uiGame.sound.muted);
+     applyPanelClass();
++    refreshLayout(uiGame);
+     resetPanel(); // панель команд пересоберётся на следующем кадре
+     if (!els.missionOverlay.classList.contains('hidden')) showMissions(uiGame);
+     if (!els.briefOverlay.classList.contains('hidden') && pendingMission) showBrief(uiGame, pendingMission);
+@@ -1867,31 +2155,28 @@ export function refreshLocale() {
+ // ------------------------------------------------------------
+ // Миникарта: террейн-кэш + точки сущностей + туман + рамка камеры.
+ // ------------------------------------------------------------
+-// G.6: превращение миникарты — ВСЯ карта вписывается в квадрат канваса
+-// с сохранением пропорций (letterbox): k = min(S/pxW, S/pxH), карта
+-// центрируется смещением (ox, oy). Неквадратные карты (G.5: wide/tall)
+-// больше не срезаются снизу и не растягиваются; край карты виден рамкой.
+-// Одно и то же преобразование используют рендер (drawMinimap) и клики
+-// (mmWorld) — превью и ввод всегда согласованы.
+-export function minimapView(map) {
++// T10: rendering and hit-testing share the live bitmap dimensions. CSS sizes the
++// canvas slot to the map aspect; a tolerance-sized residual letterbox is harmless.
++export function minimapView(map, canvas = (els && els.minimap)) {
+   const pxW = (map && map.pxW) || WORLD_W;
+   const pxH = (map && map.pxH) || WORLD_H;
+-  const S = 176; // bitmap #minimap (index.html)
+-  const k = Math.min(S / pxW, S / pxH);
+-  return { S, k, ox: (S - pxW * k) / 2, oy: (S - pxH * k) / 2 };
++  const width = Math.max(1, Number(canvas && canvas.width) || pxW);
++  const height = Math.max(1, Number(canvas && canvas.height) || pxH);
++  const k = Math.min(width / pxW, height / pxH);
++  return { width, height, k, ox: (width - pxW * k) / 2, oy: (height - pxH * k) / 2 };
+ }
+ 
+ export function drawMinimap(game) {
+   const st = game.state;
+   if (!st || !els) return;
++  resizeMinimap(game);
+   const g = els.minimap.getContext('2d');
+-  const { S, k, ox, oy } = minimapView(st.map);
++  const { width, height, k, ox, oy } = minimapView(st.map, els.minimap);
+   const mw = st.map.pxW * k, mh = st.map.pxH * k;
+   g.imageSmoothingEnabled = false;
+-  // Поля за краем карты (letterbox) — глухой тёмный фон.
+-  g.clearRect(0, 0, S, S);
++  g.clearRect(0, 0, width, height);
+   g.fillStyle = '#0a161c';
+-  g.fillRect(0, 0, S, S);
++  g.fillRect(0, 0, width, height);
+   g.drawImage(st.map.miniCanvas, ox, oy, mw, mh);
+ 
+   // Кристаллы (только разведанные). F.1: яркость — по доле остатка.
+diff --git a/locales/en.js b/locales/en.js
+index faeee36..485a7a0 100644
+--- a/locales/en.js
++++ b/locales/en.js
+@@ -83,9 +83,9 @@ export default {
+       facTeaserHuman: 'HELIOS — hover tech and plasma',
+       facTeaserAlien: 'KHARID — crystal-born organics',
+       help: [
+-        '<b>LMB</b> — select, drag a box · <b>double-click</b> — every matching unit on screen · <b>RMB</b> — move / mine / attack / repair',
+-        '<b>A + LMB</b> — attack-move: advance and engage everything en route · <b>wheel / two fingers</b> — pan the map · <b>Arrows / screen edge</b> — camera · <b>Space</b> — jump to base · <b>+ / −</b> — zoom · <b>V</b> — panel · <b>P</b> — pause (Esc releases/cancels)',
+-        '<b>Ctrl/Alt + 1…9</b> — assign a squad, <b>digit</b> — select, <b>press twice</b> — jump to it · <b>B</b> — build: all 8 structures (CC, home, barracks, turret, wall, bunker, factory, laboratory) · <b>S</b> — stop',
++        '<b>LMB / tap</b> — select · <b>double-click / double-tap</b> — every matching unit on screen · <b>RMB / hold the field for 450ms</b> — move / mine / attack / repair',
++        '<b>Swipe empty terrain</b> — pan · <b>drag from a friendly unit</b> — box-select · <b>pinch / + / −</b> — anchored zoom · <b>A + LMB</b> — attack-move · <b>wheel / arrows / screen edge</b> — camera · <b>V</b> — panel · <b>P</b> — pause',
++        '<b>Ctrl/Alt + 1…9</b> — assign a squad, <b>digit</b> — select, <b>press twice</b> — jump to it · <b>B</b> — build: all 8 structures · while placing, tap <b>✕</b> to cancel or another type to switch · <b>S</b> — stop',
+         '<b>.</b> — next idle worker · <b>,</b> — select the whole army · <b>Tab</b> — cycle fighters · <b>H</b> — jump to the last alarm · on a trackpad RMB is a two-finger tap or Ctrl+tap',
+         '<b>Laboratory</b> — research: infantry weapons and armor, vehicle guns and plating · a rally point on a crystal puts new workers straight to mining',
+         'Tech drones walk back to mining on their own after a build · without orders fighters engage enemies within sight range · nanites heal the nearest infantry and stop while healing · hover a button for the full briefing',
+@@ -105,7 +105,12 @@ export default {
+       posNames: { bottom: 'bottom', left: 'left', right: 'right', top: 'top' },
+       hide: 'Hide', hideTitle: 'Hide panel (V)',
+       show: 'Panel', showTitle: 'Show panel (V)',
++      expand: 'Expand', expandTitle: 'Expand the command panel',
++      collapse: 'Collapse', collapseTitle: 'Collapse the command panel',
+     },
++    minimap: { label: 'Minimap' },
++    zoom: { label: 'Map zoom', in: 'Zoom in', out: 'Zoom out' },
++    placement: { cancel: 'Cancel placement', cancelTitle: 'Cancel building placement' },
+ 
+     loading: 'Loading…',
+     pauseText: 'PAUSED',
+@@ -149,12 +154,12 @@ export default {
+     end: {
+       win: 'Victory!', lose: 'Defeat',
+       campaignDone: 'Campaign complete — the Kharid fields are free!',
+-      again: 'Play again', next: 'Next mission →',
++      home: 'Main menu', again: 'Play again', next: 'Next mission →',
+       statsTime: 'Battle time', statsKills: 'Enemies destroyed', statsLosses: 'Losses',
+     },
+ 
+     hints: {
+-      buildMode: 'Click to place (serial mode: it stays on).<br>Wall/turret: drag LMB — a line with the price.<br>Arrows move the ghost, Enter places it.<br>RMB / ESC — cancel.',
++      buildMode: '<b>Tap</b> to place; serial mode stays on.<br>Tap the ghost <b>✕</b> or the Cancel chip to exit; tap another building in the palette to switch type.<br>Mouse: LMB places; drag walls/turrets to draw a line. Arrows move the ghost, Enter places it.<br>RMB / Esc cancels.',
+       select: 'Select a unit with LMB or a drag-box.<br>RMB — move / mine / attack / repair.<br>RMB on a bunker — garrison it.',
+       construction: 'The assigned worker raises it.',
+       buildWip: ' — under construction',
+diff --git a/locales/ru.js b/locales/ru.js
+index 235f9ab..2137c00 100644
+--- a/locales/ru.js
++++ b/locales/ru.js
+@@ -79,9 +79,9 @@ export default {
+       facTeaserHuman: 'ГЕЛИОС — ховер-техника и плазма',
+       facTeaserAlien: 'КХАРИД — кристаллическая органика',
+       help: [
+-        '<b>ЛКМ</b> — выделение, рамка · <b>двойной клик</b> — все такие же юниты на экране · <b>ПКМ</b> — идти / добывать / атаковать / ремонтировать',
+-        '<b>A + ЛКМ</b> — атака-движение: идти и бить всех по дороге · <b>колесо / два пальца</b> — двигать карту · <b>Стрелки / край экрана</b> — камера · <b>Пробел</b> — к базе · <b>+ / −</b> — зум · <b>V</b> — панель · <b>P</b> — пауза (Esc — снять/отменить)',
+-        '<b>Ctrl/Alt + 1…9</b> — отряд, <b>цифра</b> — выбрать, <b>дважды</b> — прыгнуть · <b>B</b> — стройка: все 8 зданий (КЦ, дом, казарма, турель, стена, бункер, завод, лаборатория) · <b>S</b> — стоп',
++        '<b>ЛКМ / тап</b> — выбрать · <b>двойной клик / двойной тап</b> — все такие же юниты на экране · <b>ПКМ / удержание поля 450 мс</b> — приказ идти / добывать / атаковать / ремонтировать',
++        '<b>Свайп пустого поля</b> — панорама · <b>перетаскивание от своего юнита</b> — рамка выделения · <b>pinch / + / −</b> — зум с якорем · <b>A + ЛКМ</b> — атака-движение · <b>колесо / стрелки / край</b> — камера · <b>V</b> — панель · <b>P</b> — пауза',
++        '<b>Ctrl/Alt + 1…9</b> — отряд, <b>цифра</b> — выбрать, <b>дважды</b> — прыгнуть · <b>B</b> — стройка: все 8 зданий · в режиме стройки <b>✕</b> отменяет, тап по другому типу меняет здание · <b>S</b> — стоп',
+         '<b>.</b> — свободный рабочий · <b>,</b> — вся армия · <b>Tab</b> — перебор бойцов · <b>H</b> — к последней тревоге · на трекпаде ПКМ — тап двумя пальцами или Ctrl+тап',
+         '<b>Лаборатория</b> — исследования: оружие и броня пехоты, орудия и плиты техники · точка сбора на кристалле — новые рабочие сразу добывают',
+         'Дроны-техники после стройки сами возвращаются к добыче · без приказа бойцы сами атакуют врага в радиусе обзора · наниты сами лечат ближайшую пехоту и останавливаются на лечении · наведите курсор на кнопку — полная справка',
+@@ -101,7 +101,12 @@ export default {
+       posNames: { bottom: 'низ', left: 'слева', right: 'справа', top: 'верх' },
+       hide: 'Скрыть', hideTitle: 'Скрыть панель (V)',
+       show: 'Панель', showTitle: 'Показать панель (V)',
++      expand: 'Раскрыть', expandTitle: 'Раскрыть командную панель',
++      collapse: 'Свернуть', collapseTitle: 'Свернуть командную панель',
+     },
++    minimap: { label: 'Миникарта' },
++    zoom: { label: 'Масштаб карты', in: 'Приблизить', out: 'Отдалить' },
++    placement: { cancel: 'Отменить размещение', cancelTitle: 'Отменить размещение здания' },
+ 
+     loading: 'Загрузка…',
+     pauseText: 'ПАУЗА',
+@@ -145,12 +150,12 @@ export default {
+     end: {
+       win: 'Победа!', lose: 'Поражение',
+       campaignDone: 'Кампания пройдена — поля кхарид свободны!',
+-      again: 'Играть снова', next: 'Следующая миссия →',
++      home: 'На главный экран', again: 'Играть снова', next: 'Следующая миссия →',
+       statsTime: 'Время боя', statsKills: 'Уничтожено врагов', statsLosses: 'Потери',
+     },
+ 
+     hints: {
+-      buildMode: 'Клик — поставить (серия: режим не сбрасывается).<br>Стена/турель: тяни ЛКМ — линия с ценой.<br>Стрелки — призрак, Enter — поставить.<br>ПКМ / ESC — отмена.',
++      buildMode: '<b>Тап</b> — поставить; в серии режим остаётся включён.<br><b>✕</b> у призрака или «Отмена» — выйти; тап по другому зданию в палитре — сменить тип.<br>Мышью: ЛКМ — поставить, стену/турель можно тянуть линией; стрелки двигают призрак, Enter ставит.<br>ПКМ / Esc — отмена.',
+       select: 'Выделите юнита ЛКМ или рамкой.<br>ПКМ — идти / добывать / атаковать / ремонтировать.<br>ПКМ по бункеру — занять его.',
+       construction: 'Стройку ведёт назначенный рабочий.',
+       buildWip: ' — строится',
+diff --git a/scripts/check.mjs b/scripts/check.mjs
+index dc3c159..122cfc8 100644
+--- a/scripts/check.mjs
++++ b/scripts/check.mjs
+@@ -102,11 +102,12 @@ else {
+   else ok('OG/Twitter-теги + assets/og-image.png 1200×630 и скрипт генерации');
+ }
+ 
+-// 6) Версия (V): бейдж M на главной странице
++// 6) Версия (V): бейдж N на главной странице, дата фактической поставки
+ console.log('\n[6] Версия:');
+-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'M'")) err("config.js: нет GAME_VERSION === 'M'");
+-else ok("GAME_VERSION === 'M'");
+-if (!/GAME_DATE = '\d{2}\.\d{2}\.\d{4}'/.test(src['config.js'])) err('config.js: GAME_DATE не задан в формате DD.MM.YYYY');
++if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'N'")) err("config.js: нет GAME_VERSION === 'N'");
++else ok("GAME_VERSION === 'N'");
++if (!exportsOf('config.js').has('GAME_DATE') || !src['config.js'].includes("GAME_DATE = '21.10.2026'")) err('config.js: дата не соответствует правилу V (21.10.2026)');
++else ok('GAME_DATE соответствует правилу V (21.10.2026)');
+ if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
+ else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
+ 
+diff --git a/scripts/check_minimap_view.mjs b/scripts/check_minimap_view.mjs
+index ea8a07f..3f2eb2d 100644
+--- a/scripts/check_minimap_view.mjs
++++ b/scripts/check_minimap_view.mjs
+@@ -1,50 +1,55 @@
+-// G.6: проверка letterbox-превью миникарты на всех формах карт
+-// (квадрат 64×64, wide 96×64, tall 64×96) и согласованности
+-// прямого (minimapView) и обратного (mmWorld) преобразований.
+-// Запуск: node scripts/check_minimap_view.mjs
++// T10: the minimap fills an aspect-matched canvas for square, wide, and tall maps.
++// Rendering and pointer hit-testing share the same live bitmap transform.
++// Run: node scripts/check_minimap_view.mjs
+ import './harness.mjs';
+ import { minimapView } from '../js/ui.js';
+ 
+ let fails = 0;
+ const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL:', msg); } };
+ 
+-const S = 176;
+-// 1) Квадрат 64×64: карта занимает весь канвас, смещений нет.
+-let v = minimapView({ pxW: 64 * 32, pxH: 64 * 32 });
+-ok(v.k === S / 2048 && v.ox === 0 && v.oy === 0, '64×64: k/ox/oy');
+-
+-// 2) Wide 96×64: вся ширина в канвасе, высота центрируется (letterbox).
+-v = minimapView({ pxW: 96 * 32, pxH: 64 * 32 });
+-ok(Math.abs(v.ox) < 1e-9, 'wide: ox=0');
+-ok(Math.abs((v.oy * 2 + 2048 * v.k) - S) < 1e-9, 'wide: карта центрирована по y');
+-ok(2048 * v.k < S, 'wide: высота карты меньше канваса (низ не срезан)');
+-ok(Math.abs(3072 * v.k - S) < 1e-9, 'wide: ширина ровно в канвас');
+-
+-// 3) Tall 64×96 — зеркально.
+-v = minimapView({ pxW: 64 * 32, pxH: 96 * 32 });
+-ok(Math.abs(v.oy) < 1e-9 && Math.abs((v.ox * 2 + 2048 * v.k) - S) < 1e-9, 'tall: центрирование по x');
+-
+-// 4) Обратность: клик в центр канваса → центр мира; угол карты → угол мира.
+-// (имитируем mmWorld: CSS-px → bitmap → мир)
+-function clickToWorld(mp, cx, cy, rW, rH) {
+-  const view = minimapView(mp);
+-  const bx = cx * (view.S / rW), by = cy * (view.S / rH);
++const maps = [
++  { name: 'square', map: { pxW: 64 * 32, pxH: 64 * 32 } },
++  { name: 'wide', map: { pxW: 96 * 32, pxH: 64 * 32 } },
++  { name: 'tall', map: { pxW: 64 * 32, pxH: 96 * 32 } },
++];
++function bitmapFor(map) {
++  const aspect = map.pxW / map.pxH;
++  return aspect >= 1
++    ? { width: 168, height: Math.round(168 / aspect) }
++    : { width: Math.round(168 * aspect), height: 168 };
++}
++function clickToWorld(map, canvas, cx, cy, rectW, rectH) {
++  const view = minimapView(map, canvas);
++  const bx = cx * (view.width / rectW), by = cy * (view.height / rectH);
+   return {
+-    x: Math.max(0, Math.min(mp.pxW, (bx - view.ox) / view.k)),
+-    y: Math.max(0, Math.min(mp.pxH, (by - view.oy) / view.k)),
++    x: Math.max(0, Math.min(map.pxW, (bx - view.ox) / view.k)),
++    y: Math.max(0, Math.min(map.pxH, (by - view.oy) / view.k)),
+   };
+ }
+-const wide = { pxW: 96 * 32, pxH: 64 * 32 };
+-let w = clickToWorld(wide, 83, 83, 166, 166); // центр
+-ok(Math.abs(w.x - wide.pxW / 2) < 2 && Math.abs(w.y - wide.pxH / 2) < 2, 'wide: центр канваса → центр мира');
+-w = clickToWorld(wide, 0, 0, 166, 166); // угол — но там letterbox-поле: кламп в 0
+-ok(w.x === 0 && w.y === 0, 'wide: угол с полем клампится в (0,0)');
+-w = clickToWorld(wide, 166, 83, 166, 166); // правый край карты по её верт. центру ( bitmap y = oy + pxH/2*k )
+-ok(Math.abs(w.x - wide.pxW) < 3 && Math.abs(w.y - wide.pxH / 2) < 3, 'wide: правый край → правый край мира');
++for (const { name, map } of maps) {
++  const canvas = bitmapFor(map);
++  const view = minimapView(map, canvas);
++  const drawnW = map.pxW * view.k, drawnH = map.pxH * view.k;
++  ok(view.width === canvas.width && view.height === canvas.height, `${name}: live bitmap size`);
++  ok(Math.abs(view.ox) < 1e-9 && Math.abs(view.oy) < 1e-9, `${name}: no letterbox bars`);
++  ok(Math.abs(drawnW - canvas.width) < 1e-7 && Math.abs(drawnH - canvas.height) < 1e-7,
++    `${name}: map fills the aspect-matched canvas`);
++
++  // CSS dimensions may be half the bitmap dimensions on DPR=2 screens.
++  const cssW = canvas.width / 2, cssH = canvas.height / 2;
++  let w = clickToWorld(map, canvas, cssW / 2, cssH / 2, cssW, cssH);
++  ok(Math.abs(w.x - map.pxW / 2) < 2 && Math.abs(w.y - map.pxH / 2) < 2,
++    `${name}: canvas center maps to world center`);
++  w = clickToWorld(map, canvas, 0, 0, cssW, cssH);
++  ok(w.x === 0 && w.y === 0, `${name}: top-left maps to world origin`);
++  w = clickToWorld(map, canvas, cssW, cssH, cssW, cssH);
++  ok(Math.abs(w.x - map.pxW) < 2 && Math.abs(w.y - map.pxH) < 2,
++    `${name}: bottom-right maps to world edge`);
++}
+ 
+-// 5) Фолбэк без карты: WORLD 64×64.
+-v = minimapView(null);
+-ok(v.k === S / 2048, 'null: фолбэк WORLD_W/H');
++// No canvas is only used by pure callers/tests: use world pixel dimensions as an identity transform.
++const fallback = minimapView(null);
++ok(fallback.k === 1 && fallback.width === fallback.height, 'default world fallback is identity-sized');
+ 
+-if (fails) { console.log(`ПРОВАЛ: ${fails}`); process.exit(1); }
+-console.log('OK: letterbox-превью согласовано на квадрате/wide/tall, клики обратны');
++if (fails) { console.log(`FAIL: ${fails} minimap view assertions`); process.exit(1); }
++console.log('OK: full-aspect minimap view and inverse pointer mapping on square/wide/tall maps');
+diff --git a/scripts/sim_p1.mjs b/scripts/sim_p1.mjs
+index e1017c8..a43614b 100644
+--- a/scripts/sim_p1.mjs
++++ b/scripts/sim_p1.mjs
+@@ -413,8 +413,8 @@ try {
+   assert(JSON.stringify(Object.keys(ru.ui.process)) === JSON.stringify(Object.keys(en.ui.process)), 'структура ui.process ru/en расходится');
+   assert(ru.ui.process.refundLabel.includes('{n}') && en.ui.process.refundLabel.includes('{n}'), 'placeholder возврата пропал');
+   assert(ru.ui.cmds.shortageHuman.includes('{n}') && en.ui.cmds.shortageHuman.includes('{n}'), 'placeholder дефицита пропал');
+-  assert(cfg.GAME_VERSION === 'M', 'версия должна быть M');
+-  pass('P1.8 локали 1:1, placeholders сохранены, бейдж M');
++  assert(cfg.GAME_VERSION === 'N', 'версия должна быть N');
++  pass('P1.8 локали 1:1, placeholders сохранены, бейдж N');
+ } catch (e) { fail('P1.8 locale/version', e); }
+ 
+ console.log(failures.length ? `\nИТОГ SIM_P1: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_P1: ВСЕ СЦЕНАРИИ ПРОШЛИ');
+diff --git a/style.css b/style.css
+index 136c069..f4b4e01 100644
+--- a/style.css
++++ b/style.css
+@@ -44,6 +44,8 @@ html.menu-active #game-root { pointer-events: none; }
+   display: block;
+   background: #000;
+   cursor: crosshair;
++  touch-action: none;
++  overscroll-behavior: contain;
+ }
+ 
+ /* ---------- Верхняя панель ---------- */
+@@ -79,6 +81,9 @@ html.menu-active #game-root { pointer-events: none; }
+ @keyframes pulse { 50% { opacity: .45; } }
+ .spacer { flex: 1; }
+ .tb-btn {
++  min-width: 44px; min-height: 44px;
++  display: inline-flex; align-items: center; justify-content: center;
++  touch-action: manipulation;
+   background: rgba(255,255,255,.035);
+   color: var(--muted);
+   border: 1px solid var(--line);
+@@ -133,27 +138,67 @@ html.menu-active #game-root { pointer-events: none; }
+   }
+ }
+ #minimap-box {
+-  flex: 0 0 168px;
++  flex: 0 0 auto;
++  width: 168px; height: 168px; /* ui.js replaces these with the map aspect */
+   border: 1px solid var(--line-strong);
+   border-radius: 8px;
+   box-shadow: 0 0 0 3px rgba(118,227,215,.05), inset 0 0 12px #071218;
+   overflow: hidden;
+   background: #15312e;
+-  height: 168px;
+ }
+-#minimap { display: block; width: 166px; height: 166px; cursor: pointer; }
++#minimap { display: block; width: 100%; height: 100%; cursor: pointer; touch-action: none; }
+ 
+ /* ---------- Пакет E.1: положения панели + скрытие ---------- */
+ #panel-ctl { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; align-self: flex-start; }
++#panel-compact-toggle { display: none; }
+ .mini-btn {
+-  font-size: 11px; padding: 3px 8px; cursor: pointer;
++  min-width: 44px; min-height: 44px;
++  display: inline-flex; align-items: center; justify-content: center;
++  font-size: 11px; padding: 6px 8px; cursor: pointer;
+   color: var(--muted); background: rgba(4, 17, 22, .5);
+-  border: 1px solid var(--line); border-radius: 5px; white-space: nowrap;
++  border: 1px solid var(--line); border-radius: 7px; white-space: nowrap;
++  touch-action: manipulation;
+ }
+ .mini-btn:hover { color: var(--cyan-light); border-color: var(--line-strong); }
++.mini-btn:focus-visible, .tb-btn:focus-visible, #zoom-controls button:focus-visible,
++.placement-cancel:focus-visible {
++  outline: 2px solid var(--cyan-light); outline-offset: 2px;
++  box-shadow: 0 0 0 4px rgba(118, 227, 215, .16);
++}
+ #panel-show { display: none; position: absolute; right: 10px; bottom: 10px; z-index: 15; }
+ body.panel-hidden #bottom-panel { display: none; }
+ body.panel-hidden #panel-show { display: block; }
++
++#placement-cancel {
++  position: absolute; z-index: 21;
++  width: 48px; height: 48px; min-width: 48px; min-height: 48px;
++  border: 2px solid rgba(255, 192, 182, .9); border-radius: 50%;
++  color: #fff3f0; background: rgba(101, 34, 34, .94);
++  box-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 0 3px rgba(255,128,110,.18);
++  font: 900 25px/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation;
++}
++#placement-cancel[hidden] { display: none; }
++#placement-cancel:hover { background: #923c38; border-color: #fff3f0; }
++
++#zoom-controls {
++  position: absolute; z-index: 19;
++  display: flex; align-items: center; gap: 4px;
++  padding: 4px; border: 1px solid rgba(118,227,215,.34); border-radius: 10px;
++  background: rgba(7,21,28,.9); box-shadow: 0 6px 18px rgba(0,0,0,.36);
++  touch-action: manipulation;
++}
++#zoom-controls button {
++  width: 44px; height: 44px; border: 1px solid var(--line-strong); border-radius: 7px;
++  color: var(--cyan-light); background: rgba(20,54,60,.9);
++  font: 800 23px/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation;
++}
++#zoom-controls button:hover { background: rgba(53,117,119,.75); }
++#zoom-value {
++  min-width: 50px; text-align: center; color: var(--text); font-size: 12px;
++  font-weight: 800; font-variant-numeric: tabular-nums;
++}
++#zoom-controls[hidden] { display: none; }
++
+ body.panel-left #bottom-panel {
+   left: 0; right: auto; top: 44px; bottom: 0; width: 236px; height: auto;
+   flex-direction: column; border-top: none; border-right: 1px solid rgba(118, 227, 215, .32);
+@@ -340,15 +385,16 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+    горизонтальных кнопок по 32px — ровно вписывается в панель. */
+ #cmd-grid.compact {
+   flex: 0 0 320px;
+-  grid-template-columns: repeat(2, 1fr);
+-  grid-auto-rows: 32px;
+-  gap: 3px;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  grid-auto-rows: 44px;
++  gap: 4px;
+ }
+ #cmd-grid.compact .cmd {
++  min-height: 44px;
+   flex-direction: row;
+   align-items: center;
+   gap: 6px;
+-  padding: 2px 7px;
++  padding: 3px 7px;
+ }
+ #cmd-grid.compact .cmd canvas { width: 18px; height: 18px; flex: 0 0 18px; }
+ #cmd-grid.compact .cmd-label {
+@@ -365,6 +411,7 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+    абсолютом налезает на цену. */
+ #cmd-grid.compact .cmd kbd { position: static; transform: none; margin-left: 6px; }
+ .cmd {
++  min-height: 44px;
+   position: relative;
+   background: rgba(20, 54, 60, .66);
+   border: 1px solid rgba(118, 227, 215, .27);
+@@ -375,6 +422,7 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+   display: flex; flex-direction: column; align-items: center; gap: 2px;
+ }
+ .cmd:hover { background: rgba(53, 117, 119, .44); border-color: var(--cyan); }
++.cmd.is-selected { border-color: var(--cyan-light); background: rgba(118,227,215,.2); box-shadow: inset 0 0 0 1px rgba(197,255,241,.32); }
+ .cmd.disabled { opacity: .5; cursor: not-allowed; filter: saturate(.62); }
+ .cmd.disabled:hover { background: rgba(20, 54, 60, .76); border-color: rgba(243, 197, 121, .52); }
+ .cmd-refund { color: var(--cyan-light); }
+@@ -404,7 +452,7 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+ /* ---------- Тосты ---------- */
+ #toasts {
+   position: absolute;
+-  bottom: 202px; left: 50%;
++  bottom: 12px; left: 50%;
+   transform: translateX(-50%);
+   display: flex; flex-direction: column; align-items: center; gap: 6px;
+   z-index: 20;
+@@ -435,9 +483,21 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+   z-index: 30;
+ }
+ .overlay.thin { background: rgba(3, 12, 17, .45); }
+-/* Оверлей паузы перекрывает поле, но оставляет верхнюю панель кликабельной. */
+-#pause-overlay.overlay { z-index: 5; }
++/* Pause blocks the playfield only: panel/topbar remain live and readable. */
++#pause-overlay.overlay { z-index: 8; }
+ .overlay.hidden { display: none; }
++
++/* Campaign/briefing/codex screens do not leave live-looking HUD chrome around them.
++   visibility keeps measured panel dimensions intact for the M2 inset observer. */
++body.screen-modal-open #topbar,
++body.screen-modal-open #bottom-panel,
++body.screen-modal-open #panel-show,
++body.screen-modal-open #toasts,
++body.screen-modal-open #zoom-controls,
++body.screen-modal-open #placement-cancel {
++  visibility: hidden; pointer-events: none;
++}
++body.menu-active #zoom-controls { display: none; }
+ .overlay-box {
+   text-align: center;
+   background: linear-gradient(145deg, #18343a, #0e252d 58%, #0b1e27);
+@@ -461,6 +521,7 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+ .help p { font-size: 13px; color: #c3d8d1; line-height: 1.75; }
+ .help b { color: var(--cyan-light); }
+ .big-btn {
++  min-height: 44px;
+   background: var(--cyan);
+   color: #09242a;
+   border: 0;
+@@ -477,6 +538,9 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+ .big-btn:active { transform: scale(.99); }
+ 
+ #end-stats { margin: 6px 0 22px; }
++.end-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
++.end-actions .big-btn { min-height: 48px; padding: 10px 18px; flex: 1 1 155px; }
++.end-actions [hidden] { display: none; }
+ #end-stats .row {
+   display: flex; justify-content: space-between; gap: 40px;
+   font-size: 14px; color: #c3d8d1;
+@@ -896,8 +960,7 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+ #codex-body p { font-size: 13.5px; color: #c3d8d1; line-height: 1.65; margin-bottom: 10px; }
+ #codex-body p b { color: var(--amber); }
+ 
+-/* Узкое окно: оставляем прежнюю панель, но переносим её содержимое в строки.
+-   G.6 продолжает измерять реальную высоту, а боковые 236px не меняются. */
++/* Узкое окно: панель остаётся измеряемой; JS задаёт аспектный размер миникарты. */
+ @media (max-width: 720px) {
+   body:not(.panel-left):not(.panel-right) #bottom-panel {
+     flex-wrap: wrap;
+@@ -905,11 +968,8 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+     gap: 8px;
+     padding: 8px 10px;
+   }
+-  body:not(.panel-left):not(.panel-right) #minimap-box {
+-    flex: 0 0 128px;
+-    width: 128px; height: 128px;
+-  }
+-  body:not(.panel-left):not(.panel-right) #minimap { width: 126px; height: 126px; }
++  body:not(.panel-left):not(.panel-right) #minimap-box { flex: 0 0 auto; }
++  body:not(.panel-left):not(.panel-right) #minimap { width: 100%; height: 100%; }
+   body:not(.panel-left):not(.panel-right) #sel-info {
+     flex: 1 1 190px;
+     max-height: 154px;
+@@ -923,8 +983,8 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+   body:not(.panel-left):not(.panel-right) #cmd-grid.compact {
+     flex: 1 1 100%;
+     grid-template-columns: repeat(2, minmax(0, 1fr));
+-    grid-auto-rows: 32px;
+-    max-height: 170px;
++    grid-auto-rows: 44px;
++    max-height: 190px;
+   }
+   body:not(.panel-left):not(.panel-right) #panel-ctl {
+     flex: 0 0 auto;
+@@ -933,15 +993,73 @@ body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { fl
+   }
+ }
+ @media (max-width: 400px) {
+-  body:not(.panel-left):not(.panel-right) #minimap-box {
+-    flex-basis: 104px;
+-    width: 104px; height: 104px;
+-  }
+-  body:not(.panel-left):not(.panel-right) #minimap { width: 102px; height: 102px; }
+   body:not(.panel-left):not(.panel-right) #sel-info { flex-basis: 160px; max-height: 164px; }
+   body:not(.panel-left):not(.panel-right) #cmd-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+ }
+ 
++/* In short landscape the default bottom shelf is compact and reversible.
++   Insets continue to come from its measured DOM box (M2/G.6). */
++@media (orientation: landscape) and (max-height: 520px) {
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden):not(.panel-compact-expanded) #bottom-panel {
++    min-height: 0; max-height: 124px; height: auto; overflow: hidden;
++    display: flex; flex-wrap: nowrap; align-items: center; align-content: center;
++    gap: 8px; padding: 6px 8px;
++  }
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden):not(.panel-compact-expanded) #sel-info {
++    display: none;
++  }
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden):not(.panel-compact-expanded) #cmd-grid {
++    flex: 1 1 auto; min-width: 0; max-height: 92px;
++    grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 44px;
++  }
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden):not(.panel-compact-expanded) #cmd-grid.compact {
++    flex: 1 1 auto; min-width: 0; max-height: 92px;
++    grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 44px;
++  }
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden):not(.panel-compact-expanded) #panel-ctl,
++  body.panel-compact-expanded:not(.panel-left):not(.panel-right) #panel-ctl {
++    flex-direction: row; align-items: center; align-self: center; gap: 4px;
++  }
++  #panel-compact-toggle { display: none; }
++  body:not(.panel-left):not(.panel-right):not(.panel-hidden) #panel-compact-toggle { display: inline-flex; }
++  #panel-ctl .mini-btn { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 0; }
++  #panel-compact-toggle::before { content: '↕'; font-size: 20px; }
++  #panel-pos::before { content: '▣'; font-size: 17px; }
++  #panel-hide::before, #panel-show::before { content: '×'; font-size: 22px; }
++  #panel-show { width: 48px; height: 48px; padding: 0; font-size: 0; }
++  body.panel-compact-expanded:not(.panel-left):not(.panel-right):not(.panel-hidden) #bottom-panel {
++    max-height: none; overflow: visible; flex-wrap: wrap; align-content: flex-start;
++  }
++  body.panel-compact-expanded:not(.panel-left):not(.panel-right) #sel-info {
++    display: block; flex: 1 1 190px; max-height: 154px;
++  }
++  body.panel-compact-expanded:not(.panel-left):not(.panel-right) #cmd-grid { max-height: 170px; }
++}
++
++@media (max-width: 560px) and (orientation: portrait) {
++  #topbar {
++    min-height: 52px; height: auto; gap: 2px; padding: 3px 4px;
++    justify-content: space-between;
++  }
++  #topbar .brand, #topbar .spacer, #topbar #res-objective { display: none; }
++  #topbar .res { min-width: 0; gap: 3px; font-size: 10px; }
++  #topbar .dot { width: 8px; height: 8px; border-radius: 2px; }
++  #topbar .tb-btn {
++    flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; min-height: 44px;
++    padding: 0; font-size: 0; letter-spacing: 0; justify-content: center;
++  }
++  #topbar .tb-btn::before { font-size: 19px; line-height: 1; }
++  #btn-sound::before { content: '♫'; }
++  #btn-sound.is-muted::before { content: '♪×'; font-size: 15px; }
++  #btn-pause::before { content: 'Ⅱ'; }
++  #btn-pause.is-resume::before { content: '▶'; font-size: 16px; }
++  #btn-restart::before { content: '↻'; }
++  #btn-exit::before { content: '×'; font-size: 24px; }
++}
++@media (max-width: 340px) and (orientation: portrait) {
++  #topbar .res-time { display: none; }
++}
++
+ @media (max-width: 1000px) {
+   .site-header-inner { gap: 14px; }
+   .site-nav { gap: 10px; }
