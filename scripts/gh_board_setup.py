@@ -56,46 +56,53 @@ existing = [p for p in data['user']['projectsV2']['nodes'] if p['title'] == 'Ali
 if existing:
     pid = existing[0]['id']; print('борд уже существует — донастраиваю')
 else:
-    pid = gql('mutation($o:String!){createProjectV2(input:{ownerId:$o,title:"Alien Cosmic — задачи"}){projectV2{id}}}',
+    pid = gql('mutation($o:ID!){createProjectV2(input:{ownerId:$o,title:"Alien Cosmic — задачи"}){projectV2{id}}}',
               {'o': uid})['createProjectV2']['projectV2']['id']
     print('борд создан')
 
 # 2. поле Status + русские опции
-fields = gql('query($n:Int!){view{id field(input:{name:"Status"}){... on ProjectV2SingleSelectField{id options{id name}}}}}', None)
-fld = gql('query($id:ID!){node(id:$id){... on ProjectV2{field(input:{name:"Status"}){... on ProjectV2SingleSelectField{id options{id name}}}}}}',
+fld = gql('query($id:ID!){node(id:$id){... on ProjectV2{field(name:"Status"){... on ProjectV2SingleSelectField{id options{id name}}}}}}',
           {'id': pid})['node']['field']
 status_id = fld['id']
 opts = {o['name']: o['id'] for o in fld['options']}
-WANT = ['Бэклог', 'К работе', 'В работе', 'На проверке', 'Ждёт', 'Готово']
-missing = [w for w in WANT if w not in opts]
-if missing:
-    new_options = [{'name': n} for n in WANT]
-    gql('mutation($f:ID!,$o:[ProjectV2SingleSelectOptionInput!]!){updateProjectV2Field(input:{fieldId:$f,singleSelectOptions:$o}){projectV2Field{... on ProjectV2SingleSelectField{options{name}}}}}',
-        {'f': status_id, 'o': new_options})
-    fld = gql('query($id:ID!){node(id:$id){... on ProjectV2{field(input:{name:"Status"}){... on ProjectV2SingleSelectField{id options{id name}}}}}}',
+WANT = [('Бэклог', 'GRAY'), ('К работе', 'BLUE'), ('В работе', 'YELLOW'),
+        ('На проверке', 'ORANGE'), ('Ждёт', 'PURPLE'), ('Готово', 'GREEN')]
+if any(w not in opts for w, _ in WANT):
+    # singleSelectOptions — не input-тип: передаётся только инлайн-литералом,
+    # description обязателен по схеме; набор опций заменяется целиком
+    parts = ','.join('{name:"%s",color:%s,description:""}' % (n, c) for n, c in WANT)
+    gql('mutation($f:ID!){updateProjectV2Field(input:{fieldId:$f,singleSelectOptions:[' + parts + ']}){projectV2Field{... on ProjectV2SingleSelectField{options{name}}}}}',
+        {'f': status_id})
+    fld = gql('query($id:ID!){node(id:$id){... on ProjectV2{field(name:"Status"){... on ProjectV2SingleSelectField{id options{id name}}}}}}',
               {'id': pid})['node']['field']
     opts = {o['name']: o['id'] for o in fld['options']}
 print('статусы готовы:', ', '.join(opts))
 
 # 3. issues в борд
-items = gql('query($n:Int!){repository(owner:"%s",name:"%s"){issues(first:$n,states:[OPEN,CLOSED],orderBy:{field:CREATED_AT,direction:ASC}){nodes{number id title}}}}'
+items = gql('query($n:Int!){repository(owner:"%s",name:"%s"){issues(first:$n,states:[OPEN,CLOSED],orderBy:{field:CREATED_AT,direction:ASC}){nodes{number id title state}}}}'
             % (OWNER, 'alien-cosmic'), {'n': 50})['repository']['issues']['nodes']
-proj_items = gql('query($id:ID!){node(id:$id){... on ProjectV2{items(first:50){nodes{content{... on Issue{id}}}}}}}',
+proj_items = gql('query($id:ID!){node(id:$id){... on ProjectV2{items(first:50){nodes{id content{... on Issue{id}}}}}}}',
                  {'id': pid})['node']['items']['nodes']
-linked = {n['content']['id'] for n in proj_items if n.get('content') and n['content'].get('id')}
+item_by_issue = {n['content']['id']: n['id'] for n in proj_items
+                 if n.get('content') and n['content'].get('id')}
+linked = set(item_by_issue)
 STATUS_MAP = {  # по номерам из gh_issues_seed.py; новые — по ключевым словам в заголовке
     3: 'Готово', 4: 'К работе', 5: 'Бэклог', 6: 'В работе', 7: 'Ждёт', 8: 'Бэклог',
 }
 for it in items:
-    iid, num = it['id'], it['number']
+    iid, num, state = it['id'], it['number'], it['state']
+    if state == 'CLOSED' and num not in STATUS_MAP:
+        continue  # закрытые вне канонического посева (#1, дубли) на борд не тащим
     if iid not in linked:
-        gql('mutation($p:ID!,$c:ID!){addProjectV2ItemById(input:{projectId:$p,contentId:$c}){item{id}}}',
-            {'p': pid, 'c': iid})
+        res = gql('mutation($p:ID!,$c:ID!){addProjectV2ItemById(input:{projectId:$p,contentId:$c}){item{id}}}',
+                  {'p': pid, 'c': iid})
+        item_by_issue[iid] = res['addProjectV2ItemById']['item']['id']
         print(f'добавлен в борд: #{num}')
     st = STATUS_MAP.get(num)
     if st and st in opts:
-        gql('mutation($p:ID!,$i:ID!,$f:ID!,$s:String!){updateProjectV2ItemField(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$s}}){projectV2Item{id}}}',
-            {'p': pid, 'i': iid, 'f': status_id, 's': opts[st]})
+        # value — инлайн-литерал (не input-тип), id опции вшиваем строкой
+        gql('mutation($p:ID!,$i:ID!,$f:ID!){updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:"' + opts[st] + '"}}){projectV2Item{id}}}',
+            {'p': pid, 'i': item_by_issue[iid], 'f': status_id})
 
 # 4. readme борда — правила ведения
 readme = """**Alien Cosmic — задачи** · канбан двух агентов и владельца
