@@ -85,15 +85,28 @@ for (const f of files) {
 }
 if (!failed) ok('нарушений нет');
 
-// 5) Бренд: заголовок проекта
-console.log('\n[5] Бренд:');
-if (!html.includes('ALIEN COSMIC')) err('index.html: нет заголовка ALIEN COSMIC');
-else ok('заголовок ALIEN COSMIC на месте');
+// 5) Бренд и social preview
+console.log('\n[5] Бренд и social preview:');
+if (!html.includes('ALIEN') || !html.includes('COSMIC')) err('index.html: нет названия ALIEN COSMIC');
+else ok('название ALIEN COSMIC на месте');
+for (const tag of ['property="og:title"', 'property="og:description"', 'property="og:image"', 'property="og:type"', 'name="twitter:card" content="summary_large_image"']) {
+  if (!html.includes(tag)) err('index.html: нет social meta ' + tag);
+}
+const ogPath = path.join(ROOT, 'assets', 'og-image.png');
+const ogScript = path.join(ROOT, 'scripts', 'shots', 'og_image.py');
+if (!existsSync(ogPath) || !existsSync(ogScript)) err('нет генератора scripts/shots/og_image.py или assets/og-image.png');
+else {
+  const og = readFileSync(ogPath);
+  if (!og.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) err('assets/og-image.png: неверная PNG-сигнатура');
+  else if (og.readUInt32BE(16) !== 1200 || og.readUInt32BE(20) !== 630) err('assets/og-image.png: ожидается ровно 1200×630');
+  else ok('OG/Twitter-теги + assets/og-image.png 1200×630 и скрипт генерации');
+}
 
-// 6) Версия (V): бейдж на экране входа
+// 6) Версия (V): бейдж M на главной странице
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'L'")) err('config.js: нет GAME_VERSION === \'L\'');
-else ok("GAME_VERSION === 'L'");
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'M'")) err("config.js: нет GAME_VERSION === 'M'");
+else ok("GAME_VERSION === 'M'");
+if (!/GAME_DATE = '\d{2}\.\d{2}\.\d{4}'/.test(src['config.js'])) err('config.js: GAME_DATE не задан в формате DD.MM.YYYY');
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
 else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 

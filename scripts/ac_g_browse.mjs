@@ -1,6 +1,6 @@
-// ac_g_browse.mjs — browser acceptance for the R2-C menu and retained G shell.
-// Covers six inline presets, one-action restore, campaign separation, focus,
-// touch, responsive widths, season teaser, zoom, panel geometry and repair.
+// ac_g_browse.mjs — browser acceptance for the R2-D landing page and retained game shell.
+// Covers hero CTA flows, six presets, OG metadata, campaign, focus, touch,
+// responsive widths, saved quick battle, and the existing G shell.
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
@@ -22,83 +22,130 @@ const ev = (fn, ...args) => page.evaluate(fn, ...args);
 const wait = (ms) => page.waitForTimeout(ms);
 
 try {
-  // ── R2-C: main menu, first-run guidance, campaign, and responsive shell ──
+  // ── R2-D: full-page hero, one primary CTA, section navigation, and first-run route ──
   await page.addInitScript(() => {
     localStorage.setItem('terranrts.language', 'ru');
     localStorage.removeItem('terranrts.progress');
+    localStorage.removeItem('terranrts.quickBattle');
   });
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
-  await wait(1000);
+  await wait(900);
 
   const badgeVisible = await page.locator('#ver-badge').isVisible();
   const badgeText = (await page.locator('#ver-badge').textContent() || '').trim();
-  if (badgeVisible && badgeText === 'версия L · 21.10.2026') ok('V1', `badge: ${badgeText}`);
+  if (badgeVisible && badgeText === 'версия M · 20.10.2026') ok('V1', `badge: ${badgeText}`);
   else bad('V1', `visible=${badgeVisible}, text="${badgeText}"`);
 
-  const quickVisible = await page.locator('#quick-battle').isVisible();
+  const heroPrimaryCount = await page.locator('#hero button.big-btn').count();
+  const heroCtaText = (await page.locator('#btn-quick-primary').textContent() || '').trim();
   const presetCount = await page.locator('#quick-map-grid [data-preset-id]').count();
   const campaignLabel = (await page.locator('#btn-start').textContent() || '').trim();
-  const s2Teaser = await page.locator('#btn-season2.season-teaser').count();
   const universeLabel = (await page.locator('#btn-codex').textContent() || '').trim();
-  if (quickVisible && presetCount === 6 && campaignLabel.includes('Начать кампанию')) ok('R2a', `quick battle visible with ${presetCount} presets; campaign label is separate`);
-  else bad('R2a', `quick=${quickVisible}, presets=${presetCount}, campaign="${campaignLabel}"`);
-  if (s2Teaser === 1 && universeLabel === 'Вселенная') ok('R2b', `secondary links: Season 2 teaser / ${universeLabel}`);
-  else bad('R2b', `teaser=${s2Teaser}, universe="${universeLabel}"`);
+  const social = await page.evaluate(() => ({
+    title: document.querySelector('meta[property="og:title"]')?.content || '',
+    description: document.querySelector('meta[property="og:description"]')?.content || '',
+    image: document.querySelector('meta[property="og:image"]')?.content || '',
+    type: document.querySelector('meta[property="og:type"]')?.content || '',
+    twitter: document.querySelector('meta[name="twitter:card"]')?.content || '',
+  }));
+  if (heroPrimaryCount === 1 && heroCtaText === 'Быстрая игра' && presetCount === 6) ok('D1', `single hero CTA / ${presetCount} canonical presets`);
+  else bad('D1', `hero primary=${heroPrimaryCount}, CTA="${heroCtaText}", presets=${presetCount}`);
+  if (campaignLabel.includes('Начать кампанию') && /архив/i.test(universeLabel)) ok('D2', 'campaign and Universe remain secondary routes');
+  else bad('D2', `campaign="${campaignLabel}", universe="${universeLabel}"`);
+  if (social.title && social.description && social.image === './assets/og-image.png' && social.type === 'website' && social.twitter === 'summary_large_image') ok('D3', 'Open Graph and Twitter metadata are present');
+  else bad('D3', `social metadata: ${JSON.stringify(social)}`);
+
+  let heroScroll = 0;
+  await page.locator('#btn-quick-primary').click();
+  await wait(500);
+  const firstRoute = await ev(() => {
+    const section = document.querySelector('#quick-battle');
+    return {
+      started: !!window.game.started,
+      top: section.getBoundingClientRect().top,
+      map: document.querySelector('#quick-preset-square-64').getAttribute('aria-pressed'),
+      human: document.querySelector('#quick-faction-human').getAttribute('aria-pressed'),
+      alien: document.querySelector('#quick-faction-alien').getAttribute('aria-pressed'),
+      guidance: document.querySelector('#hero-quick-status').textContent,
+    };
+  });
+  heroScroll = firstRoute.top;
+  if (!firstRoute.started && heroScroll >= -2 && heroScroll < 150 && firstRoute.map === 'true' && firstRoute.human === 'false' && firstRoute.alien === 'false') ok('D4', 'first-run hero CTA scrolls to choice without selecting a faction');
+  else bad('D4', `first-run route: ${JSON.stringify(firstRoute)}`);
+  if (/Выбор ещё не сохранён/.test(firstRoute.guidance)) ok('D5', 'first-run CTA explains that a map and side must be chosen');
+  else bad('D5', `hero guidance: "${firstRoute.guidance}"`);
 
   const blockedBeforeSide = await page.locator('#btn-quick-battle-start').getAttribute('aria-disabled');
-  const firstGuidance = (await page.locator('#quick-battle-status').textContent() || '').trim();
-  if (blockedBeforeSide === 'true' && firstGuidance.includes('64×64')) ok('R2c', 'first run recommends 64×64 and waits for an explicit side');
-  else bad('R2c', `aria-disabled=${blockedBeforeSide}, guidance="${firstGuidance}"`);
   await page.locator('#btn-quick-battle-start').click();
   const blockedStill = await ev(() => window.game.started === false);
-  if (blockedStill) ok('R2d', 'CTA does not start without a faction');
-  else bad('R2d', 'battle started with no faction');
+  if (blockedBeforeSide === 'true' && blockedStill) ok('D6', 'explicit start stays blocked until a side is chosen');
+  else bad('D6', `aria-disabled=${blockedBeforeSide}, started=${!blockedStill}`);
 
+  // Three taps on a fresh profile: hero route → side → explicit start (64×64 default).
+  await page.locator('#quick-faction-human').click();
+  await page.locator('#btn-quick-battle-start').click();
+  await wait(1200);
+  const firstBattle = await ev(() => ({
+    id: window.game.mission.id,
+    faction: window.game.mission.faction,
+    w: window.game.state.map.w,
+    h: window.game.state.map.h,
+  }));
+  if (firstBattle.id === -1 && firstBattle.faction === 'human' && firstBattle.w === 64 && firstBattle.h === 64) ok('D7', 'first-run path reaches the recommended battle in three taps');
+  else bad('D7', `wrong first-run battle: ${JSON.stringify(firstBattle)}`);
+  await shot('r2d_hero_1280');
+  await page.locator('#btn-exit').click();
+  await wait(650);
+
+  // The More disclosure keeps the Season 2 teaser deliberately secondary.
+  await page.locator('#menu-more summary').click();
   await page.locator('#btn-season2').click();
   await wait(350);
   const toast = await ev(() => (document.querySelector('#toasts') || document.body).textContent || '');
-  if (/Сезон 2/.test(toast) && /Скоро/i.test(toast)) ok('R2e', 'Season 2 teaser still shows its toast');
-  else bad('R2e', `toast not found: "${toast.slice(-120)}"`);
-  await shot('r2_home_1280');
+  if (/Сезон 2/.test(toast) && /Скоро/i.test(toast)) ok('D8', 'Season 2 teaser still reports its status');
+  else bad('D8', `toast not found: "${toast.slice(-120)}"`);
+  await page.evaluate(() => window.scrollTo(0, 0));
 
+  // All target widths must keep the document and the inline map choices inside the viewport.
   for (const [width, height] of [[320, 568], [720, 900], [1280, 800]]) {
     await page.setViewportSize({ width, height });
-    await page.evaluate(() => { const box = document.querySelector('#overlay .menu-box'); if (box) box.scrollTop = 0; });
+    await page.evaluate(() => window.scrollTo(0, 0));
     const metrics = await ev(() => {
-      const menu = document.querySelector('#overlay .menu-box');
+      const page = document.querySelector('#landing-page');
+      const card = document.querySelector('.quick-battle-card');
       const bounds = (node) => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
       return {
         viewport: innerWidth,
         docWidth: document.documentElement.scrollWidth,
-        menu: bounds(menu),
-        menuClient: menu.clientWidth,
-        menuScroll: menu.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        pageWidth: page.scrollWidth,
+        pageClient: page.clientWidth,
+        card: bounds(card),
         presets: [...document.querySelectorAll('#quick-map-grid button')].map(bounds),
       };
     });
-    const clipped = metrics.presets.some((r) => r.left < metrics.menu.left - 1 || r.right > metrics.menu.right + 1 || r.left < 0 || r.right > width + 1);
-    if (metrics.docWidth <= width + 1 && metrics.menuScroll <= metrics.menuClient + 1 && !clipped) ok(`R2-layout-${width}`, `no horizontal overflow; six preset cards fit`);
-    else bad(`R2-layout-${width}`, `doc=${metrics.docWidth}/${width}, menu=${metrics.menuScroll}/${metrics.menuClient}, clipped=${clipped}`);
+    const clipped = metrics.presets.some((r) => r.left < metrics.card.left - 1 || r.right > metrics.card.right + 1 || r.left < 0 || r.right > width + 1);
+    if (metrics.docWidth <= width + 1 && metrics.bodyWidth <= width + 1 && metrics.pageWidth <= metrics.pageClient + 1 && !clipped) ok(`D-layout-${width}`, 'no horizontal overflow; six presets fit the page section');
+    else bad(`D-layout-${width}`, `doc=${metrics.docWidth}/${width}, body=${metrics.bodyWidth}/${width}, page=${metrics.pageWidth}/${metrics.pageClient}, clipped=${clipped}`);
     await page.locator('#btn-quick-battle-start').scrollIntoViewIfNeeded();
     const cta = await page.locator('#btn-quick-battle-start').boundingBox();
-    if (cta && cta.x >= -1 && cta.x + cta.width <= width + 1 && cta.y >= -1 && cta.y + cta.height <= height + 1) ok(`R2-cta-${width}`, 'CTA can be reached fully inside the viewport');
-    else bad(`R2-cta-${width}`, `CTA bounds: ${JSON.stringify(cta)}`);
-    if (width === 320) await shot('r2_home_320x568');
-    if (width === 720) await shot('r2_home_720');
+    if (cta && cta.x >= -1 && cta.x + cta.width <= width + 1 && cta.y >= -1 && cta.y + cta.height <= height + 1) ok(`D-cta-${width}`, 'explicit start remains fully reachable');
+    else bad(`D-cta-${width}`, `CTA bounds: ${JSON.stringify(cta)}`);
+    if (width === 320) await shot('r2d_home_320x568');
+    if (width === 720) await shot('r2d_home_720');
   }
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.evaluate(() => { const box = document.querySelector('#overlay .menu-box'); if (box) box.scrollTop = 0; });
   await page.locator('#btn-season1').click();
   await wait(450);
   const cards = await page.locator('.mission-card').count();
   const oldSkirmish = await page.locator('#btn-missions-skirmish').count();
-  if (cards >= 15 && oldSkirmish === 0) ok('R2f', `campaign archive has ${cards} missions; no competing battle entry`);
-  else bad('R2f', `missions=${cards}, old quick-battle entry=${oldSkirmish}`);
-  await shot('r2_campaign');
+  if (cards >= 15 && oldSkirmish === 0) ok('D9', `campaign archive has ${cards} missions; no competing battle entry`);
+  else bad('D9', `missions=${cards}, old quick-battle entry=${oldSkirmish}`);
+  await shot('r2d_campaign');
   await page.locator('#btn-missions-back').click();
 
-  // Keyboard activation, then actual touch taps on the native button cards.
+  // Keyboard activation, then touch taps on the native button cards.
   await page.locator('#quick-preset-square-48').focus();
   await page.keyboard.press('Enter');
   await page.locator('#quick-faction-human').focus();
@@ -108,44 +155,44 @@ try {
     side: document.querySelector('#quick-faction-human').getAttribute('aria-pressed'),
     focus: document.activeElement && document.activeElement.id,
   }));
-  if (keyboardSelected.map === 'true' && keyboardSelected.side === 'true' && keyboardSelected.focus === 'quick-faction-human') ok('R2g', 'map and faction cards are keyboard-operable with visible focus');
-  else bad('R2g', `keyboard state: ${JSON.stringify(keyboardSelected)}`);
+  if (keyboardSelected.map === 'true' && keyboardSelected.side === 'true' && keyboardSelected.focus === 'quick-faction-human') ok('D10', 'map and faction cards are keyboard-operable with visible focus');
+  else bad('D10', `keyboard state: ${JSON.stringify(keyboardSelected)}`);
 
   await page.locator('#quick-preset-wide-96x64').tap();
   await page.locator('#quick-faction-alien').tap();
   const signature = (await page.locator('#btn-quick-battle-start').textContent() || '').trim();
-  if (signature.includes('96×64') && signature.includes('КХАРИД')) ok('R2h', `touch selection updates the signed CTA: ${signature}`);
-  else bad('R2h', `touch config missing from CTA: ${signature}`);
+  if (signature.includes('96×64') && signature.includes('КХАРИД')) ok('D11', `touch selection updates the signed CTA: ${signature}`);
+  else bad('D11', `touch config missing from CTA: ${signature}`);
   await page.locator('#btn-quick-battle-start').tap();
-  await wait(1600);
-  const firstBattle = await ev(() => ({
-    id: window.game.mission.id,
-    faction: window.game.mission.faction,
-    w: window.game.state.map.w,
-    h: window.game.state.map.h,
+  await wait(1200);
+  const changedBattle = await ev(() => ({
+    id: window.game.mission.id, faction: window.game.mission.faction,
+    w: window.game.state.map.w, h: window.game.state.map.h,
   }));
-  if (firstBattle.id === -1 && firstBattle.faction === 'alien' && firstBattle.w === 96 && firstBattle.h === 64) ok('R2i', 'touch-launched battle received the correct faction and 96×64 dimensions');
-  else bad('R2i', `wrong battle config: ${JSON.stringify(firstBattle)}`);
-  await shot('r2_quick_battle_96x64');
+  if (changedBattle.id === -1 && changedBattle.faction === 'alien' && changedBattle.w === 96 && changedBattle.h === 64) ok('D12', 'touch-launched custom battle received the right side and dimensions');
+  else bad('D12', `wrong battle config: ${JSON.stringify(changedBattle)}`);
+  await shot('r2d_quick_battle_96x64');
 
-  // Reload confirms that the last played setup is ready for a one-tap launch.
+  // Reload confirms that the hero CTA restores a valid setup and launches it in one tap.
   await page.reload({ waitUntil: 'load' });
-  await wait(850);
+  await wait(900);
   const restored = await ev(() => ({
     map: document.querySelector('#quick-preset-wide-96x64').getAttribute('aria-pressed'),
     side: document.querySelector('#quick-faction-alien').getAttribute('aria-pressed'),
     status: document.querySelector('#quick-battle-status').textContent,
+    heroStatus: document.querySelector('#hero-quick-status').textContent,
   }));
-  if (restored.map === 'true' && restored.side === 'true' && /Последняя конфигурация/.test(restored.status)) ok('R2j', 'reload restores the last map and faction');
-  else bad('R2j', `restore state: ${JSON.stringify(restored)}`);
-  await page.locator('#btn-quick-battle-start').tap();
-  await wait(1500);
+  if (restored.map === 'true' && restored.side === 'true' && /Последняя конфигурация/.test(restored.status)) ok('D13', 'reload restores the last map and faction');
+  else bad('D13', `restore state: ${JSON.stringify(restored)}`);
+  if (/Последний вылет/.test(restored.heroStatus)) ok('D14', 'hero clearly advertises a one-tap repeat');
+  else bad('D14', `hero repeat status: "${restored.heroStatus}"`);
+  await page.locator('#btn-quick-primary').click();
+  await wait(1200);
   const repeatBattle = await ev(() => ({ id: window.game.mission.id, faction: window.game.mission.faction, w: window.game.state.map.w, h: window.game.state.map.h }));
-  if (repeatBattle.id === -1 && repeatBattle.faction === 'alien' && repeatBattle.w === 96 && repeatBattle.h === 64) ok('R2k', 'restored setup launches with one action');
-  else bad('R2k', `repeat config: ${JSON.stringify(repeatBattle)}`);
-  await shot('r2_repeat_battle');
+  if (repeatBattle.id === -1 && repeatBattle.faction === 'alien' && repeatBattle.w === 96 && repeatBattle.h === 64) ok('D15', 'saved hero CTA launches with one tap');
+  else bad('D15', `repeat config: ${JSON.stringify(repeatBattle)}`);
+  await shot('r2d_repeat_battle');
 
-  await page.setViewportSize({ width: 1600, height: 1500 });
   // ── G5 zoom 0.5–2.0 ────────────────────────────────────────────────────
   // Clamp setZoom directly
   await ev(() => { window.game.setZoom(0.001); });
