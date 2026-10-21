@@ -48,6 +48,18 @@ html.menu-active #game-root { pointer-events: none; }
   overscroll-behavior: contain;
 }
 
+/* ---------- Пакет Q: политика жестов страницы ----------
+   Браузерный зум страницы (double-tap/pinch) закрыт всюду: он отрезал правую
+   часть экрана (игра живёт в layout viewport — visual viewport никем не
+   читается) и не давал выхода (канвас touch-action:none блокирует щипок-назад).
+   Зум мира — только игровой: щипок по канвасу / кнопки / клавиши (пакет U).
+   Аудит: design/MOBILE_VIEWPORT_AUDIT.md. */
+html { touch-action: manipulation; } /* double-tap запрещён глобально: эффективный
+   touch-action = пересечение по цепочке (MDN), manipulation стоит на корне */
+body > * { touch-action: pan-y; }    /* ни один топ-контейнер не пропускает
+   pinch-zoom; вертикальные нативные скроллы (меню, sel-info, брифы) живут.
+   Дочерним элементам правила не нужны: одного pan-y в цепочке достаточно */
+
 /* ---------- Верхняя панель ---------- */
 #topbar {
   position: absolute; top: 0; left: 0; right: 0;

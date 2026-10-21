@@ -2,7 +2,10 @@
 <html lang="ru" class="menu-active">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <!-- Пакет Q: maximum-scale/user-scalable — страховка зума страницы на Android;
+       iOS игнорирует их (доступность, iOS 10+) — там зум закрыт touch-action-политикой
+       (style.css) и gesturestart-гвардом (game.js). См. design/MOBILE_VIEWPORT_AUDIT.md. -->
   <title>Alien Cosmic — Frontier-64 RTS</title>
   <meta name="description" content="Alien Cosmic is a real-time strategy at the edge of space: choose a side and lead an expedition across Frontier-64."/>
   <meta property="og:title" content="Alien Cosmic — Frontier-64 RTS"/>
@@ -312,6 +315,7 @@
               </select>
             </div>
             <button id="btn-season2" class="season-teaser" type="button" data-i18n="ui.menu.season2"></button>
+            <button id="btn-reload-screen" class="big-btn ghost-btn small-start" type="button" data-i18n="ui.menu.reload"></button>
             <button id="btn-reset" class="big-btn ghost-btn small-start" type="button" data-i18n="ui.menu.reset"></button>
           </div>
         </details>
