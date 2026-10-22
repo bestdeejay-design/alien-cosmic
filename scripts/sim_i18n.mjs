@@ -106,7 +106,7 @@ try {
   const enPatch = JSON.parse(JSON.stringify(en));
   delete enPatch.ui.menu.season2Toast;
   setDicts(enPatch, ru);
-  assert(I.t('ui.menu.season2Toast') === 'Сезон 2 — сюжетные миссии. Скоро.', 'RU-фолбэк сломан');
+  assert(I.t('ui.menu.season2Toast') === 'Сезон 2 пока в разработке: доступна первая миссия-прототип.', 'RU-фолбэк сломан');
   setDicts(enPatch, { meta: { code: 'ru' } });
   assert(I.t('ui.menu.season2Toast').startsWith('[missing:'), 'missing-маркер не отдан');
   // Неизвестная локаль игнорируется реестром

@@ -100,6 +100,14 @@ export const UNITS = {
     sightTiles: 11, speed: 185, r: 9, supply: 1, cost: 60, trainTime: 12,
     canMine: false, canBuild: false, vehicle: true, projectile: 'none', scout: true,
   },
+  // S2 M1: уникальный герой кампании. aura* — обзор, боевой дух и ремонт
+  // союзников поблизости; героя не обучают в обычных матчах.
+  hero: {
+    key: 'hero', hp: 230, dmg: 18, range: 140, cooldown: 0.9,
+    sightTiles: 10, speed: 112, r: 13, supply: 0, cost: 0, trainTime: 0,
+    canMine: false, canBuild: false, projectile: 'bullet', hero: true,
+    auraRadiusTiles: 8, auraVisionBonus: 2, auraDamageBonus: 0.15, auraRepairMultiplier: 1.5,
+  },
 };
 
 // --- Здания ---

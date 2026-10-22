@@ -183,5 +183,14 @@ try {
   err('sim_menu упал (см. вывод выше)');
 }
 
+// 11) sim_season2 — scripted-миссия Сезона 2 и её ключевые условия.
+console.log('\n[11] sim_season2 (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_season2.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_season2 прошёл');
+} catch (e) {
+  err('sim_season2 упал (см. вывод выше)');
+}
+
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
 process.exit(failed);
