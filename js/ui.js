@@ -744,6 +744,14 @@ export function initUI(game) {
     game.sound.click();
     location.reload();
   });
+  // Пакет W (Н2): та же аварийная перезагрузка — кнопкой в оверлее паузы.
+  // С телефона «Ещё» на лендинге не найти (репорт владельца), пауза всегда
+  // под пальцем. Контракт тот же: confirm — партия теряется.
+  $('btn-pause-reload').addEventListener('click', () => {
+    if (!confirm(t('ui.menu.reloadConfirm'))) return;
+    game.sound.click();
+    location.reload();
+  });
   // Пакет U: override профиля интерфейса (меню «Ещё») — Авто/Тач/Мышь.
   const profileSel = $('ui-profile-select');
   if (profileSel && game.profile) {
@@ -1075,10 +1083,19 @@ export function resizeMinimap(game) {
   const shortCompact = canCompactPanel() && !panelExpandedInShortLandscape;
   let maxW, maxH;
   // Пакет V (М1): лимиты подняты по design/MOBILE_BUILD_AUDIT.md §2 —
-  // низ/верх 168→200, лево/право 148→176 (колонка 236px вмещает: 176+2
-  // рамки против 208 контента). Мобильный ≤720 сохраняет пропорцию ширины.
+  // низ/верх 168→200. Мобильный ≤720 сохраняет пропорцию ширины.
+  // Пакет W (М1.2, хвост М1): в боковых панелях бокс заполняет колонку
+  // ЦЕЛИКОМ — скрин владельца 22.10 13:07 показал «мёртвую полосу» ~58pt
+  // (колонка 236pt против бокса 176+2). Ширина = clientWidth колонки минус
+  // рамки бокса, высота — по аспекту карты с потолком 300; на узких
+  // картах-«башнях» потолок возвращает компактный бокс (letterbox сознательно
+  // не возвращаем). Фолбэк 178 — для DOM-стабов симов (поведение V: 176+2).
   if (shortCompact) { maxW = 180; maxH = 96; }
-  else if (panelPos === 'left' || panelPos === 'right') { maxW = 176; maxH = 176; }
+  else if (panelPos === 'left' || panelPos === 'right') {
+    const col = els.minimapBox.parentElement;
+    const colW = col && Number(col.clientWidth) > 40 ? Number(col.clientWidth) : 178;
+    maxW = Math.max(120, colW - 2); maxH = 300;
+  }
   else if (Number(window.innerWidth) <= 720) {
     maxW = Math.min(150, Math.max(116, Number(window.innerWidth) * 0.36));
     maxH = 150;

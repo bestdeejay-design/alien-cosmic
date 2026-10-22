@@ -348,6 +348,49 @@ const browser = await chromium.launch();
     if (pl.placed === 1 && pl.near) ok('Пакет V (А): тап после пана ставит здание в тапнутую точку');
     else bad(`Пакет V (А): тап не поставил здание (placed=${pl.placed}, near=${pl.near})`);
   }
+
+  // Пакет W (М1.2): боковая панель — бокс заполняет колонку целиком,
+  // «мёртвая полоса» между боксом и игровой областью исчезает
+  // (репорт владельца: скрин 22.10 13:07, зазор ~58pt при колонке 236).
+  log('=== Пакет W (М1.2): бокс мини-карты = ширина колонки (panel-left) ===');
+  await page.evaluate(async () => {
+    const ui = await import('./js/ui.js');
+    ui.setPanelPos('left');
+    ui.refreshLayout(window.game);
+  });
+  await page.waitForTimeout(180);
+  const fill = await page.evaluate(() => {
+    const b = document.getElementById('minimap-box').getBoundingClientRect();
+    const p = document.getElementById('bottom-panel').getBoundingClientRect();
+    return { gap: Math.round(p.right - b.right), bw: Math.round(b.width), cw: Math.round(p.width) };
+  });
+  if (fill.gap <= 2 && fill.bw >= fill.cw - 4)
+    ok(`М1.2: бокс ${fill.bw}px в колонке ${fill.cw}px, зазор справа ${fill.gap}px`);
+  else bad(`М1.2: мёртвая полоса осталась: бокс ${fill.bw}px / колонка ${fill.cw}px / зазор ${fill.gap}px`);
+  await page.evaluate(async () => {
+    const ui = await import('./js/ui.js');
+    ui.setPanelPos('bottom');
+    ui.refreshLayout(window.game);
+  });
+
+  // Пакет W (Н2): аварийная перезагрузка дублирована в паузу — с телефона
+  // «Ещё» на лендинге не найти. Confirm-контракт тот же, что у «Ещё»/«Заново».
+  log('=== Пакет W (Н2): «Перезагрузить экран» в паузе ===');
+  const pz = await page.evaluate(() => {
+    const btn = document.getElementById('btn-pause-reload');
+    return { hasBtn: !!btn, label: btn ? btn.textContent.trim() : '' };
+  });
+  if (pz.hasBtn && pz.label.length > 3) ok(`Н2: кнопка в паузе на месте («${pz.label.slice(0, 30)}»)`);
+  else bad('Н2: кнопки перезагрузки в паузе нет');
+  await page.evaluate(() => { if (!window.game.paused) window.game.togglePause(); });
+  await page.waitForTimeout(150);
+  let pmsg = null;
+  page.once('dialog', (d) => { pmsg = d.message(); d.dismiss(); });
+  await page.evaluate(() => document.getElementById('btn-pause-reload').click());
+  await page.waitForTimeout(400);
+  if (pmsg && pmsg.length > 10) ok('Н2: confirm открыт из паузы: ' + pmsg.slice(0, 40) + '…');
+  else bad('Н2: confirm из паузы не открылся');
+  await page.evaluate(() => { if (window.game.paused) window.game.togglePause(); });
 }
 
 log('=== pageerrors ===');

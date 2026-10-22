@@ -104,8 +104,8 @@ else {
 
 // 6) Версия (V): бейдж N на главной странице, дата фактической поставки
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'V'")) err("config.js: нет GAME_VERSION === 'V'");
-else ok("GAME_VERSION === 'V'");
+if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'W'")) err("config.js: нет GAME_VERSION === 'W'");
+else ok("GAME_VERSION === 'W'");
 if (!exportsOf('config.js').has('GAME_DATE') || !src['config.js'].includes("GAME_DATE = '22.10.2026'")) err('config.js: дата не соответствует правилу V (22.10.2026)');
 else ok('GAME_DATE соответствует правилу V (22.10.2026)');
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
