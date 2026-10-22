@@ -23,10 +23,11 @@
 // Пакет Q (жесты страницы):
 // T17 touch-action-политика, meta-ограничения, gesturestart-гвард, кнопка reload.
 //
-// Пакет V (мини-карта М1 / сборщик А / hover Р3 / фавиконка Ф1):
-// T19 драг в режиме постройки >9px = пан камеры, постановки НЕТ; тап ставит.
-// T20 все :hover style.css только под @media (hover: hover).
-// T21 М1-лимиты и full-bleed мини-карты + favicon-проводка (index.html + assets).
+// Пакет W (М1.2 бокс=колонка + Н2 перезагрузка в паузе): T22.
+//
+// Пакет X (тултип на таче, П1):
+// T23 touch-пик тултипа транзиентен: авто-скрытие 5 c, тап мимо гасит (capture),
+//     причина недоступности не вечна, пересборка панели гасит.
 //
 // Запуск: node scripts/sim_touch.mjs
 // ============================================================
@@ -475,6 +476,31 @@ try {
   }
   pass('T22 пакет W: М1.2 (бокс=колонка, потолок 300) + Н2 (перезагрузка в паузе с confirm, RU/EN)');
 } catch (e) { fail('T22', e); }
+
+// ---------- T23: пакет X — тач-пик тултипа транзиентен (П1) ----------
+try {
+  const fs = await import('node:fs');
+  const read = (p) => fs.readFileSync(new URL(p, import.meta.url), 'utf8');
+  const uiSrc = await read('../js/ui.js');
+  // Авто-скрытие: таймер 5 c, взводится в обоих touch-показах (кнопка + чип).
+  assert(uiSrc.includes('TIP_TOUCH_HIDE_MS = 5000'), 'П1: нет константы авто-скрытия 5000');
+  const arms = uiSrc.match(/armTipAutoHide\(\)/g) || [];
+  assert(arms.length >= 3, `П1: взведение таймера должно быть в 3 точках (2 тача + disabled), найдено ${arms.length}`);
+  // Тап мимо: capture-слушатель на document с исключением самого #cmd-tip.
+  assert(/document\.addEventListener\('pointerdown'[\s\S]{0,200}?tipEl\.contains[\s\S]{0,120}?hideTip\(\);[\s\S]{0,40}?\}, true\)/.test(uiSrc),
+    'П1: нет capture-слушателя «тап мимо гасит» с исключением #cmd-tip');
+  // Причина недоступности на таче не вечна: disabled-ветка взводит таймер.
+  assert(/state\.disabled[\s\S]{0,400}?armTipAutoHide\(\)/.test(uiSrc),
+    'П1: disabled-ветка не взводит авто-скрытие');
+  // Пересборка панели гасит тултип (не переживает смену выделения/очереди).
+  assert(/rebuildPanel\(game, sel\) \{[\s\S]{0,900}?hideTip\(\);/.test(uiSrc) ||
+         /const previousDyn = dyn;[\s\S]{0,800}?hideTip\(\);/.test(uiSrc),
+    'П1: rebuildPanel не гасит тултип');
+  // hideTip снимает таймер (нет гонок «погас-и-погас»).
+  assert(/function hideTip\(\) \{[\s\S]{0,120}?clearTimeout\(tipHideTimer\)/.test(uiSrc),
+    'П1: hideTip не снимает таймер');
+  pass('T23 пакет X: тач-пик транзиентен (таймер 5 c, тап мимо, disabled, пересборка)');
+} catch (e) { fail('T23', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length

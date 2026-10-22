@@ -1456,6 +1456,9 @@ function rebuildPanel(game, sel) {
     processIdentity: sameBuilding ? previousDyn.processIdentity : null,
     processReadySuppressed: sameBuilding ? previousDyn.processReadySuppressed : false,
   };
+  // Пакет X (П1): смена сигнатуры = состав выделения/очереди сменился — старый
+  // тултип (в первую очередь touch-пик) неактуален и не переживает пересборку.
+  hideTip();
   els.cmdGrid.innerHTML = '';
   els.selInfo.innerHTML = '';
 
@@ -1613,6 +1616,9 @@ function rebuildPanel(game, sel) {
       if (state.disabled) {
         blockedFeedback(btn);
         showTip(entry.tip, btn, state.reason);
+        // Пакет X (П1): на таче причина недоступности больше не вечна —
+        // гаснет авто-таймером/следующим тапом (см. ensureTipEl/hideTip).
+        if (tipTouchLast) armTipAutoHide();
         return;
       }
       if (refund !== null) suppressReadiness();
@@ -1623,7 +1629,9 @@ function rebuildPanel(game, sel) {
     btn.addEventListener('mouseenter', tipHandler);
     btn.addEventListener('focus', tipHandler);
     btn.addEventListener('pointerdown', (event) => {
-      if (event && event.pointerType === 'touch') tipHandler();
+      // Пакет X (П1): тач-«пик» описания — транзиентный (авто-скрытие 5 c).
+      if (event && event.pointerType === 'touch') { tipTouchLast = true; tipHandler(); armTipAutoHide(); }
+      else if (event) tipTouchLast = false;
     });
     btn.addEventListener('mouseleave', () => {
       if (!document.activeElement || document.activeElement !== btn) hideTip();
@@ -1889,7 +1897,9 @@ function buildQueueButton(game, building, item, index) {
   chip.addEventListener('mouseenter', show);
   chip.addEventListener('focus', show);
   chip.addEventListener('pointerdown', (event) => {
-    if (event && event.pointerType === 'touch') show();
+    // Пакет X (П1): тач-«пик» чипа очереди — тоже транзиентный.
+    if (event && event.pointerType === 'touch') { tipTouchLast = true; show(); armTipAutoHide(); }
+    else if (event) tipTouchLast = false;
   });
   chip.addEventListener('mouseleave', () => {
     if (!document.activeElement || document.activeElement !== chip) hideTip();
@@ -1899,6 +1909,7 @@ function buildQueueButton(game, building, item, index) {
     if (game.state.gameOver) {
       blockedFeedback(chip);
       showTip(tip, chip, t('ui.cmds.gameOver'));
+      if (tipTouchLast) armTipAutoHide(); // Пакет X (П1)
       return;
     }
     suppressReadiness();
@@ -1926,6 +1937,18 @@ function suppressReadiness() {
 // Тултип кнопки панели: имя, цена, описание и статы.
 // ------------------------------------------------------------
 let tipEl = null;
+// Пакет X (П1): тач-показ тултипа обязан быть транзиентным — репорт владельца
+// 22.10: «описание юнита не уходит долго или совсем не уходит, висит, мешает».
+// Корень (TOOLTIP_TOUCH_AUDIT §3): показ по pointerdown есть, скрывающей
+// половины нет — mouseleave/blur на таче мертвы, скрытие было только
+// побочным эффектом следующего успешного клика.
+let tipHideTimer = null;   // таймер авто-скрытия touch-пика
+let tipTouchLast = false;  // последний pointerdown по кнопке панели был touch?
+const TIP_TOUCH_HIDE_MS = 5000; // чтение описания+статов успевается за 5 c
+function armTipAutoHide() {
+  if (tipHideTimer) clearTimeout(tipHideTimer);
+  tipHideTimer = setTimeout(() => { tipHideTimer = null; hideTip(); }, TIP_TOUCH_HIDE_MS);
+}
 // Б1: ленивое создание #cmd-tip — общее для кнопочных тултипов и кристалла.
 function ensureTipEl() {
   if (!tipEl) {
@@ -1934,6 +1957,14 @@ function ensureTipEl() {
     tipEl.setAttribute('role', 'tooltip');
     tipEl.setAttribute('aria-hidden', 'true');
     document.body.appendChild(tipEl);
+    // Пакет X (П1): тап где угодно гасит тултип. Capture — раньше
+    // обработчиков кнопок: тап по другой команде сначала гасит старый пик,
+    // затем кнопка показывает свой. Сам #cmd-tip — исключение: его можно
+    // скроллить (overflow-y:auto); гасит его авто-таймер.
+    document.addEventListener('pointerdown', (event) => {
+      if (tipEl && event.target && tipEl.contains(event.target)) return;
+      hideTip();
+    }, true);
   }
   return tipEl;
 }
@@ -1984,6 +2015,8 @@ function showTip(tip, btn, reason = '') {
   tipEl.style.top = top + 'px';
 }
 function hideTip() {
+  // Пакет X (П1): любое скрытие снимает таймер (нет гонок «погас-и-погас»).
+  if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
   if (!tipEl) return;
   tipEl.classList.remove('show');
   tipEl.setAttribute('aria-hidden', 'true');
