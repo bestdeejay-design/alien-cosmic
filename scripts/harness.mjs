@@ -42,6 +42,11 @@ class FakeEl {
     this.tag = tag; this.id = id;
     this.children = [];
     this.style = {};
+    // Пакет R: CSSStyleDeclaration-стаб — applyVV ставит --vv-* через
+    // setProperty/removeProperty (в браузере кастом-свойства ставятся только так).
+    this.style.setProperty = (k, v) => { this.style[k] = String(v); };
+    this.style.removeProperty = (k) => { delete this.style[k]; };
+    this.style.getPropertyValue = (k) => (this.style[k] !== undefined ? String(this.style[k]) : '');
     this.dataset = {};
     this.attributes = new Map();
     this.classList = new FakeClassList();
