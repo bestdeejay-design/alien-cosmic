@@ -9,6 +9,7 @@ import {
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
 } from './config.js';
 import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
+import { SEASON2_M1 } from './season2.js';
 import { CODEX, codexTabLabel, codexEntryParts } from './lore.js';
 import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
 import { crystalAt } from './units.js'; // F.1: тултип кристалла
@@ -140,6 +141,12 @@ export function icon(type) {
       g.strokeStyle = white; g.lineWidth = 1;
       g.beginPath(); g.moveTo(1, 0); g.lineTo(-6, -8); g.stroke();
       g.fillStyle = amber; g.beginPath(); g.arc(-6, -8, 1.8, 0, Math.PI * 2); g.fill();
+      break;
+    case 'hero':
+      g.fillStyle = steel; g.beginPath(); g.arc(0, 2, 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.beginPath(); g.moveTo(-6, -4); g.lineTo(-4, -11); g.lineTo(0, -6); g.lineTo(4, -11); g.lineTo(6, -4); g.closePath(); g.fill();
+      g.fillStyle = white; g.fillRect(-4, 0, 8, 2);
+      g.strokeStyle = teal; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 2, 10, 0, Math.PI * 2); g.stroke();
       break;
     // ===== Люди: здания (своя крыша/проём у каждого) =====
     case 'cc':
@@ -368,6 +375,12 @@ export function icon(type) {
       g.beginPath(); g.arc(-8, -6, 1.8, 0, Math.PI * 2); g.fill();
       g.fillStyle = bone; g.beginPath(); g.arc(5, 1, 1.4, 0, Math.PI * 2); g.fill();
       break;
+    case 'a_hero':
+      g.fillStyle = flesh; g.beginPath(); g.ellipse(0, 2, 8, 7, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = purple; g.beginPath(); g.ellipse(0, 1, 6, 5, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = slime; g.beginPath(); g.moveTo(-7, -3); g.lineTo(-6, -11); g.lineTo(-1, -6); g.lineTo(2, -13); g.lineTo(5, -5); g.lineTo(8, -8); g.lineTo(7, 1); g.closePath(); g.fill();
+      g.fillStyle = bone; g.beginPath(); g.arc(3, 1, 2, 0, Math.PI * 2); g.fill();
+      break;
     case 'a_cc':
       // Улей: курган + КРАСНОЕ сердце (уникальный признак штаба).
       g.fillStyle = purple; g.beginPath(); g.ellipse(0, 2, 10, 7, 0, 0, Math.PI * 2); g.fill();
@@ -462,6 +475,7 @@ let els = null;        // кэш DOM-элементов
 let dyn = null;        // динамические ссылки для апдейтов без перестройки
 let sig = '';          // «подпись» текущей панели
 let pendingMission = null; // Миссия, выбранная в брифинге.
+let pendingMissionReturn = 'missions'; // Куда возвращать из брифинга: список или лендинг.
 let pendingNext = null;    // Следующая миссия после победы.
 
 function quickBattleDimsLabel(presetId) {
@@ -698,7 +712,10 @@ export function initUI(game) {
   // Main menu: quick battle is the primary path; campaign remains separate.
   initQuickBattleMenu(game);
   $('btn-season1').addEventListener('click', () => showMissions(game));
-  $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
+  $('btn-season2').addEventListener('click', () => {
+    setLandingPageActive(false);
+    showBrief(game, SEASON2_M1, 'landing');
+  });
   $('btn-missions-back').addEventListener('click', () => {
     els.missionOverlay.classList.add('hidden');
     updateModalChrome();
@@ -722,6 +739,13 @@ export function initUI(game) {
   });
   $('btn-brief-back').addEventListener('click', () => {
     els.briefOverlay.classList.add('hidden');
+    if (pendingMissionReturn === 'landing') {
+      els.missionOverlay.classList.add('hidden');
+      updateModalChrome();
+      setLandingPageActive(true);
+      $('btn-season2').focus({ preventScroll: true });
+      return;
+    }
     els.missionOverlay.classList.remove('hidden');
     updateModalChrome();
     if (els.missionList.firstChild && els.missionList.firstChild.focus) els.missionList.firstChild.focus({ preventScroll: true });
@@ -927,8 +951,9 @@ export function showMissions(game) {
   });
 }
 
-export function showBrief(game, m) {
+export function showBrief(game, m, returnTo = 'missions') {
   pendingMission = m;
+  pendingMissionReturn = returnTo === 'landing' ? 'landing' : 'missions';
   els.briefBadge.textContent = t('ui.missionsScr.for') + facTitle(m.faction);
   els.briefBadge.className = 'badge ' + FACTIONS[m.faction].cls;
   els.briefTitle.textContent = missionText(m, 'name');
@@ -1286,6 +1311,13 @@ export function showEnd(win, stats, opts = {}) {
   row(t('ui.end.statsKills'), stats.kills);
   row(t('ui.end.statsLosses'), stats.losses);
   row(message('mined', opts.faction), stats.mined);
+  if (Array.isArray(opts.objectives) && opts.objectives.length) {
+    row(t('ui.end.secondaryTitle'), '');
+    for (const objective of opts.objectives) {
+      const status = objective.complete ? t('ui.end.objectiveDone') : t('ui.end.objectiveMissed');
+      row(objective.label, status);
+    }
+  }
   pendingNext = opts.next || null;
   syncEndActions();
   els.endOverlay.classList.remove('hidden');
