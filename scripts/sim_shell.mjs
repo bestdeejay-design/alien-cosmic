@@ -4,7 +4,7 @@
 // S1 camera: центр и углы карты на видимой области во всех 4 позициях + скрытая.
 // S2 zoom: клампы 0.5/2.0 (G.5), якорь держит точку.
 // S3 presets: шесть канонических ID→габариты + запуск CTA 64×96 с путём баз.
-// S4 seasons: Сезон 1 → миссия → реальная победа → прогресс 1; С2 — тост СКОРО.
+// S4 seasons: Сезон 1 → миссия → реальная победа → прогресс 1; С2 — брифинг прототипа.
 //
 // Запуск: node scripts/sim_shell.mjs
 // ============================================================
@@ -152,16 +152,18 @@ try {
   ticks(10);
   assert(game.state.gameOver === 'win', 'победы нет');
   assert(loadProgress() === 1, 'победа не записала прогресс: ' + loadProgress());
-  el('btn-season2').click(); // заглушка: тост, запуска нет
-  const toasts = el('toasts').children.map((t) => t.textContent).join(' ');
-  assert(/Скоро/.test(toasts), 'тоста СКОРО нет: ' + toasts);
-  assert(game.mission.id === 0, 'Сезон 2 что-то запустил');
+  el('btn-season2').click(); // S2 M1: брифинг открывается, запуск — только по кнопке брифинга
+  assert(!el('brief-overlay').classList.contains('hidden'), 'брифинг Сезона 2 не открылся');
+  assert(game.mission.id === 0, 'Сезон 2 запустился без подтверждения брифинга');
+  el('btn-brief-back').click();
+  assert(el('brief-overlay').classList.contains('hidden'), 'возврат не закрыл брифинг Сезона 2');
+  assert(!el('landing-page').classList.contains('hidden'), 'возврат из брифинга С2 не вернул на лендинг');
   el('btn-codex').click(); // Universe link on the main screen
   assert(!el('codex-overlay').classList.contains('hidden'), 'Вселенная не открылась');
   el('btn-codex-back').click();
   assert(el('codex-overlay').classList.contains('hidden'), 'Вселенная не закрылась');
   paint();
-  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — тост СКОРО; Вселенная на месте');
+  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — брифинг без запуска; Вселенная на месте');
 } catch (e) { fail('S4 seasons', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_SHELL: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_SHELL: ВСЕ СЦЕНАРИИ ПРОШЛИ');
