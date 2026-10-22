@@ -50,7 +50,9 @@ def comment(num, marker, body):
     if has_marker(num, marker):
         print(f'#{num}: комментарий уже есть')
         return
-    req('POST', f'/repos/{REPO}/issues/{num}/comments', {'body': body})
+    # маркер идемпотентности — в теле (урок gh_comment_dedupe.py)
+    req('POST', f'/repos/{REPO}/issues/{num}/comments',
+        {'body': f'<!-- {marker} -->\n\n{body}'})
     print(f'#{num}: комментарий добавлен')
 
 def close(num, marker, body):
