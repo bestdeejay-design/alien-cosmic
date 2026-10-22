@@ -155,14 +155,17 @@ await check('M6 locale + campaign: dynamic menu labels remain distinct; both cam
   game.toMenu();
 });
 
-await check('M7 secondary menu: Universe, Season 2 teaser and confirmed reset stay independent', () => {
+await check('M7 secondary menu: Universe, Season 2 briefing and confirmed reset stay independent', () => {
   assert(i18n.t('ui.menu.universe') === 'Вселенная', 'menu link was not renamed to Universe');
   assert(i18n.t('ui.codexScr.universeTitle') === 'Вселенная', 'Universe screen heading was not renamed');
   el('btn-codex').click();
   assert(!el('codex-overlay').classList.contains('hidden'), 'Universe screen did not open');
   el('btn-codex-back').click();
   el('btn-season2').click();
-  assert(el('toasts').children.some((node) => node.textContent.includes('Сезон 2')), 'Season 2 teaser no longer shows its toast');
+  assert(!el('brief-overlay').classList.contains('hidden') && el('brief-title').textContent === 'Чужие на пороге', 'Season 2 no longer opens the M1 briefing');
+  assert(!game.started, 'Season 2 launched without an explicit briefing confirmation');
+  el('btn-brief-back').click();
+  assert(!el('landing-page').classList.contains('hidden'), 'Season 2 briefing did not return to the landing page');
 
   missions.saveProgress(1);
   game.toMenu();
