@@ -78,6 +78,16 @@ def project_id():
     return gql(q)['user']['projectV2']['id']
 
 
+def add_issue(issue_num):
+    """Добавить issue на борд (создание issue не добавляет его в проект)."""
+    iss = req('GET', f'/repos/{OWNER}/{REPO}/issues/{int(issue_num)}')
+    if not iss.get('node_id'):
+        sys.exit(f'issue #{issue_num} не найден')
+    gql('''mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p,contentId:$c})
+      { item{ id } } }''', {'p': project_id(), 'c': iss['node_id']})
+    print(f'#{issue_num}: добавлен на борд')
+
+
 def set_status(issue_num, status_name):
     if status_name not in STATUSES:
         sys.exit(f'статус должен быть из {STATUSES}')
@@ -106,6 +116,8 @@ def main():
             print(f"#{c['number']:<3} [{st}] {c['title']} ({c['state']})")
     elif cmd == 'set':
         set_status(sys.argv[2], sys.argv[3])
+    elif cmd == 'add':
+        add_issue(sys.argv[2])
     elif cmd == 'comment':
         num, body = sys.argv[2], sys.argv[3]
         req('POST', f'/repos/{OWNER}/{REPO}/issues/{num}/comments', {'body': body})
