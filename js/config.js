@@ -13,7 +13,7 @@
 import { entityText } from './i18n.js';
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
-export const GAME_VERSION = 'S';
+export const GAME_VERSION = 'V';
 export const GAME_DATE = '22.10.2026'; // дата фактической поставки (правило V)
 
 // --- Мир ---

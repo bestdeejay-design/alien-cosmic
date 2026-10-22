@@ -23,6 +23,11 @@
 // Пакет Q (жесты страницы):
 // T17 touch-action-политика, meta-ограничения, gesturestart-гвард, кнопка reload.
 //
+// Пакет V (мини-карта М1 / сборщик А / hover Р3 / фавиконка Ф1):
+// T19 драг в режиме постройки >9px = пан камеры, постановки НЕТ; тап ставит.
+// T20 все :hover style.css только под @media (hover: hover).
+// T21 М1-лимиты и full-bleed мини-карты + favicon-проводка (index.html + assets).
+//
 // Запуск: node scripts/sim_touch.mjs
 // ============================================================
 import './harness.mjs';
@@ -355,6 +360,96 @@ try {
     'нет ключа ui.topbar.restartConfirm в локалях RU/EN');
   pass('T18 пакет S: клиллинг зданий vw/vh (S8-математика) + подтверждение «Заново»');
 } catch (e) { fail('T18', e); }
+
+// ---------- T19: пакет V (вариант А) — драг в placement панит, тап ставит ----------
+try {
+  await sleep(420);
+  start();
+  const st = game.state;
+  const w = myWorker();
+  st.selection = [w];
+  st.minerals.player = 5000;
+  game.centerCamera(w.x, w.y);
+  st.placing = { type: 'depot', tx: -999, ty: -999 };
+  const spot = emptySpot(w); // мировая точка будущей стройки
+  const s = toScr(spot.x, spot.y);
+  const z = st.camera.z || 1;
+  const bx0 = st.buildings.length;
+  const camX0 = st.camera.x;
+  // Драг ВЛЕВО на 60px (>9px): камера едет вправо, призрак замирает,
+  // tryPlace НЕ вызывается. (Вправо-драг выбрал бы клэмп у левого края.)
+  tapDown(s.x, s.y);
+  fire('pointermove', { pointerType: 'touch', pointerId: 1, clientX: s.x - 60, clientY: s.y, cancelable: true, preventDefault() {} });
+  assert(Math.abs(st.camera.x - (camX0 + 60 / z)) < 0.5,
+    `пан в placement не двигает камеру: ${camX0} → ${st.camera.x}`);
+  tapUp(s.x - 60, s.y);
+  assert(st.buildings.length === bx0, 'драг в placement поставил здание (вариант А сломан)');
+  assert(st.placing, 'режим постройки слетел после пана');
+  // После пана мировая точка spot ушла по экрану влево на 60*z:
+  // тап по (s.x-60, s.y) — это всё тот же мир. Ставим депо туда.
+  tap(s.x - 60, s.y);
+  assert(st.buildings.length === bx0 + 1, 'тап после пана не поставил здание');
+  const b = st.buildings[st.buildings.length - 1];
+  assert(b.type === 'depot' && Math.abs(b.tx * 32 - spot.x) < 64 && Math.abs(b.ty * 32 - spot.y) < 64,
+    `депо не в тапнутой точке: (${b.tx},${b.ty}) vs (${(spot.x / 32).toFixed(1)},${(spot.y / 32).toFixed(1)})`);
+  pass('T19 пакет V (А): драг в placement = пан камеры (без постановки), тап ставит');
+} catch (e) { fail('T19', e); }
+
+// ---------- T20: пакет V (Р3) — все :hover только под @media (hover: hover) ----------
+// Липкий hover тача подсвечивал прошлые пункты командного меню. Статическая
+// гарантия: ни один :hover-селектор не живёт вне hover-медиа (токенайзер {/}).
+try {
+  const css = (await import('node:fs')).readFileSync(new URL('../style.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const stack = [];
+  let i = 0, hoverRules = 0, naked = [];
+  while (i < css.length) {
+    const j = css.indexOf('{', i), k = css.indexOf('}', i);
+    if (j === -1 && k === -1) break;
+    if (k !== -1 && (j === -1 || k < j)) { stack.pop(); i = k + 1; continue; }
+    // ВАЖНО: lastIndexOf с fromIndex включает сам индекс — ищем строго ДО j
+    // (иначе '{' находит сам себя и заголовок правила пуст).
+    const start = Math.max(css.lastIndexOf('}', j - 1), css.lastIndexOf(';', j - 1), css.lastIndexOf('{', j - 1));
+    const header = css.slice(start + 1, j).trim();
+    if (header.startsWith('@media')) stack.push(header.includes('hover: hover'));
+    else {
+      if (header.includes(':hover')) {
+        hoverRules++;
+        if (!stack.some((s) => s === true)) naked.push(header.slice(0, 60));
+      }
+      stack.push(null);
+    }
+    i = j + 1;
+  }
+  assert(hoverRules >= 20, `hover-правил слишком мало: ${hoverRules} (обёртка потеряна?)`);
+  assert(naked.length === 0, `:hover вне @media (hover: hover): ${naked.join(' | ')}`);
+  pass(`T20 пакет V (Р3): все ${hoverRules} :hover-правил внутри @media (hover: hover)`);
+} catch (e) { fail('T20', e); }
+
+// ---------- T21: пакет V — М1-лимиты/full-bleed мини-карты + favicon (Ф1) ----------
+try {
+  const fs = await import('node:fs');
+  const read = (p) => fs.readFileSync(new URL(p, import.meta.url), 'utf8');
+  const uiSrc = await read('../js/ui.js');
+  const css = await read('../style.css');
+  const html = await read('../index.html');
+  // М1: лимиты ширины подняты (низ/верх 200, лево/право 176).
+  assert(uiSrc.includes('maxW = 200; maxH = 200'), 'М1: десктоп-лимит не 200');
+  assert(uiSrc.includes('maxW = 176'), 'М1: боковой лимит не 176');
+  // М1: виньетка снята, бокс прижат к внешнему углу панели.
+  assert(!css.includes('inset 0 0 12px'), 'М1: виньетка #minimap-box на месте');
+  assert(/#minimap-box\s*\{[^}]*margin-left:\s*-14px;\s*margin-bottom:\s*-12px/.test(css),
+    'М1: бокс не прижат к углу нижней панели');
+  // Ф1: проводка в head + файлы на диске.
+  assert(html.includes('rel="icon" type="image/svg+xml"'), 'Ф1: нет svg-иконки в head');
+  assert(html.includes('favicon-32.png') && html.includes('favicon-48.png'), 'Ф1: нет PNG-фолбэков в head');
+  assert(html.includes('apple-touch-icon.png'), 'Ф1: нет apple-touch-icon в head');
+  assert(html.includes('<meta name="theme-color" content="#071218"/>'), 'Ф1: нет theme-color');
+  for (const f of ['favicon.svg', 'favicon-32.png', 'favicon-48.png', 'apple-touch-icon.png']) {
+    assert(fs.existsSync(new URL('../assets/' + f, import.meta.url)), `Ф1: нет файла assets/${f}`);
+  }
+  pass('T21 пакет V: М1 (200/176 + full-bleed) и Ф1 (favicon svg/png/apple + theme-color)');
+} catch (e) { fail('T21', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length
