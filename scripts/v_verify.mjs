@@ -391,6 +391,75 @@ const browser = await chromium.launch();
   if (pmsg && pmsg.length > 10) ok('Н2: confirm открыт из паузы: ' + pmsg.slice(0, 40) + '…');
   else bad('Н2: confirm из паузы не открылся');
   await page.evaluate(() => { if (window.game.paused) window.game.togglePause(); });
+
+  // Пакет X (П1): тач-пик тултипа транзиентен — репорт владельца 22.10:
+  // «описание юнита не уходит долго или совсем не уходит, висит, мешает».
+  log('=== Пакет X (П1): тач-тултип гаснет (тап мимо / таймер / disabled) ===');
+  const tip = await page.evaluate(async () => {
+    const st = window.game.state;
+    const ui = await import('./js/ui.js');
+    const cv = document.getElementById('game-canvas');
+    const fireTouch = (el, x, y) => el.dispatchEvent(new PointerEvent('pointerdown',
+      { pointerType: 'touch', pointerId: 7, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    const tipShown = () => document.getElementById('cmd-tip')?.classList.contains('show') || false;
+    st.placing = null; st.wallDrag = null; // гигиена: снять постановку блока (А)
+    const worker = st.units.find((u) => u.side === 'player' && u.type === 'worker' && !u.dead && !u.garrison);
+    if (!worker) return { err: 'нет рабочего' };
+    st.selection = [worker];
+    st.buildMenu = true;
+    await new Promise((r) => setTimeout(r, 350)); // пересборка панели по сигнатуре
+    const btn = [...document.querySelectorAll('#cmd-grid .cmd')]
+      .find((b) => b.isConnected && b.querySelector('.cmd-cost')); // команда с ценой (не тоггл)
+    if (!btn) return { err: 'нет команд с ценой в меню стройки' };
+    const r = btn.getBoundingClientRect();
+    // 1) touch-пик показан…
+    fireTouch(btn, r.left + r.width / 2, r.top + r.height / 2);
+    const shown1 = tipShown();
+    // 2) …тап мимо (канвас) гасит мгновенно (capture-слушатель).
+    fireTouch(cv, Math.round(innerWidth / 2), Math.round(innerHeight / 2));
+    const hiddenByTapAway = !tipShown();
+    // 3) …повторный пик гаснет авто-таймером (5 c, ждём 5.6 c).
+    fireTouch(btn, r.left + r.width / 2, r.top + r.height / 2);
+    const shown2 = tipShown();
+    await new Promise((r2) => setTimeout(r2, 5600));
+    const hiddenByTimer = !tipShown();
+    // 4) disabled-команда: причина показана и гаснет тапом мимо (не вечна).
+    //    Герметично: пауза замораживает тики (шахтёры не вернут минералы),
+    //    пересборку панели зовём напрямую через экспорт ui.update.
+    st.minerals.player = 0;
+    window.game.paused = true;
+    st.selection = [worker];
+    st.buildMenu = true;
+    ui.update(window.game);
+    const btn2 = [...document.querySelectorAll('#cmd-grid .cmd')]
+      .find((b) => b.isConnected && b.querySelector('.cmd-cost'));
+    if (!btn2) {
+      window.game.paused = false;
+      return { err: 'нет costed-кнопки после герметичной пересборки' };
+    }
+    const r2 = btn2.getBoundingClientRect();
+    fireTouch(btn2, r2.left + r2.width / 2, r2.top + r2.height / 2); // tipTouchLast = true
+    btn2.click(); // бедная команда → showTip(reason) + взвод таймера
+    const reasonShown = tipShown();
+    fireTouch(cv, Math.round(innerWidth / 2), Math.round(innerHeight / 2));
+    const reasonHidden = !tipShown();
+    window.game.paused = false;
+    st.minerals.player = 5000;
+    st.buildMenu = false;
+    ui.update(window.game);
+    return { shown1, hiddenByTapAway, shown2, hiddenByTimer, reasonShown, reasonHidden };
+  });
+  if (tip.err) bad('Пакет X (П1): стенд не собран: ' + tip.err);
+  else {
+    if (tip.shown1) ok('П1: touch-пик по кнопке панели показан');
+    else bad('П1: touch-пик не показан');
+    if (tip.shown1 && tip.hiddenByTapAway) ok('П1: тап мимо гасит тултип мгновенно');
+    else bad('П1: тап мимо НЕ гасит тултип');
+    if (tip.shown2 && tip.hiddenByTimer) ok('П1: авто-скрытие по таймеру (≤5.6 c) работает');
+    else bad(`П1: таймер не погасил (shown2=${tip.shown2}, hiddenByTimer=${tip.hiddenByTimer})`);
+    if (tip.reasonShown && tip.reasonHidden) ok('П1: причина недоступности показана и гаснет тапом мимо');
+    else bad(`П1: disabled-причина (shown=${tip.reasonShown}, hidden=${tip.reasonHidden})`);
+  }
 }
 
 log('=== pageerrors ===');
