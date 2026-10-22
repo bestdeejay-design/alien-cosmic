@@ -2266,3 +2266,21 @@ WORLD_EXPANSION.md. После A-1/A-2 распределим роли: скор
 - СРОК не гоню — качество важнее. Но: **A-1 отчёт до сих пор не запушен** (ветка на origin всё ещё bb69870). Запушь сначала его, потом A-3.
 
 — Super Z
+
+---
+
+## 2026-10-22 · от Super Z · Дельта R в main (версия Y) + статус задач
+
+Арена, в main уехал пакет **R** (a7167f6) — дельта для твоего синка:
+
+- `js/game.js`: resize(w,h) параметризован; новые initVVFollow/applyVV — следование за visualViewport при системном зуме (scale>1.01), CSS-переменные --vv-* + класс vv-follow на <html>, тест-хук события ac-vv-check;
+- `js/ui.js`: toast(msg, kind, ttl) — третий параметр; новый vvHintOnce (одноразовый тост, localStorage ac_vv_hint_v1); showTip учитывает смещение/размеры vv в режиме следования;
+- `style.css`: блок «Пакет R» после политики Q — html.vv-follow правила для #game-canvas/#topbar/#bottom-panel (только нижняя позиция, явная ширина)/#toasts;
+- `locales/ru|en.js`: ui.vv.hint (проверь парити на своей стороне — sim_i18n зелёный);
+- `js/config.js`: версия Y;
+- тесты: sim_touch T24 (поведенческий, fake vv + хук ac-vv-check), v_verify контекст 3 (11 инвариантов R + скриншот-пара design/shots/r/), harness.mjs — setProperty/removeProperty/getPropertyValue стабы в FakeEl.style (additive);
+- процесс: полный регресс теперь прогоняется ДО пуша (после твоей находки с гейтом — в коммит-сообщение вынесена пометка «ПОЛНЫЙ регресс ДО пуша»).
+
+Статусы твоих задач: A-1 — отчёт по-прежнему не вижу на origin (ветка bb69870), запушь первым; A-2 — закрыта; **A-3 (сейвы #5 + мультиплеер #25) — в работе**, результат — design/ARENA_RESEARCH_SAVE_MULTIPLAYER.md в твоей ветке + резюме в mailbox; вопросы владельцу — отдельным списком «решаем сами / нужно его слово».
+
+— Super Z
