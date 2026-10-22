@@ -99,7 +99,10 @@ export function attachInput(game) {
     st.mouseWorld = world;
     if (st.placing) {
       updatePlacing(st, world);
-      touchGesture = { mode: 'placement', id: e.pointerId, start: point, startWorld: world };
+      // Пакет V (вариант А): жест зеркалит pending-FSM обычного режима —
+      // драг >9px станет паном камеры, для этого нужны стартовые координаты.
+      touchGesture = { mode: 'placement', id: e.pointerId, start: point, startWorld: world,
+        startCameraX: st.camera.x, startCameraY: st.camera.y, startZoom: st.camera.z || 1 };
       return;
     }
     const friendly = unitAt(st, world.x, world.y, 'player');
@@ -146,8 +149,16 @@ export function attachInput(game) {
     st.mouseWorld = world;
 
     if (touchGesture.mode === 'placement') {
-      updatePlacing(st, world);
-      return;
+      if (moved > 9) {
+        // Пакет V (вариант А, MOBILE_BUILD_AUDIT §3.1): перетаскивание в режиме
+        // постройки — это ПАН КАМЕРЫ, а не возня призрака со случайной
+        // постановкой на отпускание. Призрак замирает на последней плитке,
+        // жест переводится в пан (ветка ниже), tryPlace на up не вызывается.
+        touchGesture.mode = 'pan';
+      } else {
+        updatePlacing(st, world);
+        return;
+      }
     }
     if (touchGesture.mode === 'pending' && moved > 9) {
       clearLongPress();

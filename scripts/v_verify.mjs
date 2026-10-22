@@ -122,6 +122,24 @@ const browser = await chromium.launch();
   const sy = await page.evaluate(() => window.scrollY);
   if (sy > 300) ok(`меню-скролл жив (scrollY=${sy})`); else bad(`меню-скролл не работает (scrollY=${sy})`);
 
+  // Пакет V (Ф1): favicon-проводка — ссылки в head, файлы отвечают 200.
+  log('=== Пакет V (Ф1): favicon ===');
+  const fav = await page.evaluate(async () => {
+    const links = [...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')];
+    const loads = [];
+    for (const l of links) { try { const r = await fetch(l.href); loads.push(r.ok); } catch { loads.push(false); } }
+    return {
+      n: links.length,
+      svg: !!document.querySelector('link[rel="icon"][type="image/svg+xml"]'),
+      apple: !!document.querySelector('link[rel="apple-touch-icon"]'),
+      theme: (document.querySelector('meta[name="theme-color"]') || {}).content || '',
+      all200: loads.length > 0 && loads.every(Boolean),
+    };
+  });
+  if (fav.svg && fav.apple && fav.theme === '#071218' && fav.all200 && fav.n >= 3)
+    ok(`Ф1: favicon-проводка жива (${fav.n} ссылок, все 200, theme-color на месте)`);
+  else bad('Ф1: проводка сломана: ' + JSON.stringify(fav));
+
   // Кнопка «Перезагрузить экран»: confirm → reload. Диалог обрабатываем
   // канонично (page.once до клика), клик шлём из JS — проверяем wiring,
   // а не хит-геометрию деталей-раскрывашки.
@@ -145,6 +163,19 @@ const browser = await chromium.launch();
   await bootBattle(page);
   log('=== Бой (десктоп): инвариант ===');
   await checkAudit(page, 'battle-desktop', false, ['#sel-info']);
+
+  // Пакет V (М1): мини-карта шире на десктопе — новый лимит 200 вместо 168,
+  // и full-bleed: бокс прижат к левому/нижнему краю панели.
+  log('=== Пакет V (М1): мини-карта шире и без отступов на десктопе ===');
+  const mm = await page.evaluate(() => {
+    const b = document.getElementById('minimap-box').getBoundingClientRect();
+    const p = document.getElementById('bottom-panel').getBoundingClientRect();
+    return { w: Math.round(b.width), left: Math.round(b.left - p.left), bottom: Math.round(p.bottom - b.bottom) };
+  });
+  if (mm.w >= 190) ok(`М1: мини-карта ${mm.w}px (>168 старого лимита, цель 200)`);
+  else bad(`М1: мини-карта узкая (${mm.w}px) — лимит не применился`);
+  if (mm.left <= 1 && mm.bottom <= 1) ok(`М1: бокс прижат к углу (left=${mm.left}px, bottom=${mm.bottom}px)`);
+  else bad(`М1: отступы на десктопе: left=${mm.left}px, bottom=${mm.bottom}px`);
 
   // Пакет S, инвариант S8 (перманентная проба репро zoom_buildings):
   // при z=0.5 здание ПРАВЕЕ экранной границы W (но в пределах vw=W/z)
@@ -249,6 +280,74 @@ const browser = await chromium.launch();
   const cls = await page.evaluate(() => document.documentElement.className);
   if (/game-touch/.test(cls)) ok('тач-контекст: game-touch жив (санити пакета U)');
   else bad('тач-контекст: game-touch потерян: ' + cls);
+
+  // Пакет V (М1): full-bleed — на мобильном (≤720, wrap-раскладка) бокс
+  // прижат к ВЕРХНЕМУ левому углу панели.
+  log('=== Пакет V (М1): full-bleed мини-карты на таче ===');
+  const flush = await page.evaluate(() => {
+    const b = document.getElementById('minimap-box').getBoundingClientRect();
+    const p = document.getElementById('bottom-panel').getBoundingClientRect();
+    return { left: Math.round(b.left - p.left), top: Math.round(b.top - p.top) };
+  });
+  if (flush.left <= 1 && flush.top <= 1)
+    ok(`М1: бокс прижат к углу (left=${flush.left}px, top=${flush.top}px)`);
+  else bad(`М1: отступы вокруг мини-карты остались: left=${flush.left}px, top=${flush.top}px`);
+
+  // Пакет V (вариант А): драг в placement панит камеру (без постановки),
+  // тап ставит здание ровно в тапнутую точку.
+  log('=== Пакет V (А): пан в режиме постройки на таче ===');
+  const pl = await page.evaluate(async () => {
+    const g = window.game, st = g.state, TILE = 32;
+    const Bm = await import('./js/buildings.js');
+    const cv = document.getElementById('game-canvas');
+    const fire = (ev, x, y) => cv.dispatchEvent(new PointerEvent(ev,
+      { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    const w = st.units.find((u) => u.side === 'player' && u.type === 'worker' && !u.dead && !u.garrison);
+    if (!w) return { err: 'нет рабочего' };
+    st.selection = [w];
+    st.minerals.player = 5000;
+    st.placing = { type: 'depot', tx: -999, ty: -999 };
+    let spot = null;
+    for (let d = 3; d < 14 && !spot; d++)
+      for (const [dx, dy] of [[d, 0], [0, d], [d, d], [-d, 0]]) {
+        const x = w.x + dx * TILE, y = w.y + dy * TILE;
+        const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+        if (st.map.crystals.some((c) => c.tx === tx && c.ty === ty && c.amount > 0)) continue;
+        if (st.buildings.some((b) => !b.dead && tx >= b.tx - 1 && tx <= b.tx + b.w && ty >= b.ty - 1 && ty <= b.ty + b.h)) continue;
+        if (!Bm.canPlace(st.map, tx, ty, 2, 2) || !Bm.zoneAllows(st, tx, ty, 2, 2)) continue;
+        if (!st.fog.tileExplored(tx, ty)) continue;
+        spot = { x, y };
+        break;
+      }
+    if (!spot) return { err: 'нет места' };
+    const s = g.worldToScreen(spot.x, spot.y);
+    const bx0 = st.buildings.length;
+    const camX0 = st.camera.x;
+    fire('pointerdown', s.x, s.y);
+    fire('pointermove', s.x - 60, s.y);
+    const camX1 = st.camera.x;
+    fire('pointerup', s.x - 60, s.y);
+    const afterDrag = st.buildings.length - bx0;
+    fire('pointerdown', s.x - 60, s.y);
+    fire('pointerup', s.x - 60, s.y);
+    await new Promise((r) => setTimeout(r, 150));
+    const b = st.buildings[st.buildings.length - 1];
+    return {
+      camDelta: Math.round(camX1 - camX0),
+      afterDrag,
+      placed: st.buildings.length - bx0,
+      near: b ? Math.abs(b.tx * TILE - spot.x) < 64 && Math.abs(b.ty * TILE - spot.y) < 64 : false,
+    };
+  });
+  if (pl.err) bad('Пакет V (А): стенд не собран: ' + pl.err);
+  else {
+    if (pl.camDelta > 30) ok(`Пакет V (А): драг в placement панит камеру (+${pl.camDelta}px мира)`);
+    else bad(`Пакет V (А): камера не поехала (delta=${pl.camDelta}px)`);
+    if (pl.afterDrag === 0) ok('Пакет V (А): драг НЕ ставит здание (случайных построек нет)');
+    else bad(`Пакет V (А): драг поставил здание (${pl.afterDrag}) — вариант А сломан`);
+    if (pl.placed === 1 && pl.near) ok('Пакет V (А): тап после пана ставит здание в тапнутую точку');
+    else bad(`Пакет V (А): тап не поставил здание (placed=${pl.placed}, near=${pl.near})`);
+  }
 }
 
 log('=== pageerrors ===');

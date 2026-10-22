@@ -1074,12 +1074,15 @@ export function resizeMinimap(game) {
   const aspect = Math.max(0.25, Math.min(4, map.pxW / map.pxH));
   const shortCompact = canCompactPanel() && !panelExpandedInShortLandscape;
   let maxW, maxH;
+  // Пакет V (М1): лимиты подняты по design/MOBILE_BUILD_AUDIT.md §2 —
+  // низ/верх 168→200, лево/право 148→176 (колонка 236px вмещает: 176+2
+  // рамки против 208 контента). Мобильный ≤720 сохраняет пропорцию ширины.
   if (shortCompact) { maxW = 180; maxH = 96; }
-  else if (panelPos === 'left' || panelPos === 'right') { maxW = 148; maxH = 148; }
+  else if (panelPos === 'left' || panelPos === 'right') { maxW = 176; maxH = 176; }
   else if (Number(window.innerWidth) <= 720) {
     maxW = Math.min(150, Math.max(116, Number(window.innerWidth) * 0.36));
     maxH = 150;
-  } else { maxW = 168; maxH = 168; }
+  } else { maxW = 200; maxH = 200; }
 
   const cssW = Math.max(64, Math.min(maxW, maxH * aspect));
   const cssH = cssW / aspect;
