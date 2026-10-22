@@ -104,10 +104,13 @@ else {
 
 // 6) Версия (V): бейдж N на главной странице, дата фактической поставки
 console.log('\n[6] Версия:');
-if (!exportsOf('config.js').has('GAME_VERSION') || !src['config.js'].includes("GAME_VERSION = 'W'")) err("config.js: нет GAME_VERSION === 'W'");
-else ok("GAME_VERSION === 'W'");
-if (!exportsOf('config.js').has('GAME_DATE') || !src['config.js'].includes("GAME_DATE = '22.10.2026'")) err('config.js: дата не соответствует правилу V (22.10.2026)');
-else ok('GAME_DATE соответствует правилу V (22.10.2026)');
+// Версия проверяется динамически (находка Арены, A-1): хардкод буквы пакета красил гейт на каждом бампе.
+const verM = src['config.js'].match(/GAME_VERSION\s*=\s*'([A-Z]{1,2})'/);
+if (!exportsOf('config.js').has('GAME_VERSION') || !verM) err('config.js: нет GAME_VERSION (буква пакета, напр. X)');
+else ok(`GAME_VERSION = '${verM[1]}'`);
+const dateM = src['config.js'].match(/GAME_DATE\s*=\s*'(\d{2}\.\d{2}\.\d{4})'/);
+if (!exportsOf('config.js').has('GAME_DATE') || !dateM) err('config.js: GAME_DATE должен быть датой поставки в формате DD.MM.YYYY');
+else ok(`GAME_DATE соответствует правилу V (${dateM[1]})`);
 if (!html.includes('id="ver-badge"')) err('index.html: нет бейджа версии');
 else ok('бейдж версии на месте (текст — из локали, ui.setVersionBadge)');
 
