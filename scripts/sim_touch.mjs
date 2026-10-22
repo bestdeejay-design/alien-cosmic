@@ -502,6 +502,47 @@ try {
   pass('T23 пакет X: тач-пик транзиентен (таймер 5 c, тап мимо, disabled, пересборка)');
 } catch (e) { fail('T23', e); }
 
+// ---------- T24: пакет R — visualViewport-устойчивость (V2) ----------
+try {
+  const innerW = globalThis.innerWidth, innerH = globalThis.innerHeight;
+  const rootEl = document.documentElement;
+  // Фейковый vv: до зума — обычное состояние (initVVFollow уже отработал в
+  // конструкторе без vv; здесь подменяем и считаем applyVV напрямую).
+  const vv = {
+    scale: 1, width: 390, height: 700, offsetLeft: 40, offsetTop: 60,
+    _h: {}, addEventListener(ev, fn) { (this._h[ev] = this._h[ev] || []).push(fn); },
+  };
+  globalThis.visualViewport = vv;
+  fireWin('ac-vv-check', {}); // хук: bind() перечитывает vv + applyVV (контракт реального vv-события)
+  assert(!rootEl.classList.contains('vv-follow'), 'R: режим следования включился при scale=1');
+  // Зум: класс + --vv-* + канвас и cssW/cssH под видимую область.
+  vv.scale = 1.6;
+  fireWin('ac-vv-check', {});
+  assert(rootEl.classList.contains('vv-follow'), 'R: нет класса vv-follow при scale>1.01');
+  assert(rootEl.style['--vv-x'] === '40px' && rootEl.style['--vv-y'] === '60px',
+    `R: смещение --vv-x/--vv-y не выставлено (${rootEl.style['--vv-x']}/${rootEl.style['--vv-y']})`);
+  assert(rootEl.style['--vv-w'] === '390px' && rootEl.style['--vv-h'] === '700px',
+    `R: размеры --vv-w/--vv-h не выставлены (${rootEl.style['--vv-w']}/${rootEl.style['--vv-h']})`);
+  assert(cv.style.width === '390px' && cv.style.height === '700px',
+    `R: канвас не подстроен под видимую область (${cv.style.width}x${cv.style.height})`);
+  assert(game.cssW === 390 && game.cssH === 700, `R: cssW/cssH не переключились на vv (${game.cssW}x${game.cssH})`);
+  // Подписка на vv-события есть (resize/scroll ведут к applyVV).
+  assert(vv._h.resize && vv._h.scroll, 'R: нет подписки на vv resize/scroll');
+  // Одноразовая подсказка: флаг ставится и не переспрашивается.
+  assert(globalThis.localStorage.getItem('ac_vv_hint_v1') === '1', 'R: нет флага одноразовой подсказки');
+  game.vvActive = false; // имитация повторного входа в зум
+  fireWin('ac-vv-check', {});
+  assert(globalThis.localStorage.getItem('ac_vv_hint_v1') === '1', 'R: подсказка не одноразовая');
+  // Возврат масштаба: режим снят, переменные очищены, канвас вернулся к layout.
+  vv.scale = 1;
+  fireWin('ac-vv-check', {});
+  assert(!rootEl.classList.contains('vv-follow'), 'R: класс vv-follow не снят при scale=1');
+  assert(rootEl.style['--vv-x'] === undefined, 'R: --vv-x не очищен при возврате');
+  assert(cv.style.width === innerW + 'px' && cv.style.height === innerH + 'px',
+    `R: канвас не вернулся к layout viewport (${cv.style.width}x${cv.style.height})`);
+  pass('T24 пакет R: следование за visualViewport (класс+переменные, канвас, подписка, подсказка один раз, возврат)');
+} catch (e) { fail('T24', e); }
+
 // ---------- ИТОГ ----------
 console.log(failures.length
   ? `\nИТОГ SIM_TOUCH: ПРОВАЛЕНО ${failures.length}: ${failures.join(', ')}`

@@ -462,6 +462,95 @@ const browser = await chromium.launch();
   }
 }
 
+// ---------- Контекст 3: тач, пакет R — visualViewport-устойчивость ----------
+{
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 3,
+    isMobile: true, hasTouch: true,
+  });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  await bootBattle(page);
+
+  log('=== Пакет R: следование за visualViewport (системный зум) ===');
+  // Обычный масштаб: режим молчит (реальный vv, scale=1).
+  const idle = await page.evaluate(() => {
+    window.dispatchEvent(new Event('ac-vv-check'));
+    return { cls: document.documentElement.className };
+  });
+  if (!/vv-follow/.test(idle.cls)) ok('R: обычный масштаб — режим следования молчит');
+  else bad('R: vv-follow включился без зума: ' + idle.cls);
+
+  // Системный зум: фейковый vv (веб не может вызвать настоящий iOS-зум —
+  // подмена + тест-хук ac-vv-check повторяют контракт vv-события).
+  const zoom = await page.evaluate(() => {
+    const fake = {
+      scale: 1.6, width: 300, height: 700, offsetLeft: 40, offsetTop: 60,
+      addEventListener() {},
+    };
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: fake });
+    window.dispatchEvent(new Event('ac-vv-check'));
+    const rect = (sel) => {
+      const b = document.querySelector(sel).getBoundingClientRect();
+      return { l: +b.left.toFixed(1), t: +b.top.toFixed(1), r: +b.right.toFixed(1), b: +b.bottom.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) };
+    };
+    const toasts1 = document.querySelectorAll('#toasts .toast').length;
+    const allToasts = [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' | ');
+    window.dispatchEvent(new Event('ac-vv-check')); // повторный вход — тост не дублируется
+    return {
+      cls: document.documentElement.className,
+      canvas: rect('#game-canvas'), topbar: rect('#topbar'), panel: rect('#bottom-panel'),
+      toasts1, toasts2: document.querySelectorAll('#toasts .toast').length, allToasts,
+      flag: localStorage.getItem('ac_vv_hint_v1'),
+      gameW: window.game.cssW, gameH: window.game.cssH,
+    };
+  });
+  await page.screenshot({ path: 'design/shots/r/vv_follow.png' });
+  if (/vv-follow/.test(zoom.cls)) ok('R: класс vv-follow включён при scale>1.01');
+  else bad('R: нет класса vv-follow');
+  const cvz = zoom.canvas;
+  if (Math.abs(cvz.l - 40) <= 1 && Math.abs(cvz.t - 60) <= 1 && Math.abs(cvz.w - 300) <= 1 && Math.abs(cvz.h - 700) <= 1)
+    ok(`R: канвас = видимая область (40,60 300×700), cssW/H=${zoom.gameW}×${zoom.gameH}`);
+  else bad(`R: канвас не следует: ${JSON.stringify(cvz)}, cssW/H=${zoom.gameW}×${zoom.gameH}`);
+  const tb = zoom.topbar;
+  if (Math.abs(tb.l - 40) <= 1 && Math.abs(tb.t - 60) <= 1 && Math.abs(tb.w - 300) <= 1)
+    ok('R: топбар внутри видимой области');
+  else bad(`R: топбар вне видимой области: ${JSON.stringify(tb)}`);
+  const pn = zoom.panel;
+  if (Math.abs(pn.b - 760) <= 2 && Math.abs(pn.l - 40) <= 1 && Math.abs(pn.w - 300) <= 1)
+    ok(`R: командная панель прижата к низу видимой области (bottom=${pn.b})`);
+  else bad(`R: командная панель не прижата к видимой области: ${JSON.stringify(pn)}`);
+  if (zoom.toasts1 >= 1 && zoom.toasts1 === zoom.toasts2) ok('R: подсказка показана один раз (повторный вход не дублирует)');
+  else bad(`R: подсказка (toasts1=${zoom.toasts1}, toasts2=${zoom.toasts2})`);
+  if (/щипка|щипок/.test(zoom.allToasts)) ok('R: текст подсказки честный («верните масштаб щипка», без обещания авто-выхода)');
+  else bad('R: текст подсказки не содержит «щипка»: ' + zoom.allToasts);
+  if (zoom.flag === '1') ok('R: флаг одноразовости в localStorage');
+  else bad('R: нет флага ac_vv_hint_v1');
+
+  // Возврат масштаба: режим снят, геометрия вернулась к layout viewport.
+  const reset = await page.evaluate(() => {
+    window.visualViewport.scale = 1;
+    window.dispatchEvent(new Event('ac-vv-check'));
+    const b = document.getElementById('game-canvas').getBoundingClientRect();
+    return {
+      cls: document.documentElement.className,
+      canvas: { l: +b.left.toFixed(1), t: +b.top.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1) },
+      varX: document.documentElement.style.getPropertyValue('--vv-x') || '',
+    };
+  });
+  await page.screenshot({ path: 'design/shots/r/vv_normal.png' });
+  if (!/vv-follow/.test(reset.cls)) ok('R: после возврата scale=1 режим снят');
+  else bad('R: режим следования не снялся');
+  if (!reset.varX) ok('R: --vv-* переменные очищены');
+  else bad('R: переменные не очищены: ' + reset.varX);
+  const cvr = reset.canvas;
+  if (Math.abs(cvr.l) <= 1 && Math.abs(cvr.t) <= 1 && Math.abs(cvr.w - 390) <= 1 && Math.abs(cvr.h - 844) <= 1)
+    ok('R: канвас вернулся к layout viewport (0,0 390×844)');
+  else bad(`R: канвас не вернулся: ${JSON.stringify(cvr)}`);
+  await ctx.close();
+}
+
 log('=== pageerrors ===');
 log(errors.length ? errors.join('\n') : 'нет');
 if (errors.length) failed = 1;

@@ -136,6 +136,8 @@ export class Game {
       if (tb) ro.observe(tb);
     }
     this.resize();
+    // Пакет R: visualViewport-устойчивость (системный iOS-зум / AA-зум Safari).
+    this.initVVFollow();
     // При возврате на вкладку не накапливаем «долгие» тики.
     document.addEventListener('visibilitychange', () => { this.last = performance.now(); });
 
@@ -348,9 +350,60 @@ export class Game {
     ui.setSoundUI(this.sound.toggle());
   }
 
-  resize() {
-    this.cssW = window.innerWidth;
-    this.cssH = window.innerHeight;
+  // ---------- Пакет R: следование за visualViewport ----------
+  // Системный iOS-зум (три пальца) и принудительный AA-зум Safari вебом не
+  // блокируются — пакет Q закрыл только зум страницы. При scale>1.01 видимая
+  // область — «дырка» в layout viewport: канвас и HUD следуют за ней через
+  // CSS-переменные --vv-* (style.css, html.vv-follow). Обещать авто-выход
+  // нельзя (веб не сбрасывает системный зум) — одноразовый тост «верните
+  // масштаб щипком» (ui.vvHintOnce).
+  initVVFollow() {
+    this.vvActive = false;
+    const bind = () => {
+      const v = window.visualViewport;
+      if (!v || v.__vvBound) return;
+      v.__vvBound = true;
+      v.addEventListener('resize', () => this.applyVV());
+      v.addEventListener('scroll', () => this.applyVV());
+    };
+    bind();
+    // Тест-хук: в Playwright/стендах window.visualViewport подменяется ПОСЛЕ
+    // загрузки модуля — слушатели реального vv его не увидят. ac-vv-check
+    // перечитывает window.visualViewport и пересчитывает режим.
+    window.addEventListener('ac-vv-check', () => { bind(); this.applyVV(); });
+    this.applyVV();
+  }
+
+  applyVV() {
+    const v = window.visualViewport;
+    if (!v) return;
+    const zoomed = Number(v.scale) > 1.01;
+    const root = document.documentElement;
+    if (zoomed) {
+      root.classList.add('vv-follow');
+      root.style.setProperty('--vv-x', Math.round(Number(v.offsetLeft) || 0) + 'px');
+      root.style.setProperty('--vv-y', Math.round(Number(v.offsetTop) || 0) + 'px');
+      root.style.setProperty('--vv-w', Math.round(Number(v.width) || window.innerWidth) + 'px');
+      root.style.setProperty('--vv-h', Math.round(Number(v.height) || window.innerHeight) + 'px');
+      if (!this.vvActive) {
+        this.vvActive = true;
+        ui.vvHintOnce(); // одноразовая подсказка (не обещаем авто-выход)
+      }
+      this.resize(Math.round(Number(v.width) || window.innerWidth), Math.round(Number(v.height) || window.innerHeight));
+    } else if (this.vvActive) {
+      this.vvActive = false;
+      root.classList.remove('vv-follow');
+      for (const p of ['--vv-x', '--vv-y', '--vv-w', '--vv-h']) root.style.removeProperty(p);
+      this.resize(); // возврат к layout viewport
+    }
+  }
+
+  // Пакет R (V2, MOBILE_VIEWPORT_AUDIT.md §6): подстройка буфера под заданную
+  // область. По умолчанию — layout viewport (как раньше); в режиме следования
+  // за visualViewport applyVV() передаёт размеры видимой области.
+  resize(w = window.innerWidth, h = window.innerHeight) {
+    this.cssW = w;
+    this.cssH = h;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(this.cssW * dpr);
     this.canvas.height = Math.round(this.cssH * dpr);

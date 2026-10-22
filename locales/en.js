@@ -19,6 +19,11 @@ export default {
     versionBadge: 'version {v} · {date}',
     langLabel: 'Language',
 
+    // Package R: system zoom (visualViewport) — one-time hint
+    vv: {
+      hint: 'Page zoom changed by the system — the game follows the visible area. Pinch to restore the default zoom.',
+    },
+
     menu: {
       sub: 'A real-time strategy: colonists and natives wage war for the erg of Frontier-64',
       heroEyebrow: 'INBOUND SIGNAL · FRONTIER-64',

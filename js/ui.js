@@ -1212,7 +1212,7 @@ export function hideEnd() {
   updateModalChrome();
 }
 
-export function toast(msg, kind = 'info') {
+export function toast(msg, kind = 'info', ttl = 2250) {
   if (!els) return;
   const now = performance.now();
   if (toast.last && toast.last.msg === msg && now - toast.last.t < 1600) return; // анти-спам
@@ -1222,8 +1222,20 @@ export function toast(msg, kind = 'info') {
   div.textContent = msg;
   els.toasts.appendChild(div);
   while (els.toasts.children.length > 3) els.toasts.firstChild.remove();
-  setTimeout(() => div.classList.add('hide'), 2250);
-  setTimeout(() => div.remove(), 2600);
+  setTimeout(() => div.classList.add('hide'), ttl);
+  setTimeout(() => div.remove(), ttl + 350);
+}
+
+// Пакет R: одноразовая подсказка при системном зуме (visualViewport.scale>1).
+// Веб не может ни запретить системный зум, ни выйти из него — обещать
+// авто-возврат нельзя; честная инструкция — «верните масштаб щипком».
+// Один раз на устройство (приватный режим — без запоминания).
+export function vvHintOnce() {
+  try {
+    if (localStorage.getItem('ac_vv_hint_v1')) return;
+    localStorage.setItem('ac_vv_hint_v1', '1');
+  } catch { /* приватный режим: покажем, но не запомним */ }
+  toast(t('ui.vv.hint'), 'warn', 6000);
 }
 
 export function setObjective(text) {
@@ -2003,14 +2015,27 @@ function showTip(tip, btn, reason = '') {
   tipEl.classList.add('show');
   if (!btn || !btn.getBoundingClientRect) return;
   const rect = btn.getBoundingClientRect();
-  const vw = Math.max(240, Number(window.innerWidth) || 320);
-  const vh = Math.max(160, Number(window.innerHeight) || 240);
+  // Пакет R: rect — координаты visual viewport, tipEl позиционируется в
+  // документе. В режиме следования (системный зум) добавляем смещение видимой
+  // области и ограничиваем раскладку её размерами.
+  const rootEl = document.documentElement;
+  const follow = rootEl.classList && rootEl.classList.contains('vv-follow');
+  let ox = 0, oy = 0;
+  let vw = Math.max(240, Number(window.innerWidth) || 320);
+  let vh = Math.max(160, Number(window.innerHeight) || 240);
+  if (follow && window.getComputedStyle) {
+    const cs = window.getComputedStyle(rootEl);
+    const px = (n) => parseFloat(cs.getPropertyValue(n)) || 0;
+    ox = px('--vv-x'); oy = px('--vv-y');
+    vw = Math.max(240, px('--vv-w') || vw);
+    vh = Math.max(160, px('--vv-h') || vh);
+  }
   const width = Math.min(tipEl.offsetWidth || 300, vw - 16);
-  const left = Math.max(8, Math.min(vw - width - 8, rect.left + rect.width / 2 - width / 2));
+  const left = ox + Math.max(8, Math.min(vw - width - 8, rect.left + rect.width / 2 - width / 2));
   const height = tipEl.offsetHeight || 120;
   const above = rect.top - height - 8;
   const below = rect.bottom + 8;
-  const top = above >= 8 ? above : Math.max(8, Math.min(vh - height - 8, below));
+  const top = oy + (above >= 8 ? above : Math.max(8, Math.min(vh - height - 8, below)));
   tipEl.style.left = left + 'px';
   tipEl.style.top = top + 'px';
 }

@@ -60,6 +60,31 @@ body > * { touch-action: pan-y; }    /* ни один топ-контейнер 
    pinch-zoom; вертикальные нативные скроллы (меню, sel-info, брифы) живут.
    Дочерним элементам правила не нужны: одного pan-y в цепочке достаточно */
 
+/* ---------- Пакет R: следование за visualViewport ----------
+   Системный iOS-зум (три пальца) и AA-зум Safari вебом не блокируются (Q
+   закрыл только зум страницы). Пока scale>1, видимая область — «дырка» в
+   layout viewport: позиционируем игру и HUD в неё (переменные --vv-* ставит
+   game.applyVV, класс vv-follow включает режим). Канвасу размеры задаёт
+   game.resize(w,h) инлайном — CSS правит только привязку. */
+html.vv-follow #game-canvas { inset: auto; left: var(--vv-x); top: var(--vv-y); }
+html.vv-follow #topbar {
+  left: var(--vv-x); top: var(--vv-y); right: auto; width: var(--vv-w);
+}
+/* Панель — только в нижнем (базовом) положении: side-позиции (panel-left/
+   right/top) при системном зуме не следуют — редкий кейс, не обещаем. */
+html.vv-follow body:not(.panel-left):not(.panel-right):not(.panel-top) #bottom-panel {
+  left: var(--vv-x); right: auto; bottom: auto;
+  width: var(--vv-w);                      /* без явной ширины shrink-to-fit
+                                              дотянется до края layout-контейнера */
+  top: calc(var(--vv-y) + var(--vv-h));   /* низ видимой области */
+  transform: translateY(-100%);           /* высота — по содержимому */
+}
+html.vv-follow #toasts {
+  left: calc(var(--vv-x) + var(--vv-w) / 2); bottom: auto;
+  top: calc(var(--vv-y) + var(--vv-h) - 12px);
+  transform: translate(-50%, -100%);
+}
+
 /* ---------- Верхняя панель ---------- */
 #topbar {
   position: absolute; top: 0; left: 0; right: 0;
