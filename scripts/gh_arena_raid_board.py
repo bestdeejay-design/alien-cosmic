@@ -29,7 +29,9 @@ def comment(num, marker, body):
     cs = req('GET', f'/repos/{REPO}/issues/{num}/comments?per_page=100')
     if any(marker in c.get('body', '') for c in cs):
         print(f'#{num}: комментарий уже есть'); return
-    req('POST', f'/repos/{REPO}/issues/{num}/comments', {'body': body})
+    # маркер идемпотентности — в теле (урок gh_comment_dedupe.py)
+    req('POST', f'/repos/{REPO}/issues/{num}/comments',
+        {'body': f'<!-- {marker} -->\n\n{body}'})
     print(f'#{num}: комментарий добавлен')
 
 comment(25, 'A3-V2-ASYNC-RAID',
