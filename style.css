@@ -261,6 +261,14 @@ body.panel-left #cmd-grid.compact, body.panel-right #cmd-grid.compact {
 }
 body.panel-left #panel-ctl, body.panel-right #panel-ctl { flex-direction: row; align-self: stretch; }
 body.panel-left #panel-ctl .mini-btn, body.panel-right #panel-ctl .mini-btn { flex: 1; }
+/* Пакет W (М1.2): бокс мини-карты заполняет колонку целиком (ui.js берёт
+   clientWidth колонки) — колонка может стать выше экрана, скролл — страховка;
+   нижние углы бокса снова круглые: прижат только верхний внешний угол. */
+body.panel-left #bottom-panel, body.panel-right #bottom-panel {
+  overflow-y: auto; scrollbar-width: thin;
+  scrollbar-color: rgba(118,227,215,.28) transparent;
+}
+body.panel-left #minimap-box, body.panel-right #minimap-box { border-bottom-left-radius: 8px; }
 
 #sel-info {
   flex: 1;
@@ -602,6 +610,12 @@ body.menu-active #zoom-controls { display: none; }
   font-size: 44px; letter-spacing: 12px; color: var(--cyan-light);
   text-shadow: 0 0 30px rgba(118,227,215,.8);
 }
+
+/* Пакет W (Н2): аварийная «Перезагрузить экран» прямо в паузе — с телефона
+   «Ещё» на лендинге не найти (репорт владельца); пауза — самый близкий
+   надёжный якорь. Тап-цель ≥44px. */
+#pause-overlay { flex-direction: column; gap: 22px; }
+#btn-pause-reload { min-height: 44px; padding: 10px 22px; font-size: 13px; letter-spacing: 2px; }
 
 /* ---------- Строка цели миссии ---------- */
 .res.objective {

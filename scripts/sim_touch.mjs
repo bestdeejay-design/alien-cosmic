@@ -433,9 +433,10 @@ try {
   const uiSrc = await read('../js/ui.js');
   const css = await read('../style.css');
   const html = await read('../index.html');
-  // М1: лимиты ширины подняты (низ/верх 200, лево/право 176).
+  // М1 + М1.2 (W): лимиты ширины (низ/верх 200); боковой бокс теперь следует
+  // ширине колонки (clientWidth — фолбэк стаба 178 = поведение V 176+2).
   assert(uiSrc.includes('maxW = 200; maxH = 200'), 'М1: десктоп-лимит не 200');
-  assert(uiSrc.includes('maxW = 176'), 'М1: боковой лимит не 176');
+  assert(uiSrc.includes('maxW = Math.max(120, colW - 2)'), 'М1.2: боковой бокс не следует ширине колонки');
   // М1: виньетка снята, бокс прижат к внешнему углу панели.
   assert(!css.includes('inset 0 0 12px'), 'М1: виньетка #minimap-box на месте');
   assert(/#minimap-box\s*\{[^}]*margin-left:\s*-14px;\s*margin-bottom:\s*-12px/.test(css),
@@ -450,6 +451,30 @@ try {
   }
   pass('T21 пакет V: М1 (200/176 + full-bleed) и Ф1 (favicon svg/png/apple + theme-color)');
 } catch (e) { fail('T21', e); }
+
+// ---------- T22: пакет W — М1.2 (бокс=колонка) + Н2 (перезагрузка в паузе) ----------
+try {
+  const fs = await import('node:fs');
+  const read = (p) => fs.readFileSync(new URL(p, import.meta.url), 'utf8');
+  const uiSrc = await read('../js/ui.js');
+  const css = await read('../style.css');
+  const html = await read('../index.html');
+  // М1.2: боковой бокс = clientWidth колонки минус рамки; потолок высоты 300.
+  assert(uiSrc.includes("panelPos === 'left' || panelPos === 'right'")
+    && uiSrc.includes('col.clientWidth'), 'М1.2: бокс не читает ширину колонки');
+  assert(uiSrc.includes('maxH = 300'), 'М1.2: нет потолка высоты боковых панелей');
+  assert(css.includes('scrollbar-width: thin'), 'М1.2: нет скролл-страховки боковой колонки');
+  // Н2: кнопка в паузе, локаль ui.menu.reload, тот же confirm-контракт.
+  assert(html.includes('id="btn-pause-reload"'), 'Н2: нет кнопки перезагрузки в паузе');
+  assert(/btn-pause-reload[^>]*data-i18n="ui\.menu\.reload"/.test(html), 'Н2: кнопка паузы без локали ui.menu.reload');
+  const m = uiSrc.match(/btn-pause-reload[\s\S]{0,220}?reloadConfirm/);
+  assert(m, 'Н2: кнопка паузы не подтверждает перезагрузку (confirm)');
+  for (const loc of ['ru', 'en']) {
+    const src = await read(`../locales/${loc}.js`);
+    assert(src.includes('reloadConfirm'), `Н2: нет reloadConfirm в ${loc}`);
+  }
+  pass('T22 пакет W: М1.2 (бокс=колонка, потолок 300) + Н2 (перезагрузка в паузе с confirm, RU/EN)');
+} catch (e) { fail('T22', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length
