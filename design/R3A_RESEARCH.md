@@ -1,6 +1,6 @@
 # R3-A Phase 1 — Research and recommendations
 
-**Status:** owner-review package; **no Phase 2 code has started**. This document compares implementation options against the touch audit in `design/R3A_AUDIT.md`. Estimates are planning ranges, not commitments. The audit targets archived `main` **`ce01b41`**.
+**Status:** CLOSED — Phase 2 and H.1 were later approved and delivered (see `design/H_HEADQUARTERS.md` and ARENA_MAILBOX, 21.10). Text below is the historical baseline audit (status-drift flagged in Arena's A-1). This document compares implementation options against the touch audit in `design/R3A_AUDIT.md`. Estimates are planning ranges, not commitments. The audit targets archived `main` **`ce01b41`**.
 
 ## Decision 1 — Touch placement and cancel
 
