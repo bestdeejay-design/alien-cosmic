@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Alien Cosmic — Showcase всех юнитов и зданий</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{margin:0;background:#0b1a1e;color:#d9e8e6;font:14px system-ui,sans-serif}
+  h1{margin:16px 20px 8px;font-size:20px}
+  h2{margin:24px 20px 8px;font-size:16px;color:#76e3d7}
+  p{margin:8px 20px;color:#9fb6c3}
+  canvas{display:block;margin:12px 20px;background:#0f262b;border:1px solid #1a333a;border-radius:8px}
+  .note{margin:12px 20px;padding:10px 12px;background:#142a30;border-radius:6px;color:#9fb6c3}
+  a{color:#76e3d7}
+</style>
+</head>
+<body>
+<h1>Alien Cosmic — все виды юнитов и зданий (живой рендер из игры)</h1>
+<p>Рендер идёт теми же функциями <code>drawUnit</code> / <code>drawBuilding</code>, что в бою. Анимация — <code>performance.now()+id</code>, <code>pulse/flick/step/sway/recoil</code>. Открой <a href="/">игру</a> — этот вьювер на <code>/showcase.html</code>.</p>
+
+<h2>Юниты 8×2 — Гелиос (слева) / Кхарид (справа)</h2>
+<canvas id="units" width="960" height="520"></canvas>
+<p>Слева-направо: worker, marine, buggy, tank, medic, flamer, scout, mortar. Верхний ряд — Гелиос, нижний — Кхарид. Кромка носа в цвете стороны — читаемость 0.2с.</p>
+
+<h2>Здания 8×2 — Гелиос (верх) / Кхарид (низ)</h2>
+<canvas id="buildings" width="960" height="640"></canvas>
+<p>Слева-направо: CC (штаб/улей), depot, barracks, turret, wall, bunker, factory, lab. Верхний ряд — Гелиос 2.5D (тень→фасад→крыша), нижний — Кхарид (курган/мембрана). Кромка крыши в цвете стороны.</p>
+
+<div class="note">База в игре — 64×64 тайла (2048×2048 px мира, тайл 32 px). На скрине — сетка из построек 3×3 тайла для масштаба. Живой бой — в <a href="/">главной игре</a> (выбери карту и запусти).</div>
+
+<script type="module">
+import { drawUnit } from './js/units.js';
+import { drawBuilding } from './js/buildings.js';
+import { TILE } from './js/config.js';
+
+const unitCfg = { worker:{r:10,vehicle:false,cooldown:1}, marine:{r:12,vehicle:false,cooldown:0.5}, buggy:{r:13,vehicle:true,cooldown:0.4}, tank:{r:16,vehicle:true,cooldown:1.2}, medic:{r:11,vehicle:false,cooldown:1}, flamer:{r:12,vehicle:true,cooldown:0.6}, scout:{r:11,vehicle:true,cooldown:0.3}, mortar:{r:14,vehicle:true,cooldown:2} };
+const types = ['worker','marine','buggy','tank','medic','flamer','scout','mortar'];
+
+// ---- UNITS ----
+const cu = document.getElementById('units');
+const ctxU = cu.getContext('2d');
+let t0 = performance.now();
+function frameUnits(){
+  ctxU.clearRect(0,0,cu.width,cu.height);
+  ctxU.fillStyle='#0f262b'; ctxU.fillRect(0,0,cu.width,cu.height);
+  // сетка
+  ctxU.strokeStyle='rgba(255,255,255,0.04)'; ctxU.lineWidth=1;
+  for(let x=0;x<cu.width;x+=40){ ctxU.beginPath();ctxU.moveTo(x,0);ctxU.lineTo(x,cu.height);ctxU.stroke();}
+  for(let y=0;y<cu.height;y+=40){ ctxU.beginPath();ctxU.moveTo(0,y);ctxU.lineTo(cu.width,y);ctxU.stroke();}
+  // подписи фракций
+  ctxU.fillStyle='#76e3d7'; ctxU.font='bold 12px system-ui'; ctxU.fillText('ГЕЛИОС — углы/плита/ховер', 12, 18);
+  ctxU.fillStyle='#9ff5b8'; ctxU.fillText('КХАРИД — капли/хитин/слизь', 12, 268);
+  for(let row=0; row<2; row++){
+    const faction = row===0 ? 'human' : 'alien';
+    const side = row===0 ? 'player' : 'enemy';
+    const y = row===0 ? 90 : 340;
+    // фоновая полоса ряда
+    ctxU.fillStyle = row===0 ? 'rgba(118,227,215,0.06)' : 'rgba(159,245,184,0.06)';
+    ctxU.fillRect(0, y-70, cu.width, 180);
+    for(let i=0;i<8;i++){
+      const type = types[i];
+      const x = 80 + i*110;
+      const cfg = unitCfg[type];
+      const u = { id: i+1+row*10, side, faction, type, r: cfg.r, angle: 0, x:0, y:0, hp: cfg.r*10, maxHp: cfg.r*10, moving: true, cd: 0, cfg, selected: i===0, carrying: type==='worker' && i%2===0 ? 1 : 0, flashT:0, idleReason:null };
+      // лёгкое покачивание выбранного
+      if(i===2) u.cd = 0.7;
+      drawUnit(ctxU, u, x, y);
+      // подпись
+      ctxU.fillStyle='#d9e8e6'; ctxU.font='11px system-ui'; ctxU.textAlign='center';
+      ctxU.fillText(type, x, y+38);
+      ctxU.fillStyle='#9fb6c3'; ctxU.font='10px system-ui'; ctxU.fillText(faction==='human'?'Гелиос':'Кхарид', x, y+50);
+      ctxU.textAlign='left';
+    }
+  }
+  requestAnimationFrame(frameUnits);
+}
+frameUnits();
+
+// ---- BUILDINGS ----
+const cb = document.getElementById('buildings');
+const ctxB = cb.getContext('2d');
+const bTypes = ['cc','depot','barracks','turret','wall','bunker','factory','lab'];
+const bSize = { cc:{w:4,h:3}, depot:{w:2,h:2}, barracks:{w:3,h:2}, turret:{w:1,h:1}, wall:{w:1,h:1}, bunker:{w:2,h:2}, factory:{w:3,h:3}, lab:{w:3,h:3} };
+function frameBuildings(){
+  ctxB.clearRect(0,0,cb.width,cb.height);
+  ctxB.fillStyle='#0f262b'; ctxB.fillRect(0,0,cb.width,cb.height);
+  ctxB.strokeStyle='rgba(255,255,255,0.04)'; ctxB.lineWidth=1;
+  for(let x=0;x<cb.width;x+=32){ ctxB.beginPath();ctxB.moveTo(x,0);ctxB.lineTo(x,cb.height);ctxB.stroke();}
+  for(let y=0;y<cb.height;y+=32){ ctxB.beginPath();ctxB.moveTo(0,y);ctxB.lineTo(cb.width,y);ctxB.stroke();}
+  ctxB.fillStyle='#76e3d7'; ctxB.font='bold 12px system-ui'; ctxB.fillText('ГЕЛИОС — 2.5D фундамент→фасад→крыша', 12, 18);
+  ctxB.fillStyle='#9ff5b8'; ctxB.fillText('КХАРИД — курганы/мембраны/жвала', 12, 338);
+  for(let row=0; row<2; row++){
+    const faction = row===0 ? 'human' : 'alien';
+    const side = row===0 ? 'player' : 'enemy';
+    const baseY = row===0 ? 60 : 380;
+    ctxB.fillStyle = row===0 ? 'rgba(118,227,215,0.06)' : 'rgba(159,245,184,0.06)';
+    ctxB.fillRect(0, baseY-30, cb.width, 260);
+    for(let i=0;i<8;i++){
+      const type = bTypes[i];
+      const sz = bSize[type];
+      const tx = Math.floor((80 + i*110 - sz.w*TILE/2)/TILE);
+      const ty = Math.floor((baseY+90 - sz.h*TILE/2)/TILE);
+      const b = { id: 100+i+row*10, tx, ty, w: sz.w, h: sz.h, type, side, faction, hp: 100, maxHp:100, done:true, progress:1, level:1, selected: i===0, flashT:0, queue:[], res:null, gradeUp:null, garrison:[], cfg:{garrisonCap:4}, ang:0 };
+      // turret наводится
+      if(type==='turret') b.ang = Date.now()*0.001;
+      drawBuilding(ctxB, b, false, 0, 0, null);
+      // подпись
+      const cx = tx*TILE + sz.w*TILE/2;
+      const cy = ty*TILE + sz.h*TILE/2;
+      ctxB.fillStyle='#d9e8e6'; ctxB.font='11px system-ui'; ctxB.textAlign='center';
+      ctxB.fillText(type, cx, ty*TILE + sz.h*TILE + 18);
+      ctxB.fillStyle='#9fb6c3'; ctxB.font='10px system-ui'; ctxB.fillText(sz.w+'×'+sz.h, cx, ty*TILE + sz.h*TILE + 30);
+      ctxB.textAlign='left';
+    }
+  }
+  requestAnimationFrame(frameBuildings);
+}
+frameBuildings();
+</script>
+</body>
+</html>
