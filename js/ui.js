@@ -1533,7 +1533,7 @@ function rebuildPanel(game, sel) {
     if (b.done) {
       const desc = document.createElement('div');
       desc.className = 'small sel-desc';
-      desc.textContent = fdesc(b.cfg, b.faction);
+      desc.textContent = b.s2Offline ? t('missions.s2_1.ccOfflineHint') : fdesc(b.cfg, b.faction);
       box.appendChild(desc);
     }
 
@@ -2320,7 +2320,7 @@ export function drawMinimap(game) {
   g.globalAlpha = 1;
   // Здания.
   for (const b of st.buildings) {
-    if (b.dead) continue;
+    if (b.dead || b.s2Hidden) continue;
     if (b.side === 'enemy' && !b.spotted) continue;
     g.fillStyle = b.side === 'player' ? '#76e3d7' : '#ff806e';
     g.fillRect(ox + b.tx * TILE * k, oy + b.ty * TILE * k, Math.max(4, b.w * TILE * k), Math.max(3, b.h * TILE * k));
