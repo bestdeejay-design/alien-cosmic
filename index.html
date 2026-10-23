@@ -128,6 +128,7 @@
           <span>ALIEN</span><b>COSMIC</b><small>FRONTIER 64</small>
         </a>
         <nav class="site-nav">
+          <a href="#planets" data-i18n="ui.menu.planetsTitle"></a>
           <a href="#quick-battle" data-i18n="ui.menu.quickBattleTitle"></a>
           <a href="#campaign" data-i18n="ui.menu.campaignTitle"></a>
           <a href="#universe" data-i18n="ui.menu.universe"></a>
@@ -173,7 +174,153 @@
           <div class="hero-vertical-code">AC // 64.04</div>
         </div>
       </div>
-      <div class="hero-bottomline page-shell"><span data-i18n="ui.menu.heroBottomLine"></span><span class="bottomline-rule"></span><span>01 / 05</span></div>
+      <div class="hero-bottomline page-shell"><span data-i18n="ui.menu.heroBottomLine"></span><span class="bottomline-rule"></span><span>01 / 06</span></div>
+    </section>
+
+    <!-- PLANETS — референс MARS-инфографика: 3 мира Рубежа с орбитами и SVG-анимацией -->
+    <section id="planets" class="page-section planets-section" aria-labelledby="planets-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.planetsEyebrow"></p>
+            <h2 id="planets-title" data-i18n="ui.menu.planetsTitle"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.planetsIntro"></p>
+        </header>
+
+        <div class="planets-grid" role="list">
+          <!-- Aktan-4 -->
+          <article class="planet-card planet-aktan" role="listitem" data-planet="aktan">
+            <div class="planet-card-media">
+              <img class="planet-poster" src="./assets/planets/aktan-4.svg" alt="Aktan-4 — red planet of Helios, orbital infographic" loading="lazy" />
+              <div class="planet-orbit-ring" aria-hidden="true"></div>
+              <span class="planet-glow" aria-hidden="true"></span>
+            </div>
+            <div class="planet-card-copy">
+              <p class="planet-kicker" data-i18n="ui.menu.planets.aktanKicker"></p>
+              <h3 data-i18n="ui.menu.planets.aktanTitle"></h3>
+              <p data-i18n="ui.menu.planets.aktanDesc"></p>
+              <ul class="planet-stats">
+                <li><span data-i18n="ui.menu.planets.aktanStat1k"></span><b data-i18n="ui.menu.planets.aktanStat1v"></b></li>
+                <li><span data-i18n="ui.menu.planets.aktanStat2k"></span><b data-i18n="ui.menu.planets.aktanStat2v"></b></li>
+                <li><span data-i18n="ui.menu.planets.aktanStat3k"></span><b data-i18n="ui.menu.planets.aktanStat3v"></b></li>
+              </ul>
+              <div class="planet-orbit-legend">
+                <span class="orbit-dot" aria-hidden="true"></span>
+                <span data-i18n="ui.menu.planets.aktanLegend"></span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Brok-Thaal -->
+          <article class="planet-card planet-brok" role="listitem" data-planet="brok">
+            <div class="planet-card-media">
+              <img class="planet-poster" src="./assets/planets/brok-thaal.svg" alt="Brok-Thaal — violet hive world" loading="lazy" />
+              <div class="planet-orbit-ring orbit-violet" aria-hidden="true"></div>
+              <span class="planet-glow glow-violet" aria-hidden="true"></span>
+            </div>
+            <div class="planet-card-copy">
+              <p class="planet-kicker" data-i18n="ui.menu.planets.brokKicker"></p>
+              <h3 data-i18n="ui.menu.planets.brokTitle"></h3>
+              <p data-i18n="ui.menu.planets.brokDesc"></p>
+              <ul class="planet-stats">
+                <li><span data-i18n="ui.menu.planets.brokStat1k"></span><b data-i18n="ui.menu.planets.brokStat1v"></b></li>
+                <li><span data-i18n="ui.menu.planets.brokStat2k"></span><b data-i18n="ui.menu.planets.brokStat2v"></b></li>
+                <li><span data-i18n="ui.menu.planets.brokStat3k"></span><b data-i18n="ui.menu.planets.brokStat3v"></b></li>
+              </ul>
+              <div class="planet-orbit-legend">
+                <span class="orbit-dot dot-violet" aria-hidden="true"></span>
+                <span data-i18n="ui.menu.planets.brokLegend"></span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Selenite-B -->
+          <article class="planet-card planet-selenite" role="listitem" data-planet="selenite">
+            <div class="planet-card-media">
+              <img class="planet-poster" src="./assets/planets/selenite-b.svg" alt="Selenite-B — gray moon over Aktan, Eye of the Storm" loading="lazy" />
+              <div class="planet-orbit-ring orbit-amber" aria-hidden="true"></div>
+              <span class="planet-glow glow-amber" aria-hidden="true"></span>
+            </div>
+            <div class="planet-card-copy">
+              <p class="planet-kicker" data-i18n="ui.menu.planets.seleniteKicker"></p>
+              <h3 data-i18n="ui.menu.planets.seleniteTitle"></h3>
+              <p data-i18n="ui.menu.planets.seleniteDesc"></p>
+              <ul class="planet-stats">
+                <li><span data-i18n="ui.menu.planets.seleniteStat1k"></span><b data-i18n="ui.menu.planets.seleniteStat1v"></b></li>
+                <li><span data-i18n="ui.menu.planets.seleniteStat2k"></span><b data-i18n="ui.menu.planets.seleniteStat2v"></b></li>
+                <li><span data-i18n="ui.menu.planets.seleniteStat3k"></span><b data-i18n="ui.menu.planets.seleniteStat3v"></b></li>
+              </ul>
+              <div class="planet-orbit-legend">
+                <span class="orbit-dot dot-amber" aria-hidden="true"></span>
+                <span data-i18n="ui.menu.planets.seleniteLegend"></span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <!-- Системная схема: концентрические орбиты как в референсе внизу справа -->
+        <div class="system-map" aria-hidden="true">
+          <div class="system-map-head">
+            <span class="status-led"></span><span>SYSTEM MAP — SABGIR SECTOR</span>
+            <span class="system-map-rule"></span><span>ORBITAL VIEW</span>
+          </div>
+          <div class="system-orbit-wrap">
+            <svg viewBox="0 0 520 220" class="system-svg" role="img" aria-label="Orbital map of Sabgir sector">
+              <!-- concentric orbits -->
+              <g fill="none" stroke="#e9f8f2" stroke-width="1" opacity=".9">
+                <circle cx="260" cy="110" r="14" stroke="#f3c579" stroke-width="1.5"/>
+                <circle cx="260" cy="110" r="28" stroke-opacity=".9"/>
+                <circle cx="260" cy="110" r="42" stroke-opacity=".75"/>
+                <circle cx="260" cy="110" r="56" stroke-opacity=".6"/>
+                <circle cx="260" cy="110" r="70" stroke-opacity=".45"/>
+                <circle cx="260" cy="110" r="84" stroke-opacity=".32"/>
+                <circle cx="260" cy="110" r="98" stroke-opacity=".22"/>
+                <circle cx="260" cy="110" r="112" stroke-opacity=".16"/>
+              </g>
+              <!-- star -->
+              <circle cx="260" cy="110" r="6.5" fill="#f3c579" stroke="#ffd0b5"/>
+              <circle cx="260" cy="110" r="11" fill="none" stroke="#f3c579" stroke-opacity=".35" class="pulse-orbit"/>
+              <!-- planets on orbits -->
+              <g class="orbit-planet p-aktan">
+                <circle cx="260" cy="28" r="4.5" fill="#c66a3e" stroke="#ffd0b5" stroke-width=".8"/>
+                <circle cx="260" cy="28" r="8" fill="none" stroke="#76e3d7" stroke-opacity=".35"/>
+              </g>
+              <g class="orbit-planet p-brok">
+                <circle cx="354" cy="86" r="5" fill="#7a4ac4" stroke="#e8d0ff" stroke-width=".8"/>
+                <circle cx="354" cy="86" r="9" fill="none" stroke="#a78bdb" stroke-opacity=".35"/>
+              </g>
+              <g class="orbit-planet p-selenite">
+                <circle cx="174" cy="78" r="3.2" fill="#a8adb8" stroke="#fff" stroke-width=".7"/>
+              </g>
+              <!-- dash trail -->
+              <circle cx="260" cy="110" r="70" fill="none" stroke="#76e3d7" stroke-width="1" stroke-dasharray="3 7" opacity=".55" class="orbit-dash"/>
+              <circle cx="260" cy="110" r="98" fill="none" stroke="#f3c579" stroke-width="1" stroke-dasharray="2 8" opacity=".42" class="orbit-dash rev"/>
+              <!-- labels -->
+              <text x="12" y="16" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="800" letter-spacing=".14em" fill="#91adae">02 — BROK-THAAL</text>
+              <text x="12" y="206" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="800" letter-spacing=".14em" fill="#91adae">01 — AKTAN-4</text>
+              <text x="408" y="206" font-family="Inter,system-ui,sans-serif" font-size="7" font-weight="800" letter-spacing=".14em" fill="#f3c579">03 — SELENITE-B</text>
+              <!-- корабли как в hero-art -->
+              <g transform="translate(100,70) rotate(-18) scale(.6)" opacity=".9">
+                <path d="M-43 0 16-19 39 0 16 19-43 0Z" fill="#c5fff1" stroke="#c5fff1" stroke-opacity=".7"/>
+                <circle cx="1" cy="0" r="3" fill="#f3c579"/>
+              </g>
+              <g transform="translate(420,64) rotate(156) scale(.6)" opacity=".9">
+                <path d="M-38 0c15-16 37-22 62-13l20 13-20 13C-1 22-23 16-38 0Z" fill="#ffd0b5" stroke="#ffd0b5"/>
+                <circle cx="14" cy="0" r="3" fill="#f3c579"/>
+              </g>
+            </svg>
+            <div class="system-legend">
+              <span><i class="leg-dot sun"></i> SABGIR STAR</span>
+              <span><i class="leg-dot aktan"></i> AKTAN-4</span>
+              <span><i class="leg-dot brok"></i> BROK-THAAL</span>
+              <span><i class="leg-dot selenite"></i> SELENITE-B</span>
+              <span><i class="leg-dot relay"></i> RELAY</span>
+            </div>
+          </div>
+          <p class="system-note" data-i18n="ui.menu.planets.systemNote"></p>
+        </div>
+      </div>
     </section>
 
     <section id="quick-battle" class="page-section quick-section-page" aria-labelledby="quick-battle-title">
