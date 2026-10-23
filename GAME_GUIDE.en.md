@@ -478,6 +478,25 @@ point. Techs hold their ground during alarms — do not panic.
 
 ---
 
+## Local Raids (R0-a — map and non-combat loop)
+
+- **Permanent Command Ship on Actan-4.** From the "Raids" section on the
+  landing page, deploy a permanent home base on the beginner frontier (64×64).
+  Your starter squad (2 workers + 2 infantry and 200 erg) lands **once** with
+  your Command Ship — losses on expeditions are never replenished for free and
+  must be trained at home.
+- **Expedition Console (tiers 1–5).** Select your Command Ship (**E**) or press
+  "Expedition" in the top bar. Building a depot, barracks, factory, lab and
+  upgrading CC II/III unlocks loadout tiers 1–5 (shuttle capacity from 4 to 12
+  units and forward build budget from 100 to 400 erg).
+- **Seeded target sector, harvest and evacuation.** The shuttle lands your
+  squad around a landing beacon without a second CC. Workers deliver mined erg
+  straight into the shuttle hold at the landing pad. Pressing "Evacuate" (**E**)
+  rallies the squad into the beacon ring (2s hold to board) and returns boarded
+  survivors, unused forward budget and mined erg to your home Command Ship.
+
+---
+
 ## Part VII. Technical notes
 
 - Pure JS (ES modules), Canvas 2D, Web Audio. No build step,
