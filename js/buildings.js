@@ -602,6 +602,7 @@ function aeye(ctx, x, y, r, glow = '#a8ff9e') {
 function spike(ctx, x, y, wdt, hgt, cBase, cEdge) {
   ctx.fillStyle = cBase;
   poly(ctx, [x - wdt / 2, y, x + wdt / 2, y, x, y - hgt]);
+  ctx.fill();                                   // было: без fill() рог не рисовался вовсе
   ctx.strokeStyle = cEdge; ctx.lineWidth = 1.2;
   ctx.beginPath(); ctx.moveTo(x - wdt / 2, y); ctx.lineTo(x, y - hgt); ctx.stroke();
 }
@@ -854,28 +855,79 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       // Мачта с маяком стоит на крыше у левого края.
       mast(ctx, R.rx + 5, R.ry + 14, 14, blink);
     } else if (b.type === 'depot') {
-      // Дом 2×2: жилой блок, тёплые окна, дым из трубы, ящики.
+      // Дом 2×2 · V-3 «мобильный дом-шаттл». Жилой блок колонистов на
+      // ховер-площадке: кабина пилота на крыше, сложенные крылья, грузовой
+      // отсек с гранями. Читает три новые функции — медленный ход (подиум
+      // и струи), шаттл на другую планету (крылья + кабина), склад вылазки
+      // (отсек с ресурсом). База остаётся базой: +8 населения, поэтому
+      // тёплые окна и дверь на фасаде не трогаем.
       bshadow(ctx, px, py, w, h, 6, 8);
-      hoverPad(ctx, cx, py + h - 2, w * 0.5, 5, COLORS.playerBright, t, bid);
+      hoverPad(ctx, cx, py + h - 2, w * 0.5, 6, COLORS.playerBright, t, bid);
+      // Струи тяги: дом едет медленно, но едет — конусы выглядывают из-под
+      // подиума. Без shadowBlur: свечение подиума уже есть, второе не надо.
+      const jk = 0.55 + 0.45 * Math.sin(t * 4.2 + bid);
+      ctx.globalAlpha = 0.3 + 0.28 * jk;
+      ctx.fillStyle = '#9beeff';
+      for (const jx of [cx - w * 0.2, cx + w * 0.2]) {
+        ctx.beginPath();
+        ctx.moveTo(jx - 3.2, py + h - 3);
+        ctx.lineTo(jx + 3.2, py + h - 3);
+        ctx.lineTo(jx + 1.4, py + h + 4 + jk * 3);
+        ctx.lineTo(jx - 1.4, py + h + 4 + jk * 3);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
       const R = hull(ctx, px + 4, py + 5, w - 8, h - 5, 11, FOUND, '#8d8272', '#5c554a', '#b9ac93');
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 2, 2, '#8a7f68');
       rim(ctx, R.rx, R.ry, R.rw, 2, 0.4);
-      // Труба с дымом.
-      ctx.fillStyle = '#6e6759'; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 14);
-      ctx.fillStyle = '#4a443a'; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 3);
-      ctx.fillStyle = STEEL_L; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 1.5);
-      smoke(ctx, R.rx + 10, R.ry - 8, t, (bid % 5) * 0.2);
-      // Световой люк на крыше.
-      ctx.fillStyle = '#ffd489'; ctx.fillRect(R.rx + R.rw - 20, R.ry + 8, 12, 8);
-      ctx.strokeStyle = '#5c554a'; ctx.lineWidth = 1.5; ctx.strokeRect(R.rx + R.rw - 20, R.ry + 8, 12, 8);
-      // Тёплые окна и дверь на фасаде.
+      // Сложенные крылья: трапеции у бортов со стяжными ремнями — дом
+      // собран в полётную конфигурацию, но пока стоит.
+      for (const s of [-1, 1]) {
+        const wx = s < 0 ? R.rx - 4 : R.rx + R.rw + 4;
+        const wy = R.ry + 20;
+        ctx.fillStyle = STEEL;
+        poly(ctx, [wx, wy, wx + s * 13, wy + 4, wx + s * 11, wy + 18, wx, wy + 14]);
+        ctx.fill();
+        ctx.strokeStyle = '#3b4047'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillRect(s < 0 ? wx : wx - 1.5, wy, 1.5, 14);
+        ctx.fillStyle = AMBER;
+        ctx.fillRect(wx + s * 6, wy + 8, 4, 1.6);
+      }
+      // Кабина пилота: купол со стеклом «Рубежа» — дом управляется вручную.
+      const bx = R.rx + R.rw * 0.34, by = R.ry + 15;
+      ctx.fillStyle = '#5c554a'; rr(ctx, bx - 11, by - 6, 22, 14, 6); ctx.fill();
+      ctx.fillStyle = '#7df3e2'; rr(ctx, bx - 9, by - 4, 18, 10, 5); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(bx - 9, by - 4, 18, 2);
+      ctx.fillStyle = 'rgba(20,30,34,0.5)';
+      ctx.beginPath(); ctx.arc(bx + 1, by + 2, 2.8, 0, Math.PI * 2); ctx.fill();
+      // Маячок на мачте вместо трубы: дом не курит, он летает.
+      const mx = R.rx + 7, my = R.ry + 3;
+      ctx.strokeStyle = '#5c554a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx, my - 11); ctx.stroke();
+      ctx.fillStyle = (Math.sin(t * 3 + bid) > 0.4) ? AMBER : '#6b6152';
+      ctx.beginPath(); ctx.arc(mx, my - 12.5, 1.9, 0, Math.PI * 2); ctx.fill();
+      // Грузовой отсек со складом граней (режим вылазки): открытая ниша,
+      // ресурс виден снаружи — закрывает жалобу #28 о невидимой добыче.
+      const gx = R.rx + R.rw - 30, gy = R.ry + 28;
+      ctx.fillStyle = '#2a2620'; rr(ctx, gx, gy, 22, 18, 3); ctx.fill();
+      ctx.strokeStyle = '#5c554a'; ctx.lineWidth = 1.4;
+      ctx.strokeRect(gx + 0.5, gy + 0.5, 21, 17);
+      for (let i = 0; i < 3; i++) {
+        const sx = gx + 4 + i * 7, sy = gy + 12;
+        const sk = 0.8 + 0.2 * Math.sin(t * 2.6 + i + bid);
+        ctx.fillStyle = 'rgba(126,217,231,0.2)';
+        ctx.beginPath(); ctx.arc(sx, sy - 2, 4.8 * sk, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#7ed9e7';
+        poly(ctx, [sx - 3.4, sy, sx + 3.4, sy, sx, sy - 9 * sk]);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(sx - 1, sy - 6.6, 1.4, 3);
+      }
+      // Тёплые окна и дверь на фасаде: «Дом» остаётся домом.
       winRow(ctx, R.fx + 5, R.fy + 2, 2, 8, 5, 5, '#ffd489', '#3a332a', bid);
       ctx.fillStyle = '#3f3a33'; ctx.fillRect(R.fx + R.fw - 13, R.fy + 1, 9, R.fh - 3);
       ctx.fillStyle = '#ffd489'; ctx.fillRect(R.fx + R.fw - 11, R.fy + 3, 2, 2);
-      // Ящики у стены.
-      ctx.fillStyle = '#7a6a4f'; ctx.fillRect(px + w - 16, py + h - 12, 9, 9);
-      ctx.fillStyle = '#8d7c5c'; ctx.fillRect(px + w - 16, py + h - 12, 9, 2);
-      ctx.strokeStyle = '#4a3f30'; ctx.lineWidth = 1; ctx.strokeRect(px + w - 16, py + h - 12, 9, 9);
     } else if (b.type === 'barracks') {
       // Казарма 3×2: длинный корпус, ворота с шевроном, флаг, прожектор.
       bshadow(ctx, px, py, w, h);
@@ -1193,11 +1245,44 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       slime(ctx, cx - w * 0.3, cy - h * 0.3, 2.4, t, bid);
       slime(ctx, cx + w * 0.3, cy - h * 0.28, 2, t, bid + 1);
     } else if (b.type === 'depot') {
-      // Нарост-кладовая 2×2: большая мешкообразная полость с зародышами.
-      mound(ctx, cx, cy + 3, w * 0.44, h * 0.42, FD, FM, FL);
-      veins(ctx, cx, cy + 3, w * 0.4, h * 0.38, 6, bid * 0.9);
-      // Главный мешок: полупрозрачная мембрана, внутри зёрна.
-      const mx = cx - 4, my = cy + 1, mr = 15 * breathe;
+      // Нарост-кладовая 2×2 · V-3 «живой склад на ходу». Тело поднято над
+      // землёй на четырёх щупальцах, за спиной — мембранные крылья (шаттл
+      // между планетами), на боку — наросты-грани (склад вылазки: ресурс
+      // виден снаружи). Зародыши в мембране остаются — это про население.
+      // Курган-подошва: то, на чём кладовая стоит, когда стоит.
+      mound(ctx, cx, cy + 9, w * 0.4, h * 0.24, FD, FM, FL);
+      veins(ctx, cx, cy + 9, w * 0.36, h * 0.2, 5, bid * 0.9);
+      // Щупальца-ноги: четыре, тело поднято над землёй — кладовая ходит.
+      ctx.lineCap = 'round';
+      for (const s of [-1.5, -0.5, 0.5, 1.5]) {
+        const a = Math.PI / 2 + s * 0.36;
+        const sx = cx + Math.cos(a) * 12, sy = cy - 5 + Math.sin(a) * 12;
+        const ex = cx + Math.cos(a) * 25, ey = cy + 19 + Math.abs(s) * 1.5;
+        ctx.strokeStyle = '#2a1113'; ctx.lineWidth = 4.5;
+        ctx.beginPath(); ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(cx + Math.cos(a) * 18, cy + 9, ex, ey);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(217,207,192,0.45)'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(sx + 1.2, sy); ctx.lineTo(cx + Math.cos(a) * 17, cy + 8); ctx.stroke();
+        ctx.fillStyle = '#d9cfc0';            // коготь-подошва
+        ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.lineCap = 'butt';
+      // Крылья-мембраны за спиной: складываются в полётную конфигурацию.
+      for (const s of [-1, 1]) {
+        const wx = cx + s * 11, wy = cy - 15;
+        const flap = Math.sin(t * 1.6 + s + bid) * 2;
+        ctx.fillStyle = 'rgba(201,154,255,0.3)';
+        ctx.beginPath(); ctx.ellipse(wx + s * 11, wy + flap, 13, 7, s * 0.55, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(217,207,192,0.75)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + s * 22, wy - 4 + flap); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + s * 19, wy + 4 + flap); ctx.stroke();
+      }
+      // Рога: костяные шипы по верху — склад читается чужим и живым.
+      spike(ctx, cx - 8, cy - 18, 7, 13, '#d9cfc0', '#8d7f6a');
+      spike(ctx, cx + 8, cy - 18, 7, 13, '#d9cfc0', '#8d7f6a');
+      // Главный мешок: полупрозрачная мембрана, внутри зёрна-зародыши.
+      const mx = cx - 2, my = cy - 5, mr = 15 * breathe;
       ctx.fillStyle = 'rgba(214,120,140,0.85)';
       ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,200,210,0.5)';
@@ -1209,6 +1294,18 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       }
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       ctx.beginPath(); ctx.ellipse(mx - mr * 0.3, my - mr * 0.4, mr * 0.3, mr * 0.16, -0.5, 0, Math.PI * 2); ctx.fill();
+      // Наросты-грани: склад вылазки — ресурс видно снаружи.
+      for (const [ox, oy, orr] of [[-17, 5, 5], [16, 9, 4], [-13, 15, 3.4]]) {
+        const k = 0.72 + 0.28 * Math.sin(t * 2.4 + ox);
+        const pxr = cx + ox, pyr = my + oy;
+        ctx.fillStyle = 'rgba(168,255,158,' + (0.22 * k).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(pxr, pyr, orr * 1.7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#a8ff9e';
+        poly(ctx, [pxr - orr, pyr + orr * 0.5, pxr + orr, pyr + orr * 0.4, pxr + orr * 0.2, pyr - orr]);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath(); ctx.arc(pxr - orr * 0.3, pyr - orr * 0.3, 1.1, 0, Math.PI * 2); ctx.fill();
+      }
       // Два малых мешочка и пуповина.
       for (const [ox, oy, or_] of [[16, -8, 6], [14, 12, 4.5]]) {
         ctx.fillStyle = 'rgba(214,120,140,0.9)';

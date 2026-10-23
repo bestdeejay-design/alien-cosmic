@@ -2048,6 +2048,83 @@ function wetLight(ctx, cx, cy, rx, ry, a = 0.3) {
   ctx.restore();
 }
 
+// --- Аура лечения (V-3): поле вокруг аптечка, «+» здоровья и рой
+// нанодронов у Гелиоса. Цвет — как у эффекта 'heal' в drawEffects
+// (#7dff9b), чтобы поле юнита и плюсики над леченым читались одним.
+// Рисуется в МИРОВОЙ СК (вызывается до rotate): «+» всегда всплывают
+// вверх, куда бы ни смотрел юнит. Без градиентов и без shadowBlur —
+// A9-стаб не умеет createRadialGradient, а «одно свечение на спрайт»
+// остаётся за ядром-крестом. Симуляцию не трогает.
+function healAura(ctx, u, rx, ry, t) {
+  const A = '#7dff9b';
+  const alien = u.faction === 'alien';
+  const R = u.r + 8;
+  const ph = 0.5 + 0.5 * Math.sin(t * 3.4 + u.id);
+  if (alien) {
+    // Кхарид: облако спор — несколько мягких пятен вместо ровного купола.
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.35 + u.id * 0.8;
+      const d = R * (0.42 + 0.34 * ((i * 37) % 11) / 11);
+      const rr2 = R * (0.48 + 0.16 * ((i * 53) % 7) / 7);
+      ctx.globalAlpha = 0.1 + 0.05 * ph;
+      ctx.fillStyle = A;
+      ctx.beginPath();
+      ctx.ellipse(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.7,
+        rr2, rr2 * 0.78, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Пыльца: точки по краю облака, мигают своим тактом.
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9 + u.id * 0.6 + t * 0.25;
+      const d = R * 0.78 + Math.sin(t * 1.7 + i) * 2;
+      ctx.globalAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(t * 2.6 + i * 1.3));
+      ctx.fillStyle = '#b6ffb0';
+      ctx.beginPath();
+      ctx.arc(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.8, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Гелиос: ровный купол-поле с кромкой и расходящейся волной.
+    ctx.globalAlpha = 0.09 + ph * 0.05;
+    ctx.fillStyle = A;
+    ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = A; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.stroke();
+    const wave = (t * 0.85 + u.id * 0.37) % 1;
+    ctx.globalAlpha = (1 - wave) * 0.45;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.arc(rx, ry, u.r + 2 + wave * 8, 0, Math.PI * 2); ctx.stroke();
+    // Рой нанодронов: пять блюдец на орбите вокруг ядра-креста.
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.256 + t * 0.5 + u.id * 0.4;
+      const dx = rx + Math.cos(a) * (u.r + 2.5);
+      const dy = ry + Math.sin(a) * (u.r + 2.5) * 0.72;
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = '#c3c9d1';
+      ctx.beginPath(); ctx.ellipse(dx, dy, 2.9, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = A;
+      ctx.fillRect(dx - 0.7, dy - 1.6, 1.4, 3.2);
+      ctx.fillRect(dx - 1.6, dy - 0.7, 3.2, 1.4);
+    }
+  }
+  // «+» здоровья: три плюсика дрейфуют вверх и тают (обе расы).
+  for (let i = 0; i < 3; i++) {
+    const k = (t * 0.5 + i * 0.34 + u.id * 0.21) % 1;
+    const a = i * 2.09 + u.id * 0.7;
+    const pr = u.r + 1 + k * 7;
+    const ps = 1.6 + k * 0.9;
+    const x = rx + Math.cos(a) * pr;
+    const y = ry + Math.sin(a) * pr - k * 4;
+    ctx.globalAlpha = (1 - k) * 0.8;
+    ctx.fillStyle = A;
+    ctx.fillRect(x - ps * 0.26, y - ps, ps * 0.52, ps * 2);
+    ctx.fillRect(x - ps, y - ps * 0.26, ps * 2, ps * 0.52);
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ------------------------------------------------------------
 // Отрисовка юнита (rx, ry — уже интерполированная позиция).
 // Стиль-гайд v2 «семейства»:
@@ -2092,6 +2169,11 @@ export function drawUnit(ctx, u, rx, ry) {
     ctx.beginPath();
     ctx.ellipse(rx, ry + 2, u.r + 6, u.r + 4, 0, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  // Аура лечения (V-3): у аптечков поле видно всегда — это их подпись.
+  if (u.cfg && u.cfg.canHeal) {
+    healAura(ctx, u, rx, ry, performance.now() * 0.001 + u.id * 1.618);
   }
 
   ctx.save();
@@ -2267,6 +2349,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.arc(8, 0, 1.3, 0, Math.PI * 2); ctx.fill();
     } else if (u.type === 'medic') {
       // Цветень: капля с венчиком из 6 лепестков и свечой-ростком.
+      // Облако спор с «+» — в healAura (мировая СК, орг-вариант поля).
       const pr = 8.6 + pulse * 0.9;
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3 + t * 0.6;
@@ -2292,12 +2375,16 @@ export function drawUnit(ctx, u, rx, ry) {
       wetLight(ctx, 0, -1.5, 8, 7, 0.34);
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI * 2); ctx.fill();
-      // Свеча-росток с пульсирующим пламенем.
+      // Свеча-росток с пульсирующим пламенем — «соска» няньки, она же
+      // ориентир: по ней видно, кто здесь лечит.
       ctx.strokeStyle = bio; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-2, -5); ctx.lineTo(-2 + sway, -11); ctx.stroke();
       ctx.shadowColor = bio; ctx.shadowBlur = 8;
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-2 + sway, -12.5, 2.4 + pulse * 1, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.4 + 0.3 * pulse;
+      ctx.beginPath(); ctx.arc(-2 + sway, -12.5, 4.4 + pulse * 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
     } else if (u.type === 'flamer') {
       // Кислотник: пузатый плевун — бородавки, боковые мешки, рыло-сопло.
@@ -2587,7 +2674,9 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = amber;
       ctx.fillRect(-15.5, -4, 2.2, 3); ctx.fillRect(-15.5, 1, 2.2, 3);
     } else if (u.type === 'medic') {
-      // Нанит: блюдце с кольцом, купол, пульсирующий крест, дюзы.
+      // Нанит: ядро-крест роя — блюдце с куполом, пульсирующий крест и
+      // дюзы. Рой нанодронов на орбите, купол-поле и всплывающие «+» —
+      // в healAura (мировая СК, чтобы «+» всегда шли вверх).
       ctx.fillStyle = main;
       ctx.globalAlpha = 0.55 + 0.45 * flick;
       ctx.fillRect(-13.5, -2.6, 3.4, 5.2); ctx.fillRect(10.1, -2.6, 3.4, 5.2);
@@ -2600,12 +2689,18 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = main; ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.arc(0, 0, 7.6, t * 0.8, t * 0.8 + Math.PI * 1.5); ctx.stroke();
+      // Иллюминаторы по бокам: блюдце читается аппаратом, а не шариком.
+      ctx.fillStyle = '#7df3e2';
+      ctx.fillRect(-8.4, -2.6, 3.4, 5.2); ctx.fillRect(5, -2.6, 3.4, 5.2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(-8.4, -2.6, 3.4, 1.2); ctx.fillRect(5, -2.6, 3.4, 1.2);
       ctx.fillStyle = hull2;
       ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill();
-      // Крест наномедицины — дышит.
+      // Крест наномедицины — дышит. Цвет лечащего «+» из drawEffects,
+      // чтобы ядро роя и плюсики над раненым были одного языка.
       const cw = 1.7 + pulse * 0.5;
-      ctx.shadowColor = bright; ctx.shadowBlur = 6;
-      ctx.fillStyle = bright;
+      ctx.shadowColor = '#7dff9b'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#7dff9b';
       ctx.fillRect(-cw / 2, -6.4, cw, 12.8);
       ctx.fillRect(-6.4, -cw / 2, 12.8, cw);
       ctx.shadowBlur = 0;
