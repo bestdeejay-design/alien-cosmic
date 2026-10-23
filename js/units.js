@@ -1338,6 +1338,28 @@ function updateGather(st, u, dt) {
       const d = Math.hypot(b.x - u.x, b.y - u.y);
       if (d < bd) { bd = d; drop = b; }
     }
+    if (!drop && u.side === 'player' && st.raidDrop) {
+      // Рейдовая вылазка без корабля-КЦ: рабочие сдают эрг в трюм челнока на площадке посадки.
+      const pad = st.raidDrop;
+      if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 1.6) {
+        st.raidCargo = (st.raidCargo || 0) + u.carrying;
+        st.stats.mined += u.carrying;
+        addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
+        u.carrying = 0;
+        u.lastFailed = null; u.lastFailedT = 0;
+        o.phase = 'toMineral';
+        u.path = null;
+        st.game.sound.deposit();
+        return;
+      }
+      if (!u.path) {
+        u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, pad.tx, pad.ty, { clearance: clearanceOf(u) });
+        u.pathI = 0;
+      }
+      repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, pad.tx, pad.ty, { clearance: clearanceOf(u) }));
+      if (followPath(st, u)) u.path = null;
+      return;
+    }
     if (!drop) { u.moving = false; return; } // базы нет — стоим с грузом
     const rx = drop.tx * TILE, ry = drop.ty * TILE, rw = drop.w * TILE, rh = drop.h * TILE;
     if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 0.9) {
