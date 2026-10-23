@@ -54,18 +54,12 @@ export class Fog {
   // Вызывается раз в 3 тика (~10 раз/сек) — этого достаточно.
   recompute(st) {
     this.visible.fill(0);
-    const auraHero = st.s2 && st.s2.heroine && !st.s2.heroine.dead ? st.s2.heroine : null;
     for (const u of st.units) {
       if (u.dead || u.side !== 'player') continue;
-      let sight = u.cfg.sightTiles;
-      if (auraHero && u !== auraHero && auraHero.cfg.auraRadiusTiles &&
-          Math.hypot(u.x - auraHero.x, u.y - auraHero.y) <= auraHero.cfg.auraRadiusTiles * TILE) {
-        sight += auraHero.cfg.auraVisionBonus || 0;
-      }
-      this.mark((u.x / TILE) | 0, (u.y / TILE) | 0, sight);
+      this.mark((u.x / TILE) | 0, (u.y / TILE) | 0, u.cfg.sightTiles);
     }
     for (const b of st.buildings) {
-      if (b.dead || b.side !== 'player') continue;
+      if (b.dead || b.side !== 'player' || b.s2Hidden) continue;
       this.mark(b.tx + (b.w >> 1), b.ty + (b.h >> 1), b.cfg.sightTiles);
     }
     // Видимость врагов + «запоминание» однажды увиденных зданий.

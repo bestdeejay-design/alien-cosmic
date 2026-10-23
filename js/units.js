@@ -823,8 +823,7 @@ function updateOrderByKind(st, u, dt, grid) {
         }
       }
       // Бойцы без приказа сами ищут цель в радиусе обзора.
-      // Сценарная героиня S2 не бросает позицию без приказа игрока.
-      if (!u.s2NoAutoAcquire && !u.cfg.canMine && !u.cfg.canHeal && !u.cfg.scout) { // H.3: затвор №2
+      if (!u.cfg.canMine && !u.cfg.canHeal && !u.cfg.scout) { // H.3: затвор №2
         u.scanT -= dt;
         if (u.scanT <= 0) {
           u.scanT = 0.25 + srand(st) * 0.15;
@@ -869,11 +868,6 @@ function updateOrderByKind(st, u, dt, grid) {
 
 // Атака-движение: есть цель в обзоре — бьём её; нет — продолжаем путь.
 // Цель считаем живой, пока она в радиусе обзора (иначе «прилипаем» к убежавшему).
-function hiddenBySeason2Trail(st, unit) {
-  return !!(st && st.s2 && unit && unit.side === 'player' &&
-    typeof st.s2.isOnTrail === 'function' && st.s2.isOnTrail(unit));
-}
-
 function targetInSight(st, u, t) {
   const rx = t.kind === 'building' ? t.tx * TILE : t.x - t.r;
   const ry = t.kind === 'building' ? t.ty * TILE : t.y - t.r;
@@ -885,7 +879,7 @@ function targetInSight(st, u, t) {
 function updateAttackMove(st, u, dt, grid) {
   const o = u.order;
   let t = o.target;
-  if (t && (t.dead || !targetInSight(st, u, t) || (u.side === 'enemy' && hiddenBySeason2Trail(st, t)))) { t = null; o.target = null; }
+  if (t && (t.dead || !targetInSight(st, u, t))) { t = null; o.target = null; }
   if (!t) {
     t = acquireTarget(st, u, grid);
     if (t) { o.target = t; u.path = null; u.pathI = 0; u.repathT = 0; }
@@ -933,7 +927,6 @@ function updateAttackMove(st, u, dt, grid) {
 // в радиусе оружия (юниты — из пространственной сетки). Медики на
 // марше вдобавок подлечивают раненых, проходя мимо.
 function busyDefence(st, u, dt, grid) {
-  if (u.s2Ceasefire) return;
   const k = u.order.kind;
   if (k !== 'move' && k !== 'gather' && k !== 'build' && k !== 'repair') return;
   if (u.cfg.canHeal) {
@@ -956,7 +949,6 @@ function busyDefence(st, u, dt, grid) {
   grid.query(u.x, u.y, R, (e) => {
     if (e.dead || e.side === u.side || e.garrison) return;
     if (u.side === 'player' && !e.visible) return;
-    if (u.side === 'enemy' && hiddenBySeason2Trail(st, e)) return;
     const d = Math.hypot(e.x - u.x, e.y - u.y);
     if (d < bd && d <= R) { bd = d; best = e; }
   });
@@ -1194,7 +1186,6 @@ function followPath(st, u) {
 // Атака: подойти в пределах range и стрелять с перезарядкой.
 function updateAttack(st, u, dt, grid) {
   let t = u.order.target;
-  if (u.side === 'enemy' && hiddenBySeason2Trail(st, t)) { orderStop(u); return; }
   if (!t || t.dead) {
     // Цель погибла: авто-агро ищет следующую, приказ — ближайшего врага.
     const next = u.order.auto ? acquireTarget(st, u, grid)
@@ -1248,12 +1239,7 @@ function updateAttack(st, u, dt, grid) {
 export function shoot(st, u, t) {
   const cfg = u.cfg;
   const base = u.kind === 'building' ? gradeDmg(u.type, u.level || 1, cfg.dmg) : cfg.dmg; // F.2: грейд турели
-  let dmg = base + atkBonus(st, u);   // исследования усиливают выстрел
-  const auraHero = st.s2 && st.s2.heroine && !st.s2.heroine.dead ? st.s2.heroine : null;
-  if (u.side === 'player' && auraHero && auraHero.cfg.auraDamageBonus &&
-      Math.hypot(u.x - auraHero.x, u.y - auraHero.y) <= auraHero.cfg.auraRadiusTiles * TILE) {
-    dmg = Math.round(dmg * (1 + auraHero.cfg.auraDamageBonus));
-  }
+  const dmg = base + atkBonus(st, u);   // исследования усиливают выстрел
   const reach = u.r || Math.max(cfg.w, cfg.h) * TILE * 0.5;
   u.angle = Math.atan2(t.y - u.y, t.x - u.x);
   const muzzleX = u.x + Math.cos(u.angle) * (reach + 4);
@@ -1348,7 +1334,7 @@ function updateGather(st, u, dt) {
     // Ближайший достроенный командный центр своей стороны.
     let drop = null, bd = Infinity;
     for (const b of st.buildings) {
-      if (b.dead || b.side !== u.side || b.type !== 'cc' || !b.done) continue;
+      if (b.dead || b.side !== u.side || b.type !== 'cc' || !b.done || b.s2Offline) continue;
       const d = Math.hypot(b.x - u.x, b.y - u.y);
       if (d < bd) { bd = d; drop = b; }
     }
@@ -1443,12 +1429,7 @@ function updateRepair(st, u, dt) {
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.1) {
     u.path = null; u.moving = false;
     u.angle = Math.atan2(t.y - u.y, t.x - u.x);
-    let rate = REPAIR_RATE[isB ? 'building' : 'unit'];
-    const auraHero = st.s2 && st.s2.heroine && !st.s2.heroine.dead ? st.s2.heroine : null;
-    if (u.side === 'player' && auraHero && auraHero.cfg.auraRepairMultiplier &&
-        Math.hypot(u.x - auraHero.x, u.y - auraHero.y) <= auraHero.cfg.auraRadiusTiles * TILE) {
-      rate *= auraHero.cfg.auraRepairMultiplier;
-    }
+    const rate = REPAIR_RATE[isB ? 'building' : 'unit'];
     const hpToRestore = Math.min(rate * dt, Math.max(0, t.maxHp - t.hp));
     const cost = hpToRestore / REPAIR_HP_PER_MINERAL;
     if (minerals + REPAIR_BUDGET_EPSILON < cost) {
@@ -1512,14 +1493,12 @@ function updateGarrison(st, u) {
 // Автопоиск цели в радиусе обзора (только для своей стороны; для игрока —
 // с учётом тумана войны). Юниты в приоритете, здания — если в зоне боя.
 export function acquireTarget(st, u, grid) {
-  if (u.s2Ceasefire) return null;
   const R = u.cfg.sightTiles * TILE;
   const rng = u.kind === 'building' ? gradeRange(u.type, u.level || 1, u.cfg.range) : u.cfg.range; // F.2
   let best = null, bd = Infinity;
   grid.query(u.x, u.y, R, (e) => {
     if (e.dead || e.side === u.side || e.garrison) return;
     if (u.side === 'player' && !e.visible) return; // туман войны
-    if (u.side === 'enemy' && hiddenBySeason2Trail(st, e)) return;
     const d = Math.hypot(e.x - u.x, e.y - u.y);
     if (d < bd && d <= R) { bd = d; best = e; }
   });
