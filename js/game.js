@@ -22,7 +22,7 @@ import * as ui from './ui.js';
 import { createProfile } from './profile.js';
 import { attachInput, updateCamera } from './input.js';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
-import { setupSeason2Mission, updateSeason2Mission, season2ObjectiveText, season2EndObjectives, drawSeason2Overlay } from './season2.js';
+import { setupSeason2Mission, updateSeason2Mission, season2ObjectiveText, season2EndObjectives, drawSeason2Overlay, drawHeroAura } from './season2.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -268,7 +268,7 @@ export class Game {
       }
     }
     st.ai = new AIController({ ...m.ai, defense: m.defense });
-    if (m.season === 2 && m.scripted) setupSeason2Mission(st, B);
+    if (m.season === 2 && m.scripted) setupSeason2Mission(st);
     calcSupply(st);
     st.fog.recompute(st);
 
@@ -567,7 +567,7 @@ export class Game {
         });
       }
       // Лаборатория: исследования улучшений (по одному за раз).
-      if (!this.mission.noUpgrades && b.done && b.cfg.research) {
+      if (b.done && b.cfg.research) {
         RESEARCH_ORDER.forEach((key, i) => {
           const up = UPGRADES[key];
           const lvl = st.tech.player[key] || 0;
@@ -601,7 +601,7 @@ export class Game {
       }
       // F.2: грейд своего достроенного (Г1→Г2→Г3). Чужие/недострой/Г3 — мимо.
       const gTo = (b.level || 1) + 1;
-      if (!this.mission.noUpgrades && b.done && GRADES[b.type] && gTo <= 3 && !b.gradeUp) {
+      if (b.done && GRADES[b.type] && gTo <= 3 && !b.gradeUp) {
         const g = GRADES[b.type][gTo];
         cmds.push({
           code: 'KeyR', icon: 'grade',
@@ -641,7 +641,6 @@ export class Game {
           cmds.push({ code: 'KeyB', icon: 'build', label: t('ui.cmds.build'), on: () => { st.buildMenu = true; } });
         } else {
           for (const [code, type] of BUILD_ORDER) {
-            if (st.s2 && !st.s2.relay.active) continue;
             if (!isUnlocked(this.mission, type)) continue; // П8/С1 + banBuild
             const cfg = BUILDINGS[type];
             cmds.push({
@@ -696,12 +695,6 @@ export class Game {
       beginPlace: (type) => {
         const s = st();
         s.buildMenu = false;
-        if (s.s2 && !s.s2.relay.active) {
-          ui.toast(t('missions.s2_1.zoneLocked'), 'warn');
-          this.sound.error();
-          return;
-        }
-        if (!isUnlocked(this.mission, type)) return;
         if (s.placing) {
           s.placing.type = type;
           if (s.placing.tx > -900) {
@@ -886,19 +879,6 @@ export class Game {
       return;
     }
     const units = sel.filter((e) => e.kind === 'unit' && e.side === 'player');
-    if (st.s2 && !st.s2.relay.active && st.s2.baseFound &&
-        Math.hypot(wx - st.s2.relay.x, wy - st.s2.relay.y) <= TILE * 1.4) {
-      const hero = units.find((unit) => unit === st.s2.hero);
-      if (!hero) {
-        ui.toast(t('missions.s2_1.selectHero'), 'warn');
-        this.sound.error();
-        return;
-      }
-      st.s2.relayActivationRequested = true;
-      U.orderMove(st, hero, st.s2.relay.x, st.s2.relay.y);
-      this.sound.ack();
-      return;
-    }
     if (!units.length) return;
 
     // 1) Враг — атака.
@@ -973,9 +953,6 @@ export class Game {
     if (!pl) return;
     const cfg = BUILDINGS[pl.type];
     const fac = st.factions.player;
-    if (st.s2 && !st.s2.relay.active) {
-      ui.toast(t('missions.s2_1.zoneLocked'), 'warn'); this.sound.error(); return;
-    }
     tx = Math.max(0, Math.min(st.map.w - cfg.w, tx));
     ty = Math.max(0, Math.min(st.map.h - cfg.h, ty));
     for (let y = ty; y < ty + cfg.h; y++)
@@ -1062,9 +1039,6 @@ export class Game {
     if (!pl) return 0;
     const cfg = BUILDINGS[pl.type];
     const fac = st.factions.player;
-    if (st.s2 && !st.s2.relay.active) {
-      ui.toast(t('missions.s2_1.zoneLocked'), 'warn'); this.sound.error(); return 0;
-    }
     if (cfg.requires) {
       const ok = st.buildings.some((b) => !b.dead && b.side === 'player' &&
         b.type === cfg.requires && b.done);
@@ -1355,7 +1329,7 @@ export class Game {
       opts.next = MISSIONS[ni];
     }
     if (win && m.id === 14) opts.campaignDone = true; // П8: кампанию закрывает №14, не хвост массива
-    const epi = missionText(m, 'epilogue');
+    const epi = this.state && this.state.s2 && !this.state.s2.finale ? '' : missionText(m, 'epilogue');
     if (win && epi) opts.epilogue = epi;
     return opts;
   }
@@ -1412,6 +1386,7 @@ export class Game {
       x > cam.x - m && x < cam.x + vw + m && y > cam.y - m && y < cam.y + vh + m;
 
     if (st.s2) drawSeason2Overlay(ctx, st, cam, inView);
+    for (const u of st.units) if (u.type === 'hero' && u.side === 'player') drawHeroAura(ctx, st, cam, u, inView);
 
     // M0: пунктирные границы зоны стройки (всегда видны, в режиме
     // размещения — ярче). Своя земля подсвечена бирюзой Рубежа.
@@ -1441,7 +1416,7 @@ export class Game {
 
     // Здания: свои всегда; вражеские — видимые или «запомненные».
     for (const b of st.buildings) {
-      if (b.dead || b.s2Hidden) continue;
+      if (b.dead) continue;
       const bx = b.tx * TILE, by = b.ty * TILE;
       // Пакет S (баг 3 проверки Q): клиллинг в МИРОВЫХ координатах — видимая
       // область при зуме vw=W/z, vh=H/z (как inView у юнитов), а не экранная W/H.

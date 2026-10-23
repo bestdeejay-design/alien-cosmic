@@ -61,8 +61,6 @@ export function canPlace(map, tx, ty, w, h) {
 // M0: зона стройки игрока. Без зон в миссии — всё разрешено; иначе
 // футпринт обязан ЦЕЛИКОМ лежать внутри хотя бы одной зоны.
 export function zoneAllows(st, tx, ty, w, h) {
-  // В S2 M1 строительная зона появляется только после включения ретранслятора.
-  if (st.s2 && !st.s2.relay.active) return false;
   const zones = st.buildZone;
   if (!zones || !zones.length) return true;
   for (const z of zones) {
@@ -378,7 +376,7 @@ function spawnTrainedUnit(st, b, type, x, y) {
 export function buildingAt(st, wx, wy) {
   for (let i = st.buildings.length - 1; i >= 0; i--) {
     const b = st.buildings[i];
-    if (b.dead || b.s2Hidden) continue;
+    if (b.dead) continue;
     if (wx >= b.tx * TILE && wx < (b.tx + b.w) * TILE &&
         wy >= b.ty * TILE && wy < (b.ty + b.h) * TILE) return b;
   }
@@ -1229,18 +1227,6 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.beginPath(); ctx.arc(cx + ox, cy + 12 - s * 2, s, 0, Math.PI * 2); ctx.fill();
       }
     }
-  }
-
-  // S2 M1: явный маркер отключённого командного центра.
-  if (b.s2Offline && !ghost) {
-    ctx.save();
-    ctx.fillStyle = 'rgba(19,12,14,0.9)';
-    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#ff806e'; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.arc(cx, cy, 7, -Math.PI * 0.78, Math.PI * 0.78); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy - 2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx - 9, cy + 9); ctx.lineTo(cx + 9, cy - 9); ctx.stroke();
-    ctx.restore();
   }
 
   // Призрак: цветная вуаль поверх силуэта.

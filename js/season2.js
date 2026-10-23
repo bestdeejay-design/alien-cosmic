@@ -1,49 +1,35 @@
 // ============================================================
-// season2.js — первая обучающая миссия Сезона 2.
-// Короткая RTS-петля: найти отключённую базу, включить ретранслятор
-// героем, добыть минералы, построить оборону и отбить налёт.
+// season2.js — первая одиночная миссия Сезона 2.
+// Сезон 2 развивается отдельно от кампании Сезона 1: здесь только
+// сценарий «Чужие на пороге» и механики, нужные для этого прототипа.
 // ============================================================
-import { TILE, BUILDINGS } from './config.js';
+import { TILE } from './config.js';
 import * as U from './units.js';
 import { t } from './i18n.js';
 
 const px = (tile) => (tile + 0.5) * TILE;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const distTiles = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const alive = (unit) => !!unit && !unit.dead;
-const MINE_TARGET = 120;
-const WALL_TARGET = 3;
-const RANGER_GARRISON_TARGET = 3;
-const BUILD_ZONE = Object.freeze({ x: 17, y: 15, w: 20, h: 16 });
-const OUTPOST = Object.freeze({ x: 22, y: 20 });
-const RELAY_TILE = Object.freeze({ x: 27, y: 21 });
-const RELAY_REACH = TILE * 2.2;
-const RAID_TIMES = Object.freeze([145, 325]);
 
 export const SEASON2_M1 = Object.freeze({
   id: 's2_1',
   season: 2,
   scripted: true,
-  noBase: true,
   noEnemyBase: true,
-  noUpgrades: true,
-  faction: 'human',
-  enemyFaction: 'alien',
+  faction: 'alien',
+  enemyFaction: 'human',
   objective: 'script',
-  startMinerals: 250,
-  // Командный центр уже стоит на аванпосте, но не работает без связи.
-  // Строим только казарму, бункер и стены; улучшений в первой миссии нет.
-  banBuild: ['cc', 'depot', 'turret', 'factory', 'lab'],
-  squad: [['hero', 1], ['scout', 1], ['marine', 3], ['worker', 2]],
   map: {
-    seed: 20261023,
-    biome: 'mars',
-    w: 48,
-    h: 48,
-    rocks: 3,
-    rich: 1,
-    base: { x: 4, y: 39 },
-    lakes: [],
-    neutral: [[30, 20]],
+    seed: 20261022,
+    biome: 'nest',
+    w: 64,
+    h: 64,
+    rocks: 6,
+    rich: 1.05,
+    base: { x: 8, y: 48 },
+    lakes: [[30, 19, 3.2, 2.2], [27, 48, 2.6, 1.8], [45, 36, 2.2, 3.1]],
+    neutral: [[22, 30], [43, 39]],
   },
   ai: {
     workerTarget: 0, maxMarines: 0, firstWave: 0, waveGrowth: 0, waveMax: 0,
@@ -53,22 +39,41 @@ export const SEASON2_M1 = Object.freeze({
   },
 });
 
-function clearOutpostFootprint(st, x, y, w, h) {
-  for (const crystal of [...st.map.crystals]) {
-    if (crystal.tx >= x && crystal.tx < x + w && crystal.ty >= y && crystal.ty < y + h) {
-      st.map.removeCrystal(crystal);
-    }
-  }
-  for (let ty = y; ty < y + h; ty++) {
-    for (let tx = x; tx < x + w; tx++) {
-      if (!st.map.inBounds(tx, ty)) continue;
-      st.map.terrain[st.map.idx(tx, ty)] = 0;
-    }
-  }
-}
+const TRACKS = Object.freeze([
+  Object.freeze({ x: 25, y: 38 }),
+  Object.freeze({ x: 35, y: 29 }),
+  Object.freeze({ x: 44, y: 21 }),
+]);
 
-function findOpenTile(st, tx, ty, used = new Set(), maxRadius = 6) {
-  for (let r = 0; r <= maxRadius; r++) {
+// Координаты в тайлах. Через эти тихие тропы кхарид проходят незамеченными.
+const TRAIL_PATHS = Object.freeze([
+  Object.freeze([
+    Object.freeze({ x: 15, y: 44 }),
+    Object.freeze({ x: 20, y: 41 }),
+    Object.freeze({ x: 25, y: 38 }),
+    Object.freeze({ x: 31, y: 33 }),
+    Object.freeze({ x: 37, y: 27 }),
+    Object.freeze({ x: 44, y: 21 }),
+    Object.freeze({ x: 50, y: 15 }),
+  ]),
+]);
+
+const PATROL_ROUTE = Object.freeze([
+  Object.freeze({ x: 49, y: 16 }),
+  Object.freeze({ x: 43, y: 22 }),
+  Object.freeze({ x: 37, y: 27 }),
+  Object.freeze({ x: 31, y: 33 }),
+  Object.freeze({ x: 24, y: 39 }),
+  Object.freeze({ x: 17, y: 45 }),
+  Object.freeze({ x: 10, y: 49 }),
+]);
+
+const TRAP = Object.freeze({ x: 28, y: 35, radius: 2.8 });
+const FIND_DEADLINE = 50;
+const BASE_REACH_RADIUS = 3.2;
+
+function findOpenSpawnTile(st, tx, ty, used) {
+  for (let r = 0; r <= 5; r++) {
     for (let y = ty - r; y <= ty + r; y++) {
       for (let x = tx - r; x <= tx + r; x++) {
         if (Math.max(Math.abs(x - tx), Math.abs(y - ty)) !== r) continue;
@@ -84,263 +89,423 @@ function findOpenTile(st, tx, ty, used = new Set(), maxRadius = 6) {
 }
 
 function spawnAt(st, side, type, tx, ty, used = new Set()) {
-  const tile = findOpenTile(st, tx, ty, used);
+  const tile = findOpenSpawnTile(st, tx, ty, used);
   return U.spawnUnit(st, side, type, px(tile.x), px(tile.y));
 }
 
-export function setupSeason2Mission(st, buildingModule) {
-  const player = st.units.filter((unit) => unit.side === 'player' && !unit.dead);
-  const hero = player.find((unit) => unit.type === 'hero');
-  const scout = player.find((unit) => unit.type === 'scout');
-  const rangers = player.filter((unit) => unit.type === 'marine');
-  const workers = player.filter((unit) => unit.type === 'worker');
-  if (!hero || !scout || rangers.length !== 3 || workers.length !== 2 || !buildingModule) {
-    throw new Error('Season 2 M1 requires hero, scout, three rangers, two workers, and the building module.');
+function orderOnRoute(st, unit, index = 0) {
+  const route = st.s2 ? st.s2.route : PATROL_ROUTE;
+  if (!alive(unit) || index >= route.length) return;
+  unit.s2RouteIndex = index;
+  const point = route[index];
+  U.orderMove(st, unit, px(point.x), px(point.y));
+}
+
+export function setupSeason2Mission(st) {
+  const base = st.map.bases.player.cc;
+  const usedPlayer = new Set();
+  const heroine = spawnAt(st, 'player', 'hero', base.x + 6, base.y + 1, usedPlayer);
+  heroine.s2NoAutoAcquire = true;
+  const scout = spawnAt(st, 'player', 'scout', base.x + 8, base.y - 1, usedPlayer);
+  const defenders = [
+    spawnAt(st, 'player', 'marine', base.x + 5, base.y - 2, usedPlayer),
+    spawnAt(st, 'player', 'marine', base.x + 6, base.y - 3, usedPlayer),
+    spawnAt(st, 'player', 'marine', base.x + 7, base.y - 2, usedPlayer),
+  ];
+
+  const usedPatrol = new Set();
+  const captain = spawnAt(st, 'enemy', 'hero', 51, 14, usedPatrol);
+  captain.s2Captain = true;
+  const patrol = [
+    captain,
+    spawnAt(st, 'enemy', 'marine', 50, 16, usedPatrol),
+    spawnAt(st, 'enemy', 'marine', 52, 16, usedPatrol),
+    spawnAt(st, 'enemy', 'marine', 49, 14, usedPatrol),
+    spawnAt(st, 'enemy', 'marine', 51, 18, usedPatrol),
+    spawnAt(st, 'enemy', 'marine', 48, 17, usedPatrol),
+  ];
+  // Миссионный темп: около 0.75 тайла/с, чтобы у игрока было время
+  // заметить патруль и перехватить его до подхода к гнезду.
+  for (const unit of patrol) unit.cfg = { ...unit.cfg, speed: 24 };
+
+  st.s2 = {
+    heroine,
+    isOnTrail: (unit) => isOnSeason2Trail(st, unit),
+    scout,
+    defenders,
+    captain,
+    patrol,
+    tracks: TRACKS,
+    trails: TRAIL_PATHS,
+    trap: TRAP,
+    basePoint: { x: (base.x + 2) * TILE, y: (base.y + 1.5) * TILE },
+    route: PATROL_ROUTE.map((point) => findOpenSpawnTile(st, point.x, point.y, new Set())),
+    foundTracks: 0,
+    spotted: false,
+    spottedAt: null,
+    foundBeforeDeadline: false,
+    noise: false,
+    noisePoint: null,
+    investigators: [],
+    trapBaited: false,
+    trapped: false,
+    trapKnown: false,
+    finale: false,
+    findDeadline: FIND_DEADLINE,
+  };
+
+  for (const unit of patrol) {
+    unit.s2LastHp = unit.hp;
+    orderOnRoute(st, unit);
   }
 
-  // Освобождаем площадку под старый аванпост. Ресурсное поле остаётся
-  // рядом восточнее командного центра.
-  clearOutpostFootprint(st, OUTPOST.x - 1, OUTPOST.y - 1, 9, 6);
-  st.map.buildTerrainCanvas();
-  st.map.buildMiniCanvas();
-  const cc = new buildingModule.Building(st, 'player', 'cc', OUTPOST.x, OUTPOST.y, true);
-  cc.s2Offline = true;
-  cc.s2Hidden = true;
-  cc.cfg = { ...cc.cfg, produces: null };
-  st.map.markBuilding(cc);
-  st.bcount.player++;
-
-  const relay = {
-    x: px(RELAY_TILE.x), y: px(RELAY_TILE.y),
-    tx: RELAY_TILE.x, ty: RELAY_TILE.y,
-    active: false,
-  };
-  const s2 = {
-    hero, scout, rangers, workers, cc, relay,
-    buildZone: { ...BUILD_ZONE },
-    baseFound: false,
-    relayActivationRequested: false,
-    relayOnAt: null,
-    bunker: null,
-    raiders: [],
-    raidGroups: [null, null],
-    finalBoss: null,
-  };
-  st.s2 = s2;
-  st.buildZone = null;
-  st.minerals.player = Number.isFinite(st.game.mission.startMinerals)
-    ? st.game.mission.startMinerals : 250;
-
-  // По умолчанию выбран Следопыт — первый приказ помогает открыть карту.
-  st.selection = [scout];
+  st.selection = [heroine, scout];
   U.syncSelectionFlags(st);
 }
 
-export function activateSeason2Relay(game, st, hero) {
+function pointSegmentDistance(p, a, b) {
+  const vx = b.x - a.x, vy = b.y - a.y;
+  const wx = p.x - a.x, wy = p.y - a.y;
+  const vv = vx * vx + vy * vy;
+  const t = vv ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / vv)) : 0;
+  return Math.hypot(p.x - (a.x + t * vx), p.y - (a.y + t * vy));
+}
+
+export function isOnSeason2Trail(st, unit) {
   const s2 = st && st.s2;
-  if (!s2 || !hero || hero !== s2.hero || hero.dead || s2.relay.active || !s2.baseFound) return false;
-  if (dist(hero, s2.relay) > RELAY_REACH) return false;
-
-  s2.relay.active = true;
-  s2.relayActivationRequested = false;
-  s2.relayOnAt = st.time;
-  U.orderStop(hero);
-  s2.cc.s2Offline = false;
-  s2.cc.cfg = BUILDINGS.cc;
-  st.buildZone = [{ ...s2.buildZone }];
-  game.ui.toast(t('missions.s2_1.relayOnline'), 'info');
-  game.ui.toast(t('missions.s2_1.buildZoneHint'), 'info');
-  game.sound.ready();
-  return true;
-}
-
-function buildingCount(st, type) {
-  return st.buildings.filter((building) => !building.dead && building.side === 'player' &&
-    building.type === type && building.done).length;
-}
-
-function wallCount(st) { return buildingCount(st, 'wall'); }
-function garrisonedRangers(s2) {
-  return s2.rangers.filter((unit) => alive(unit) && unit.garrison === s2.bunker).length;
-}
-
-function allDead(units) { return !units || units.every((unit) => !alive(unit)); }
-function timeString(seconds) {
-  const value = Math.max(0, Math.ceil(seconds));
-  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
-}
-
-function missionStage(st) {
-  const s2 = st.s2;
-  if (!s2.baseFound) return 'find';
-  if (!s2.relay.active) return 'activate';
-  if (st.stats.mined < MINE_TARGET) return 'mine';
-  if (buildingCount(st, 'barracks') < 1) return 'barracks';
-  if (!s2.bunker || s2.bunker.dead || !s2.bunker.done) return 'bunker';
-  if (wallCount(st) < WALL_TARGET) return 'wall';
-  if (garrisonedRangers(s2) < RANGER_GARRISON_TARGET) return 'garrison';
-
-  if (!s2.raidGroups[0]) return 'prepareRaid';
-  if (!allDead(s2.raidGroups[0])) return 'firstRaid';
-  if (!s2.raidGroups[1]) return 'prepareCommander';
-  if (!allDead(s2.raidGroups[1])) return 'commander';
-  return 'complete';
-}
-
-function spawnRaid(st, wave, types, targetRelay = false) {
-  const s2 = st.s2;
-  const used = new Set();
-  const entry = { x: st.map.w - 3, y: RELAY_TILE.y };
-  const group = [];
-  for (const type of types) {
-    const unit = spawnAt(st, 'enemy', type, entry.x, entry.y, used);
-    unit.s2Raid = wave;
-    if (type === 'hero') {
-      // Командир опасен в дуэли, но слабее героя игрока, чтобы оставить
-      // новичку запас времени на освоение боевых приказов.
-      unit.cfg = { ...unit.cfg, hp: 210, dmg: 15, cooldown: 1.1, speed: 96 };
-      unit.hp = unit.maxHp = unit.cfg.hp;
-      unit.s2RetakeHero = true;
-      s2.finalBoss = unit;
+  if (!s2 || !unit || unit.dead || unit.side !== 'player') return false;
+  const p = { x: unit.x / TILE, y: unit.y / TILE };
+  for (const path of s2.trails) {
+    for (let i = 1; i < path.length; i++) {
+      if (pointSegmentDistance(p, path[i - 1], path[i]) <= 0.72) return true;
     }
-    group.push(unit);
-    s2.raiders.push(unit);
-    if (targetRelay && type === 'hero') U.orderAttackMove(st, unit, s2.relay.x, s2.relay.y);
-    else U.orderAttack(st, unit, s2.cc);
   }
-  s2.raidGroups[wave - 1] = group;
-  st.game.ui.toast(t(targetRelay ? 'missions.s2_1.commanderIncoming' : 'missions.s2_1.raidIncoming', { n: wave }), 'warn');
+  return false;
+}
+
+function nearestPlayer(st, point, requireVisible = false) {
+  let best = null, bestDist = Infinity;
+  for (const unit of st.units) {
+    if (!alive(unit) || unit.side !== 'player' || unit.garrison) continue;
+    if (requireVisible && isOnSeason2Trail(st, unit)) continue;
+    const d = dist(unit, point);
+    if (d < bestDist) { best = unit; bestDist = d; }
+  }
+  return best;
+}
+
+function triggerNoise(st, point) {
+  const s2 = st.s2;
+  if (s2.noise || s2.finale) return;
+  s2.noise = true;
+  s2.noisePoint = { x: point.x, y: point.y };
+  const trapPoint = { x: px(s2.trap.x), y: px(s2.trap.y) };
+  const baitDistance = distTiles(
+    { x: point.x / TILE, y: point.y / TILE },
+    { x: s2.trap.x + 0.5, y: s2.trap.y + 0.5 },
+  );
+  s2.trapBaited = baitDistance <= s2.trap.radius + 1.1;
+  const nonCaptain = s2.patrol.filter((unit) => alive(unit) && unit !== s2.captain);
+  s2.investigators = nonCaptain.slice(0, Math.ceil(nonCaptain.length / 2));
+  const target = s2.trapBaited ? trapPoint : point;
+  for (const unit of s2.investigators) U.orderMove(st, unit, target.x, target.y);
+  st.game.ui.toast(t('missions.s2_1.noiseHint'), 'warn');
   st.game.sound.ping();
 }
 
-function updateDiscovery(st) {
+function advancePatrol(st, unit) {
+  if (!alive(unit) || unit.s2Trapped || unit.s2Ceasefire) return;
+  if (unit.s2Investigator) {
+    if (unit.s2Searching) return;
+    const target = st.s2.trapBaited
+      ? { x: px(st.s2.trap.x), y: px(st.s2.trap.y) }
+      : st.s2.noisePoint;
+    if (!target) return;
+    if (dist(unit, target) <= TILE * 0.9) {
+      unit.s2Searching = true;
+      U.orderStop(unit);
+    } else if (unit.order.kind === 'idle') {
+      U.orderMove(st, unit, target.x, target.y);
+    }
+    return;
+  }
+  const index = unit.s2RouteIndex || 0;
+  const waypoint = st.s2.route[index];
+  if (!waypoint) return;
+  const target = { x: px(waypoint.x), y: px(waypoint.y) };
+  if (dist(unit, target) <= TILE * 0.85) {
+    orderOnRoute(st, unit, index + 1);
+  } else if (unit.order.kind === 'idle' || unit.order.kind === 'attack') {
+    // После локальной стычки отряд возвращается к сценарию маршрута.
+    orderOnRoute(st, unit, index);
+  }
+}
+
+function s2TrapReached(st, unit) {
+  const trapPoint = { x: px(st.s2.trap.x), y: px(st.s2.trap.y) };
+  return dist(unit, trapPoint) <= TILE * 1.25;
+}
+
+function detectFirstTrack(st) {
   const s2 = st.s2;
-  if (s2.baseFound) return;
-  const tx = s2.relay.tx, ty = s2.relay.ty;
-  if (!st.fog.tileVisible(tx, ty) && !st.fog.tileExplored(tx, ty)) return;
-  s2.baseFound = true;
-  s2.cc.s2Hidden = false;
-  st.game.ui.toast(t('missions.s2_1.baseFound'), 'info');
-  st.game.ui.toast(t('missions.s2_1.ccOfflineHint'), 'warn');
+  if (!alive(s2.scout)) return;
+  while (s2.foundTracks < s2.tracks.length) {
+    const track = s2.tracks[s2.foundTracks];
+    if (dist(s2.scout, { x: px(track.x), y: px(track.y) }) > TILE * 1.65) break;
+    s2.foundTracks++;
+    s2.trapKnown = true;
+    if (s2.foundTracks === 1) {
+      st.game.ui.toast(t('missions.s2_1.firstTrackHint'), 'info');
+    } else if (s2.foundTracks === s2.tracks.length) {
+      st.game.ui.toast(t('missions.s2_1.lastTrackHint'), 'info');
+    }
+  }
+}
+
+function detectPatrol(st) {
+  const s2 = st.s2;
+  if (s2.spotted || (s2.foundTracks === 0 && !s2.noise)) return;
+  const seen = s2.patrol.some((unit) => alive(unit) && unit.visible);
+  if (!seen) return;
+  s2.spotted = true;
+  s2.spottedAt = st.time;
+  s2.foundBeforeDeadline = st.time <= s2.findDeadline;
+  st.game.ui.toast(t('missions.s2_1.spottedHint'), 'info');
   st.game.sound.ready();
 }
 
-function updateRaids(game, st) {
+function detectNoise(st) {
   const s2 = st.s2;
-  if (!s2.relay.active) return;
-  const elapsed = st.time - s2.relayOnAt;
-  if (!s2.raidGroups[0] && elapsed >= RAID_TIMES[0]) {
-    spawnRaid(st, 1, ['marine', 'marine']);
-  }
-  if (!s2.raidGroups[1] && s2.raidGroups[0] && allDead(s2.raidGroups[0]) && elapsed >= RAID_TIMES[1]) {
-    spawnRaid(st, 2, ['marine', 'marine', 'hero'], true);
-  }
+  if (s2.noise || s2.finale) return;
 
+  for (const enemy of s2.patrol) {
+    if (enemy.hp < enemy.s2LastHp - 0.01) {
+      const shooter = nearestPlayer(st, enemy);
+      triggerNoise(st, shooter || enemy);
+      enemy.s2LastHp = enemy.hp;
+      break;
+    }
+    enemy.s2LastHp = enemy.hp;
+  }
+  if (s2.noise) return;
+
+  for (const unit of st.units) {
+    if (!alive(unit) || unit.side !== 'player' || unit.garrison || isOnSeason2Trail(st, unit)) continue;
+    for (const enemy of s2.patrol) {
+      if (alive(enemy) && dist(unit, enemy) <= TILE * 5.2) {
+        triggerNoise(st, unit);
+        return;
+      }
+    }
+  }
 }
 
-function requiredTasksComplete(st) {
+function updateTrap(st) {
   const s2 = st.s2;
-  return !!(s2.relay.active && st.stats.mined >= MINE_TARGET &&
-    buildingCount(st, 'barracks') >= 1 && s2.bunker && !s2.bunker.dead && s2.bunker.done &&
-    wallCount(st) >= WALL_TARGET && garrisonedRangers(s2) >= RANGER_GARRISON_TARGET);
+  if (!s2.trapBaited || s2.trapped) return;
+  for (const unit of s2.investigators) {
+    if (!alive(unit) || unit.s2Trapped || !s2TrapReached(st, unit)) continue;
+    unit.s2Trapped = true;
+    U.orderStop(unit);
+  }
+  const trappedCount = s2.investigators.filter((unit) => alive(unit) && unit.s2Trapped).length;
+  if (trappedCount >= 2) {
+    s2.trapped = true;
+    st.game.ui.toast(t('missions.s2_1.trapHint'), 'info');
+  }
+}
+
+function startFinale(game, st) {
+  const s2 = st.s2;
+  if (s2.finale) return;
+  s2.finale = true;
+  for (const enemy of s2.patrol) {
+    if (!alive(enemy)) continue;
+    enemy.s2Ceasefire = true;
+    U.orderStop(enemy);
+  }
+  if (alive(s2.captain)) {
+    // Рейн опускает оружие. Это локальная копия конфига, не меняющая
+    // характеристики остальных героев или последующих партий.
+    s2.captain.cfg = { ...s2.captain.cfg, dmg: 0, range: 0, projectile: 'none' };
+  }
+  U.orderStop(s2.heroine);
+  st.game.ui.toast(t('missions.s2_1.rainLowersWeapon'), 'info');
+  st.game.win(t('missions.s2_1.winReason'));
 }
 
 export function updateSeason2Mission(game, st) {
-  const s2 = st && st.s2;
+  const s2 = st.s2;
   if (!s2 || st.gameOver) return;
-  if (!alive(s2.hero)) {
+  if (!alive(s2.heroine)) {
     game.lose(t('missions.s2_1.heroLost'));
     return;
   }
-  if (!s2.cc || s2.cc.dead) {
-    game.lose(t('missions.s2_1.commandCenterLost'));
+
+  detectFirstTrack(st);
+  detectPatrol(st);
+  detectNoise(st);
+
+  if (s2.noise && !s2.investigatorsMarked) {
+    for (const unit of s2.investigators) unit.s2Investigator = true;
+    s2.investigatorsMarked = true;
+  }
+
+  for (const unit of s2.patrol) advancePatrol(st, unit);
+  updateTrap(st);
+
+  // Финальный контакт — встреча Тха-Риссы и капитана Рейна.
+  if (alive(s2.captain) && dist(s2.heroine, s2.captain) <= TILE * 3.1) {
+    startFinale(game, st);
     return;
   }
 
-  updateDiscovery(st);
-  s2.bunker = st.buildings.find((building) => !building.dead && building.side === 'player' && building.type === 'bunker') || null;
-  if (s2.relayActivationRequested && s2.baseFound && dist(s2.hero, s2.relay) <= RELAY_REACH) {
-    activateSeason2Relay(game, st, s2.hero);
-  }
-  updateRaids(game, st);
-  if (st.gameOver) return;
+  // Вторичная цель «найти отряд до срока» перестаёт быть выполнимой,
+  // но сама миссия продолжается: можно успеть перехватить позже.
+  if (!s2.spotted && st.time > s2.findDeadline) s2.findDeadlinePassed = true;
 
-  if (s2.raidGroups[1] && allDead(s2.raiders) && requiredTasksComplete(st)) {
-    game.win(t('missions.s2_1.winReason'));
+  const reachedBase = s2.patrol.some((unit) => alive(unit) && dist(unit, s2.basePoint) <= TILE * BASE_REACH_RADIUS);
+  if (reachedBase) {
+    game.lose(t('missions.s2_1.baseReached'));
+    return;
   }
+
+  // Победа, если больше некому продолжать путь к гнезду. Следователи,
+  // уже отделённые шумом, сами по себе угрозы гнезду не представляют.
+  const stillMarching = s2.patrol.some((unit) => alive(unit) && !unit.s2Investigator && !unit.s2Trapped);
+  if (!stillMarching) game.win(t('missions.s2_1.patrolStopped'));
+}
+
+function formatTime(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function remainingTime(st, deadline = st.s2.findDeadline) {
+  return formatTime(deadline - st.time);
+}
+
+function timeToNest(st) {
+  const s2 = st.s2;
+  let nearest = Infinity;
+  for (const unit of s2.patrol) {
+    if (!alive(unit) || unit.s2Trapped || unit.s2Investigator) continue;
+    const index = Math.max(0, unit.s2RouteIndex || 0);
+    if (!s2.route[index]) continue;
+    let routeTiles = distTiles(
+      { x: unit.x / TILE, y: unit.y / TILE },
+      s2.route[index],
+    );
+    for (let i = index + 1; i < s2.route.length; i++) {
+      routeTiles += distTiles(s2.route[i - 1], s2.route[i]);
+    }
+    routeTiles = Math.max(0, routeTiles - BASE_REACH_RADIUS);
+    nearest = Math.min(nearest, routeTiles * TILE / Math.max(1, unit.cfg.speed || 1));
+  }
+  return formatTime(nearest === Infinity ? 0 : nearest);
 }
 
 export function season2ObjectiveText(st) {
   const s2 = st && st.s2;
   if (!s2) return '';
-  const stage = missionStage(st);
-  if (stage === 'find') return t('missions.s2_1.objFind');
-  if (stage === 'activate') return t('missions.s2_1.objActivate');
-  if (stage === 'mine') return t('missions.s2_1.objMine', { n: Math.min(MINE_TARGET, Math.floor(st.stats.mined)), m: MINE_TARGET });
-  if (stage === 'barracks') return t('missions.s2_1.objBarracks');
-  if (stage === 'bunker') return t('missions.s2_1.objBunker');
-  if (stage === 'wall') return t('missions.s2_1.objWall', { n: Math.min(WALL_TARGET, wallCount(st)), m: WALL_TARGET });
-  if (stage === 'garrison') return t('missions.s2_1.objGarrison', { n: garrisonedRangers(s2), m: RANGER_GARRISON_TARGET });
-  const elapsed = Math.max(0, st.time - (s2.relayOnAt || 0));
-  if (stage === 'prepareRaid') return t('missions.s2_1.objPrepareRaid', { time: timeString(RAID_TIMES[0] - elapsed) });
-  if (stage === 'firstRaid') return t('missions.s2_1.objFirstRaid');
-  if (stage === 'prepareCommander') return t('missions.s2_1.objPrepareCommander', { time: timeString(RAID_TIMES[1] - elapsed) });
-  if (stage === 'commander') return t('missions.s2_1.objCommander');
-  return t('missions.s2_1.objComplete');
+  if (s2.finale) return t('missions.s2_1.hudFinale');
+  if (s2.trapped) return t('missions.s2_1.hudTrap');
+  if (s2.spotted) return t('missions.s2_1.hudIntercept', { time: timeToNest(st) });
+  if (s2.foundTracks > 0) return t('missions.s2_1.hudFollow', { time: remainingTime(st) });
+  return t('missions.s2_1.hudTracks', { time: remainingTime(st) });
 }
 
 export function season2EndObjectives(st) {
   const s2 = st && st.s2;
   if (!s2) return [];
   return [
-    { label: t('missions.s2_1.endRelay'), complete: !!s2.relay.active },
-    { label: t('missions.s2_1.endMine'), complete: st.stats.mined >= MINE_TARGET },
-    { label: t('missions.s2_1.endBuild'), complete: buildingCount(st, 'barracks') >= 1 && s2.bunker && !s2.bunker.dead && s2.bunker.done && wallCount(st) >= WALL_TARGET },
-    { label: t('missions.s2_1.endGarrison'), complete: garrisonedRangers(s2) >= RANGER_GARRISON_TARGET },
-    { label: t('missions.s2_1.endDefend'), complete: !!s2.raidGroups[1] && allDead(s2.raiders) },
+    { label: t('missions.s2_1.secondaryFind', { time: formatTime(s2.findDeadline) }), complete: !!s2.foundBeforeDeadline },
+    { label: t('missions.s2_1.secondaryScout'), complete: alive(s2.scout) },
+    { label: t('missions.s2_1.secondaryTrap'), complete: !!s2.trapped },
   ];
+}
+
+function drawTrail(ctx, path, cam, st) {
+  // Рисуем цельную линию под туманом: ещё не исследованные отрезки
+  // скрывает fog canvas, а уже открытые показывают тихий маршрут.
+  ctx.beginPath();
+  path.forEach((point, i) => {
+    const x = px(point.x) - cam.x, y = px(point.y) - cam.y;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(154,255,198,0.11)';
+  ctx.lineWidth = TILE * 0.72;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(164,255,205,0.45)';
+  ctx.lineWidth = 2.2;
+  ctx.setLineDash([7, 9]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Лёгкие метки по пути — только на уже открытой части карты.
+  for (let i = 1; i < path.length - 1; i++) {
+    const point = path[i];
+    if (!st.fog.tileExplored(point.x, point.y)) continue;
+    const x = px(point.x) - cam.x, y = px(point.y) - cam.y;
+    ctx.fillStyle = 'rgba(194,255,218,0.68)';
+    ctx.beginPath(); ctx.ellipse(x - 5, y, 2.1, 3.2, -0.35, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 4, y - 3, 2.1, 3.2, 0.35, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 export function drawSeason2Overlay(ctx, st, cam, inView) {
   const s2 = st && st.s2;
-  if (!s2 || (!s2.baseFound && !s2.relay.active)) return;
-  const relay = s2.relay;
-  if (!st.fog.tileExplored(relay.tx, relay.ty)) return;
-  const x = relay.x - cam.x, y = relay.y - cam.y;
-  if (!inView(relay.x, relay.y, TILE * 2)) return;
-  const time = performance.now() * 0.001;
-  const pulse = 0.5 + 0.5 * Math.sin(time * 3.2);
-  const color = relay.active ? '#7df3e2' : '#ff8b65';
-
+  if (!s2) return;
   ctx.save();
-  // Основание маяка и отмеченный круг подключения.
-  ctx.fillStyle = 'rgba(8,14,18,0.76)';
-  ctx.beginPath(); ctx.ellipse(x, y + 8, 22, 11, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = relay.active ? `rgba(125,243,226,${0.35 + pulse * 0.45})` : 'rgba(255,139,101,0.58)';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.ellipse(x, y + 8, 19 + pulse * 2, 9 + pulse, 0, 0, Math.PI * 2); ctx.stroke();
+  for (const path of s2.trails) drawTrail(ctx, path, cam, st);
 
-  // Три опоры и центральная мачта: OFF — тёмный сигнал, ON — яркий луч.
-  ctx.strokeStyle = '#59676d'; ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.moveTo(x - 11, y + 10); ctx.lineTo(x, y - 16); ctx.lineTo(x + 11, y + 10); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x, y + 9); ctx.lineTo(x, y - 23); ctx.stroke();
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(x - 7, y - 2); ctx.lineTo(x + 7, y - 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x - 4, y - 10); ctx.lineTo(x + 4, y - 10); ctx.stroke();
-  ctx.fillStyle = relay.active ? `rgba(125,243,226,${0.7 + pulse * 0.3})` : '#8f4137';
-  ctx.shadowColor = color; ctx.shadowBlur = relay.active ? 12 : 3;
-  ctx.beginPath(); ctx.arc(x, y - 24, relay.active ? 5 + pulse * 1.3 : 4, 0, Math.PI * 2); ctx.fill();
-  ctx.shadowBlur = 0;
-  if (relay.active) {
-    ctx.strokeStyle = `rgba(125,243,226,${0.24 + pulse * 0.24})`;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(x, y - 29); ctx.lineTo(x, y - 48 - pulse * 8); ctx.stroke();
+  if (s2.trapKnown) {
+    const x = px(s2.trap.x) - cam.x, y = px(s2.trap.y) - cam.y;
+    const r = s2.trap.radius * TILE;
+    if (inView(x + cam.x, y + cam.y, r)) {
+      ctx.fillStyle = 'rgba(243,197,121,0.045)';
+      ctx.strokeStyle = 'rgba(243,197,121,0.55)';
+      ctx.lineWidth = 1.7;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.72, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,225,164,0.9)';
+      ctx.font = '700 10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(t('missions.s2_1.trapMarker'), x, y - r * 0.78);
+    }
   }
 
-  const label = t(relay.active ? 'missions.s2_1.relayOnLabel' : 'missions.s2_1.relayOffLabel');
-  ctx.font = '700 9px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = relay.active ? '#b9fff4' : '#ffc2a8';
-  ctx.fillText(label, x, y - 34);
+  for (let i = 0; i < s2.tracks.length; i++) {
+    const point = s2.tracks[i];
+    if (!st.fog.tileExplored(point.x, point.y)) continue;
+    const x = px(point.x) - cam.x, y = px(point.y) - cam.y;
+    const pulse = 0.62 + 0.25 * Math.sin(performance.now() * 0.003 + i);
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = '#d4ffe0';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.ellipse(x, y, 9, 5.5, -0.4, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#c9ffd9';
+    ctx.beginPath(); ctx.ellipse(x - 3, y - 1, 1.6, 2.5, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 3, y + 1, 1.6, 2.5, -0.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+export function drawHeroAura(ctx, st, cam, hero, inView) {
+  if (!hero || hero.dead || hero.side !== 'player' || !hero.cfg.auraRadiusTiles) return;
+  const x = hero.x - cam.x, y = hero.y - cam.y;
+  const radius = hero.cfg.auraRadiusTiles * TILE;
+  if (!inView(hero.x, hero.y, radius)) return;
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.002);
+  ctx.save();
+  ctx.fillStyle = `rgba(159,245,184,${0.025 + pulse * 0.025})`;
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = `rgba(159,245,184,${0.24 + pulse * 0.15})`;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([5, 8]);
+  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
 }
