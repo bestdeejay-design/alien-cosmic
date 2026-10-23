@@ -1991,6 +1991,64 @@ function poly(ctx, p) {
 }
 
 // ------------------------------------------------------------
+// Свет и объём (шлифовка #31). Канон DESIGN_SYSTEM.md §1: мир тёмный,
+// сущности светятся, свет сверху-слева. У всего объёмного есть кромка
+// света — иначе корпус читается плоской заливкой и «мыло» на биоме.
+// Полоса обрезается по фигуре, поэтому повторяет силуэт точно.
+// ------------------------------------------------------------
+
+// Световая полоса по верхней кромке многоугольника.
+function topLight(ctx, pts, h = 2.2, a = 0.42) {
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    if (pts[i + 1] < minY) minY = pts[i + 1];
+    if (pts[i + 1] > maxY) maxY = pts[i + 1];
+    if (pts[i] < minX) minX = pts[i];
+    if (pts[i] > maxX) maxX = pts[i];
+  }
+  ctx.save();
+  poly(ctx, pts); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(minX, minY, maxX - minX, h);
+  ctx.restore();
+}
+
+// То же для скруглённого прямоугольника (корпуса-«утюги», платформы).
+function topLightRect(ctx, x, y, w, h, a = 0.4, rh = 2.2) {
+  ctx.save();
+  rr(ctx, x, y, w, h, 6); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(x, y, w, rh);
+  ctx.restore();
+}
+
+// То же для круга/овала (диск медика, купола).
+function topLightEllipse(ctx, cx, cy, rx, ry, a = 0.38, rh = 2.2) {
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(cx - rx, cy - ry, rx * 2, rh);
+  ctx.restore();
+}
+
+// Влажный блик органики кхарид: тёплое пятно сверху-слева, без резкой
+// кромки — плоть «мокрая», а не пластиковая. Делаётся слоями эллипсов,
+// а не createRadialGradient: на 200 юнитов градиент в кадр — это аллокации,
+// а здесь только fill. Симуляцию не трогает.
+function wetLight(ctx, cx, cy, rx, ry, a = 0.3) {
+  const gx = cx - rx * 0.32, gy = cy - ry * 0.44;
+  ctx.save();
+  for (let i = 3; i >= 1; i--) {
+    const k = i / 3;
+    ctx.fillStyle = 'rgba(255,226,232,' + (a * (0.28 + 0.52 * (1 - k))).toFixed(3) + ')';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, rx * 0.6 * k, ry * 0.6 * k, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ------------------------------------------------------------
 // Отрисовка юнита (rx, ry — уже интерполированная позиция).
 // Стиль-гайд v2 «семейства»:
 //   Гелиос — угловатая ховер-техника: шестигранники, прямые кромки,
@@ -2074,6 +2132,8 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.strokeStyle = outline; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.ellipse(-1, 0, 5.5, 7.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.ellipse(5, 0, 5, 6, 0, 0, Math.PI * 2); ctx.stroke();
+      wetLight(ctx, -1, -1.5, 5.5, 7.5, 0.32);
+      wetLight(ctx, 5, -1, 5, 6, 0.22);
       // Спинные шипики.
       ctx.fillStyle = bio;
       poly(ctx, [-4, -7, -2, -11, 0, -7]); ctx.fill();
@@ -2097,6 +2157,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(-1, 0, 10.5, 7.2, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, -1, -1.5, 10.5, 7.2, 0.3);
       // Гребень: шипы с био-кончиками.
       for (let i = 0; i < 5; i++) {
         const sx = -7 + i * 3.4, h = 5 + (i % 2) * 2.5;
@@ -2135,11 +2196,14 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(-1, 0, 10, 6, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(-2, 0, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
-      // Спинной плавник.
+      // Спинные плавники: два ряда — «скользень» читается по хребту.
       ctx.fillStyle = flesh;
       poly(ctx, [-5, -4, -2, -11, 1, -4]); ctx.fill();
+      poly(ctx, [-9, -3.5, -7, -8, -4, -3.5]); ctx.fill();
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-2, -11, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-7, -8, 1.1, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, -1, -1.5, 10, 6, 0.3);
       // Голова, клыки и тройка глаз.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.arc(8, 0, 4.6, 0, Math.PI * 2); ctx.fill();
@@ -2163,6 +2227,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(0, 0, 15, 11.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3, 0, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -2, 15, 11.5, 0.26);
       ctx.fillStyle = flesh; // крап панциря
       ctx.beginPath(); ctx.arc(0, -3, 1.8, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(5, 4, 1.5, 0, Math.PI * 2); ctx.fill();
@@ -2224,6 +2289,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(0, 0, 8, 7, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 5.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -1.5, 8, 7, 0.34);
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI * 2); ctx.fill();
       // Свеча-росток с пульсирующим пламенем.
@@ -2244,6 +2310,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.arc(0, 0, 10.5, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3.5, 0, 7, 6.6, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -2, 10.5, 10.5, 0.26);
       // Бородавки и пульсирующие мешки.
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-4, -6.5, 1.8, 0, Math.PI * 2); ctx.fill();
@@ -2277,6 +2344,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = flesh;
       poly(ctx, [2, -4, 5, -11, 7, -3]); ctx.fill();
       poly(ctx, [-3, -4, -1, -11, 1, -3]); ctx.fill();
+      wetLight(ctx, 0, -1, 8, 5, 0.32);
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(5, -11, 1.3, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(-1, -11, 1.3, 0, Math.PI * 2); ctx.fill();
@@ -2305,6 +2373,7 @@ export function drawUnit(ctx, u, rx, ry) {
         const gx = segX[i] + 3;
         ctx.beginPath(); ctx.moveTo(gx, -7.5); ctx.quadraticCurveTo(gx + 1.5, 0, gx, 7.5); ctx.stroke();
       }
+      wetLight(ctx, -1, -2.5, 12, 9, 0.24);
       // Споровые мешки.
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(4, -8.5, 2.4 + pulse * 0.8, 0, Math.PI * 2); ctx.fill();
@@ -2371,9 +2440,14 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.stroke();
       ctx.fillStyle = hull2;
       poly(ctx, [7, 0, 3, -5, -4, -5, -7, 0, -4, 5, 3, 5]); ctx.fill();
+      topLight(ctx, [7, 0, 3, -5, -4, -5, -7, 0, -4, 5, 3, 5], 1.8, 0.5);
       ctx.strokeStyle = main; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(-4, -5); ctx.lineTo(3, -5); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(3, 5); ctx.stroke();
+      // Заклёпки-пиксели на панели: «инженерия», а не заливка.
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(-5, -3.4, 1.6, 1.6); ctx.fillRect(-1, -3.4, 1.6, 1.6);
+      ctx.fillRect(-5, 2, 1.6, 1.6); ctx.fillRect(-1, 2, 1.6, 1.6);
       // Мачта с маяком.
       ctx.strokeStyle = hull2; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(-6, -12); ctx.stroke();
@@ -2415,6 +2489,11 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.stroke();
       ctx.fillStyle = hull2;
       poly(ctx, [4, 0, 0, -6, -6, -6, -8, 0, -6, 6, 0, 6]); ctx.fill();
+      topLight(ctx, [4, 0, 0, -6, -6, -6, -8, 0, -6, 6, 0, 6], 1.8, 0.5);
+      // Бортовые панели с заклёпками.
+      ctx.fillStyle = 'rgba(255,255,255,0.32)';
+      ctx.fillRect(-6.5, -4.6, 1.5, 1.5); ctx.fillRect(-3, -4.6, 1.5, 1.5);
+      ctx.fillRect(-6.5, 3.2, 1.5, 1.5); ctx.fillRect(-3, 3.2, 1.5, 1.5);
       // Наплечники.
       ctx.fillStyle = amber;
       ctx.fillRect(-10, -11.5, 6, 3.6); ctx.fillRect(-10, 7.9, 6, 3.6);
@@ -2443,6 +2522,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.strokeStyle = main; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.moveTo(11, -1.5); ctx.lineTo(-5, -9); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(11, 1.5); ctx.lineTo(-5, 9); ctx.stroke();
+      topLight(ctx, [15, 0, -6, -11, -11, -11, -3, 0, -11, 11, -6, 11], 2, 0.4);
       // Хребет и кабина.
       ctx.fillStyle = main;
       ctx.fillRect(-9, -1.4, 14, 2.8);
@@ -2471,6 +2551,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.globalAlpha = 1;
       ctx.fillStyle = hull;
       rr(ctx, -14, -11, 28, 22, 6); ctx.fill();
+      topLightRect(ctx, -14, -11, 28, 22, 0.4);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       // Отвал с шевроном.
@@ -2481,6 +2562,7 @@ export function drawUnit(ctx, u, rx, ry) {
       // Башня с заклёпками.
       ctx.fillStyle = hull2;
       rr(ctx, -9, -7, 18, 14, 5); ctx.fill();
+      topLightRect(ctx, -9, -7, 18, 14, 0.46, 1.8);
       ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.fillStyle = main;
@@ -2513,6 +2595,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.globalAlpha = 1;
       ctx.fillStyle = hull;
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+      topLightEllipse(ctx, 0, 0, 10, 10, 0.42, 2.2);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = main; ctx.lineWidth = 2.4;
@@ -2541,6 +2624,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillRect(-3.5, -10.4, 2.4, 2.8); ctx.fillRect(-3.5, 7.6, 2.4, 2.8);
       ctx.fillStyle = hull;
       rr(ctx, -11, -8, 19, 16, 5); ctx.fill();
+      topLightRect(ctx, -11, -8, 19, 16, 0.42);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       ctx.fillStyle = hull2;
@@ -2564,6 +2648,7 @@ export function drawUnit(ctx, u, rx, ry) {
       // Следопыт: клин-ховер без пушек, мачта-антенна, парящий дрон-точка.
       ctx.fillStyle = hull;
       poly(ctx, [12, 0, -8, -8, -4, 0, -8, 8]); ctx.fill();
+      topLight(ctx, [12, 0, -8, -8, -4, 0, -8, 8], 1.8, 0.44);
       ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
       ctx.strokeStyle = main; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, -6); ctx.moveTo(9, 0); ctx.lineTo(-6, 6); ctx.stroke();
@@ -2601,6 +2686,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.moveTo(-14, 7); ctx.lineTo(-19, 11); ctx.stroke();
       ctx.fillStyle = hull;
       rr(ctx, -14, -7.5, 26, 15, 4); ctx.fill();
+      topLightRect(ctx, -14, -7.5, 26, 15, 0.4);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       // Барабан боепитания с янтарными секторами.
