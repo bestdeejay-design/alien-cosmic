@@ -186,5 +186,14 @@ try {
   err('sim_menu упал (см. вывод выше)');
 }
 
+// 11) sim_raid — R0: постоянная домашняя база, loadout 1–5, детерминизм seed и петля рейда.
+console.log('\n[11] sim_raid (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_raid.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_raid прошёл');
+} catch (e) {
+  err('sim_raid упал (см. вывод выше)');
+}
+
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
 process.exit(failed);
