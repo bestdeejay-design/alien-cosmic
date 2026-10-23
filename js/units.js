@@ -1998,6 +1998,16 @@ export function drawUnit(ctx, u, rx, ry) {
   const bone = '#bcc7ae';       // рога и клыки
   const outline = isP ? '#081418' : '#2a1113'; // контур силуэта
   const alien = u.faction === 'alien';
+  // Полировка: блик и заклёпка для читаемости материала (DESIGN_SYSTEM §5).
+  const spec = (x,y,rx,ry,a=0.32) => {
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fill();
+  };
+  const rivet = (x,y) => {
+    ctx.fillStyle = isP ? '#6a8a92' : '#c7a8b8';
+    ctx.beginPath(); ctx.arc(x,y,0.9,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth=0.6; ctx.stroke();
+  };
 
   // Тень под корпусом.
   ctx.fillStyle = 'rgba(0,8,13,0.47)';
@@ -2067,6 +2077,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(7, 0, 2.4 + pulse * 0.9, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+      spec(2, -4, 2, 1, 0.18);
     } else if (u.type === 'marine') {
       // Кристожал: капля-тело, гребень из 5 шипов, пасть с глоткой, хвост.
       ctx.strokeStyle = dark; ctx.lineWidth = 2.5;
@@ -2099,6 +2110,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(8.5, 0, 1.6 + pulse * 0.7, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+      spec(-2, -4, 2, 1, 0.18);
     } else if (u.type === 'buggy') {
       // Скользень: поджарый бегун — длинные лапы в шаге, голова с 3 глазами.
       ctx.strokeStyle = dark; ctx.lineWidth = 2.6;
@@ -2405,6 +2417,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = bright;
       ctx.fillRect(-1, -1.4 + sway * 0.4, 6.5, 2.8);
       ctx.shadowBlur = 0;
+      spec(-5, -3, 2, 1, 0.22); rivet(-8, -7); rivet(-8, 7);
     } else if (u.type === 'buggy') {
       // Скиф: стрела с кабиной, спарка носовых пушек, пламя движков.
       const fl = (4 + 8 * flick) * eng;
@@ -2441,6 +2454,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(-4, 0, 2 + pulse * 0.7, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+      spec(2, -2, 2.5, 1.2, 0.2); rivet(-9, -9); rivet(-9, 9);
     } else if (u.type === 'tank') {
       // Бастион: широкий корпус на юбках, башня, спарка с откатом, отвал.
       ctx.fillStyle = hull;
@@ -2482,6 +2496,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(-3, 0, 2.6 + pulse * 0.8, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+      spec(-6, -5, 3, 1.2, 0.2); rivet(-10, -9); rivet(-10, 9);
       ctx.fillStyle = amber;
       ctx.fillRect(-15.5, -4, 2.2, 3); ctx.fillRect(-15.5, 1, 2.2, 3);
     } else if (u.type === 'medic') {
@@ -2511,6 +2526,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.moveTo(-7, -7); ctx.lineTo(-10, -10); ctx.stroke();
       ctx.fillStyle = amber;
       ctx.beginPath(); ctx.arc(-10.5, -10.5, 1.5, 0, Math.PI * 2); ctx.fill();
+      spec(-3, -3, 2, 1, 0.2);
     } else if (u.type === 'flamer') {
       // Плазмер: приземистый корпус, баки, раскалённое сопло-жерло.
       ctx.fillStyle = '#4a2c22';
@@ -2540,6 +2556,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = heat;
       ctx.beginPath(); ctx.arc(18.5, 0, 1.6 + heatGlow * 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
+      spec(-5, -4, 2, 1, 0.18); rivet(-9, -6); rivet(-9, 6);
     } else if (u.type === 'scout') {
       // Следопыт: клин-ховер без пушек, мачта-антенна, парящий дрон-точка.
       ctx.fillStyle = hull;
@@ -2564,6 +2581,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = heat; ctx.globalAlpha = 0.7;
       poly(ctx, [-8, -3, -8 - 4 * eng, 0, -8, 3]); ctx.fill();
       ctx.globalAlpha = 1;
+      spec(4, -2, 2, 1, 0.18);
     } else {
       // Мортира «Нова»: длинная платформа, барабан, поднятый ствол.
       ctx.fillStyle = hull;

@@ -454,6 +454,9 @@ function hull(ctx, x, y, w, h, lift, cFound, cFace, cFaceDark, cRoof) {
   ctx.fillRect(rx + rw - 5, ry, 5, rh);
   ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.fillRect(rx, ry, rw, 2);
+  // Полировка: блик на верхней кромке крыши
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(rx + 6, ry + 6, rw - 12, 2);
   ctx.strokeStyle = cFound; ctx.lineWidth = 1.5;
   ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
   return { rx, ry, rw, rh, fx, fy, fw, fh };
