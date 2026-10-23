@@ -435,6 +435,8 @@ function bshadow(ctx, x, y, w, h, dx = 7, dy = 10, a = 0.3) {
 // Экструзия человеческого корпуса: фундамент → фасад → крыша.
 // Возвращает { rx, ry, rw, rh } — прямоугольник крыши под детали,
 // и { fx, fy, fw, fh } — фасад.
+// Свет сверху-слева: у крыши яркая кромка сверху и световая грань слева,
+// справа и снизу — тень. Без этого корпус читается плоским «чипом».
 function hull(ctx, x, y, w, h, lift, cFound, cFace, cFaceDark, cRoof) {
   ctx.fillStyle = cFound;
   rr(ctx, x, y, w, h, 4); ctx.fill();
@@ -450,26 +452,48 @@ function hull(ctx, x, y, w, h, lift, cFound, cFace, cFaceDark, cRoof) {
   const rx = x + 2, ry = y + 2 - lift, rw = w - 4, rh = h - 2;
   ctx.fillStyle = cRoof;
   ctx.fillRect(rx, ry, rw, rh);
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
   ctx.fillRect(rx + rw - 5, ry, 5, rh);
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.fillRect(rx, ry, rw, 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.26)';
+  ctx.fillRect(rx, ry, 2, rh);
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(rx, ry + rh - 2, rw, 2);
   ctx.strokeStyle = cFound; ctx.lineWidth = 1.5;
   ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
   return { rx, ry, rw, rh, fx, fy, fw, fh };
 }
 
-// Сетка швов на крыше.
+// Гелиос: приподнятый блок на крыше (второй этап/руб) — тот же свет,
+// что и у hull, но компактнее: корпус + фасад + крышка.
+function roofBlock(ctx, x, y, w, h, lift, cFound, cFace, cFaceDark, cRoof) {
+  const R = hull(ctx, x, y, w, h, lift, cFound, cFace, cFaceDark, cRoof);
+  roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 3, 2, 'rgba(255,255,255,0.16)');
+  return R;
+}
+
+// Сетка швов на крыше: тёмный шов + световая грань — панель читается
+// объёмом, а крыша не выглядит плоской заливкой.
 function roofPanels(ctx, rx, ry, rw, rh, nx, ny, color) {
-  ctx.strokeStyle = color; ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 1; i < nx; i++) {
-    ctx.moveTo(rx + (rw * i) / nx, ry + 3); ctx.lineTo(rx + (rw * i) / nx, ry + rh - 3);
-  }
-  for (let i = 1; i < ny; i++) {
-    ctx.moveTo(rx + 3, ry + (rh * i) / ny); ctx.lineTo(rx + rw - 3, ry + (rh * i) / ny);
-  }
-  ctx.stroke();
+  ctx.save();
+  ctx.lineWidth = 1;
+  const seam = (c, d) => {
+    ctx.strokeStyle = c;
+    ctx.beginPath();
+    for (let i = 1; i < nx; i++) {
+      const x = rx + (rw * i) / nx + d;
+      ctx.moveTo(x, ry + 3); ctx.lineTo(x, ry + rh - 3);
+    }
+    for (let i = 1; i < ny; i++) {
+      const y = ry + (rh * i) / ny + d;
+      ctx.moveTo(rx + 3, y); ctx.lineTo(rx + rw - 3, y);
+    }
+    ctx.stroke();
+  };
+  seam(color, 0.5);
+  seam('rgba(255,255,255,0.25)', -0.5);
+  ctx.restore();
 }
 
 // Ряд окон; lit[i] — горит ли i-е (детерминировано).
@@ -595,6 +619,83 @@ function teethRing(ctx, x, y, ringR, toothL, ang, spread, n, color) {
   }
 }
 
+// ------------------------------------------------------------
+// Общие детали «продуктового» вида (шлифовка #31).
+// Свет сверху-слева — канон DESIGN_SYSTEM.md §1: у всего объёмного
+// есть кромка света и притемнённый низ, иначе корпус читается плоским.
+// ------------------------------------------------------------
+
+// Кромка света: белая линия по верху плиты + тень по низу.
+function rim(ctx, x, y, w, h, a = 0.5) {
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(x, y, w, 1.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.fillRect(x, y + h - 1.5, w, 1.5);
+}
+
+// Гелиос: светящееся окно «Рубежа» — подложка, teal-свечение, блик сверху.
+function glowWin(ctx, x, y, w, h, on, t, seed) {
+  ctx.fillStyle = 'rgba(8,18,22,0.85)';
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  const k = on ? 0.72 + 0.28 * Math.sin(t * 2.2 + seed) : 0.22;
+  ctx.save();
+  ctx.shadowColor = '#7df3e2';
+  ctx.shadowBlur = 6;
+  ctx.globalAlpha = k;
+  ctx.fillStyle = '#7df3e2';
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillRect(x, y, w, 1);
+}
+
+// Гелиос: ховер-подиум — плита со струями тяги, выглядывающими из-под корпуса.
+// Техника Гелиоса «висит»: без этого корпус выглядит приклеенным к земле.
+function hoverPad(ctx, cx, cy, rx, ry, color, t, seed) {
+  ctx.fillStyle = 'rgba(6,14,18,0.6)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 1, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(cx, cy + 1, rx, ry, 0, Math.PI, Math.PI * 2); ctx.stroke();
+  const k = 0.55 + 0.45 * Math.sin(t * 3 + seed);
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.35 + 0.35 * k;
+  ctx.fillStyle = color;
+  for (let i = 0; i < 3; i++) {
+    const jx = cx - rx * 0.62 + i * rx * 0.62;
+    ctx.beginPath(); ctx.ellipse(jx, cy + 4, 3.4, 2 + k, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Кхарид: жилы — дуги от центра кургана к краю (сосущая сеть плоти).
+function veins(ctx, cx, cy, rx, ry, n, seed, color) {
+  ctx.strokeStyle = color || 'rgba(26,7,15,0.5)';
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + seed;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * rx * 0.24, cy + Math.sin(a) * ry * 0.24);
+    ctx.quadraticCurveTo(
+      cx + Math.cos(a + 0.38) * rx * 0.68, cy + Math.sin(a + 0.38) * ry * 0.68,
+      cx + Math.cos(a) * rx * 0.94, cy + Math.sin(a) * ry * 0.94);
+    ctx.stroke();
+  }
+}
+
+// Кхарид: капля слизи — свисает и дрожит (живое, а не нарисованное).
+function slime(ctx, x, y, s, t, seed) {
+  const d = Math.sin(t * 1.8 + seed) * 1.2;
+  ctx.fillStyle = 'rgba(168,255,158,0.7)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + d, s * 0.55, s + d * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.arc(x - s * 0.18, y + d - s * 0.3, Math.max(0.7, s * 0.16), 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // Пакет E.2: бейджи над зданием (иконка 20px + полоса прогресса 44px),
 // гарнизон — бейдж «N/M» в правом верхнем углу корпуса. Слоты идут вверх
 // от HP-полосы, друг друга не перекрывают.
@@ -695,46 +796,74 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
   }
 
   if (faction === 'human') {
-    // ================= ЛЮДИ: броня, стекло, зебра =================
+    // ================= ГЕЛИОС: гранёная сталь, teal-окна, янтарь =================
+    // Один язык на все 8 зданий: свет сверху-слева (кромка света + тёмный
+    // низ), teal-окна «Рубежа», янтарные акценты и «зебра», корпус ~90%
+    // футпринта, под корпусом — ховер-подиум со струями тяги.
     const FOUND = '#23262c', FACE = '#596069', FACED = '#3b4047', ROOF = '#a7aeb6';
+    const STEEL = '#7d858e', STEEL_D = '#565c64', STEEL_L = '#c3c9d1';
+    const WIN = '#7df3e2', AMBER = '#f3c579', ORANGE = '#e8913a';
+
     if (b.type === 'cc') {
-      // Командный центр 4×3: главный корпус + купол с радаром + башенки.
-      bshadow(ctx, px, py, w, h);
+      // Командный центр 4×3: подиум → корпус → рубов на крыше → купол-радар.
+      bshadow(ctx, px, py, w, h, 8, 12, 0.4);
+      hoverPad(ctx, cx, py + h - 3, w * 0.52, 7, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 3, py + 6, w - 6, h - 6, 13, FOUND, FACE, FACED, ROOF);
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 5, 3, '#7c848d');
+      rim(ctx, R.rx, R.ry, R.rw, 2);
+      // Флигели по бокам: teal-полоса окон + янтарная кромка под ней.
+      for (const s of [-1, 1]) {
+        const wx = cx + s * (w * 0.33) - 9, wy = R.ry + R.rh * 0.56;
+        glowWin(ctx, wx, wy, 18, 5, true, t, bid + s);
+        ctx.fillStyle = AMBER;
+        ctx.fillRect(wx, wy + 7, 18, 2);
+      }
+      // Руб на крыше: команда сидит выше цеха — силуэт читается с дальности.
+      const B2 = roofBlock(ctx, cx - 26, R.ry + 6, 52, 26, 9, FOUND, FACE, FACED, ROOF);
+      glowWin(ctx, cx - 17, B2.fy + 3, 14, 4, true, t, bid);
+      glowWin(ctx, cx + 3, B2.fy + 3, 14, 4, true, t, bid + 1);
       // Центральный купол командования + вращающийся радар.
-      dome(ctx, cx, R.ry + R.rh * 0.42, 13, '#1d3a44', '#2e7d8c', '#9be8f5');
+      const domeX = cx, domeY = B2.ry - 2;
+      ctx.fillStyle = STEEL_D;
+      ctx.beginPath(); ctx.arc(domeX, domeY + 4, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath(); ctx.arc(domeX, domeY + 4, 17, Math.PI, Math.PI * 2); ctx.fill();
+      dome(ctx, domeX, domeY, 15, '#1d3a44', '#2e7d8c', '#9be8f5');
       ctx.save();
-      ctx.translate(cx, R.ry + R.rh * 0.42); ctx.rotate(t * 1.4);
+      ctx.translate(domeX, domeY);
+      ctx.rotate(t * 1.4);
       ctx.fillStyle = '#d9fbff';
       ctx.fillRect(0, -1.2, 12, 2.4);
       ctx.restore();
       ctx.fillStyle = '#e8f6ff';
-      ctx.beginPath(); ctx.arc(cx, R.ry + R.rh * 0.42, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(domeX, domeY, 2, 0, Math.PI * 2); ctx.fill();
       // Угловые башенки с красными огнями.
       for (const [tx, ty] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
         const bx = R.rx + 6 + tx * (R.rw - 18), by = R.ry + 6 + ty * (R.rh - 14);
-        ctx.fillStyle = '#7d858e'; ctx.fillRect(bx, by - 4, 12, 12);
-        ctx.fillStyle = '#565c64'; ctx.fillRect(bx, by + 6, 12, 2);
-        ctx.fillStyle = '#c3c9d1'; ctx.fillRect(bx, by - 4, 12, 3);
+        ctx.fillStyle = STEEL; ctx.fillRect(bx, by - 4, 12, 12);
+        ctx.fillStyle = STEEL_L; ctx.fillRect(bx, by - 4, 12, 3);
+        ctx.fillStyle = STEEL_D; ctx.fillRect(bx, by + 6, 12, 2);
         ctx.fillStyle = blink ? '#ff5f57' : '#5a2020';
         ctx.beginPath(); ctx.arc(bx + 6, by - 6, 2.2, 0, Math.PI * 2); ctx.fill();
       }
       // Ворота с пандусом-зеброй и окна фасада.
       hazard(ctx, cx - 13, R.fy + R.fh - 7, 26, 7);
       ctx.fillStyle = '#14171b'; ctx.fillRect(cx - 9, R.fy + 1, 18, R.fh - 7);
-      winRow(ctx, R.fx + 6, R.fy + 2, 3, 7, 4, 4, '#7df3e2', '#23383c', bid);
-      winRow(ctx, R.fx + R.fw - 6 - 3 * 11, R.fy + 2, 3, 7, 4, 4, '#7df3e2', '#23383c', bid + 2);
-      // Мачта стоит на крыше у левого края.
+      winRow(ctx, R.fx + 6, R.fy + 2, 3, 7, 4, 4, WIN, '#23383c', bid);
+      winRow(ctx, R.fx + R.fw - 6 - 3 * 11, R.fy + 2, 3, 7, 4, 4, WIN, '#23383c', bid + 2);
+      // Мачта с маяком стоит на крыше у левого края.
       mast(ctx, R.rx + 5, R.ry + 14, 14, blink);
     } else if (b.type === 'depot') {
       // Дом 2×2: жилой блок, тёплые окна, дым из трубы, ящики.
       bshadow(ctx, px, py, w, h, 6, 8);
+      hoverPad(ctx, cx, py + h - 2, w * 0.5, 5, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 4, py + 5, w - 8, h - 5, 11, FOUND, '#8d8272', '#5c554a', '#b9ac93');
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 2, 2, '#8a7f68');
+      rim(ctx, R.rx, R.ry, R.rw, 2, 0.4);
       // Труба с дымом.
       ctx.fillStyle = '#6e6759'; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 14);
       ctx.fillStyle = '#4a443a'; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 3);
+      ctx.fillStyle = STEEL_L; ctx.fillRect(R.rx + 6, R.ry - 8, 8, 1.5);
       smoke(ctx, R.rx + 10, R.ry - 8, t, (bid % 5) * 0.2);
       // Световой люк на крыше.
       ctx.fillStyle = '#ffd489'; ctx.fillRect(R.rx + R.rw - 20, R.ry + 8, 12, 8);
@@ -750,14 +879,16 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     } else if (b.type === 'barracks') {
       // Казарма 3×2: длинный корпус, ворота с шевроном, флаг, прожектор.
       bshadow(ctx, px, py, w, h);
+      hoverPad(ctx, cx, py + h - 2, w * 0.5, 6, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 3, py + 6, w - 6, h - 6, 11, FOUND, FACE, FACED, ROOF);
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 4, 2, '#7c848d');
+      rim(ctx, R.rx, R.ry, R.rw, 2);
       // Вентблоки на крыше.
       for (let i = 0; i < 2; i++) {
         const vx = R.rx + 12 + i * 34;
-        ctx.fillStyle = '#7d858e'; ctx.fillRect(vx, R.ry + 6, 16, 10);
-        ctx.fillStyle = '#c3c9d1'; ctx.fillRect(vx, R.ry + 6, 16, 3);
-        ctx.fillStyle = '#3b4047';
+        ctx.fillStyle = STEEL; ctx.fillRect(vx, R.ry + 6, 16, 10);
+        ctx.fillStyle = STEEL_L; ctx.fillRect(vx, R.ry + 6, 16, 3);
+        ctx.fillStyle = FACED;
         for (let s = 0; s < 3; s++) ctx.fillRect(vx + 2 + s * 5, R.ry + 11, 3, 3);
       }
       // Флаг на мачте: полотнище трепещет.
@@ -767,27 +898,32 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillStyle = '#2e7d8c';
       const wv = Math.sin(t * 6) * 2;
       poly(ctx, [flagX, flagBase - 24, flagX + 16, flagBase - 22 + wv, flagX, flagBase - 16]);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(flagX, flagBase - 24); ctx.lineTo(flagX + 16, flagBase - 22 + wv); ctx.stroke();
       // Ворота с шевроном + окна.
       ctx.fillStyle = '#14171b'; ctx.fillRect(cx - 11, R.fy, 22, R.fh - 1);
+      ctx.fillStyle = 'rgba(125,243,226,0.5)';
+      ctx.fillRect(cx - 11, R.fy + R.fh - 9, 22, 2);
       hazard(ctx, cx - 13, R.fy + R.fh - 5, 26, 5);
-      ctx.strokeStyle = '#e8913a'; ctx.lineWidth = 2;
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(cx - 6, R.fy + 4); ctx.lineTo(cx, R.fy + 1); ctx.lineTo(cx + 6, R.fy + 4); ctx.stroke();
-      winRow(ctx, R.fx + 5, R.fy + 2, 2, 7, 4, 4, '#7df3e2', '#23383c', bid);
-      winRow(ctx, R.fx + R.fw - 5 - 2 * 11, R.fy + 2, 2, 7, 4, 4, '#7df3e2', '#23383c', bid + 1);
+      winRow(ctx, R.fx + 5, R.fy + 2, 2, 7, 4, 4, WIN, '#23383c', bid);
+      winRow(ctx, R.fx + R.fw - 5 - 2 * 11, R.fy + 2, 2, 7, 4, 4, WIN, '#23383c', bid + 1);
       // Прожекторная мачта у угла.
       ctx.strokeStyle = '#3a3f46'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(R.rx + 4, R.fy + R.fh); ctx.lineTo(R.rx + 4, R.fy - 14); ctx.stroke();
       ctx.fillStyle = '#fff3c4';
       ctx.beginPath(); ctx.arc(R.rx + 4, R.fy - 15, 2.6, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,243,196,0.18)';
-      poly(ctx, [R.rx + 4, R.fy - 15, R.rx - 12, R.fy + 12, R.rx + 18, R.fy + 12]);
+      poly(ctx, [R.rx + 4, R.fy - 15, R.rx - 12, R.fy + 12, R.rx + 18, R.fy + 12]); ctx.fill();
     } else if (b.type === 'turret') {
       // «Гадюка» 1×1: бетонный шестигранник + спаренная пушка-клыки.
       const bx = cx, by = cy + 3;
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.ellipse(bx + 3, by + 9, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
       // Основание-шестигранник.
-      ctx.fillStyle = '#7d858e';
+      ctx.fillStyle = STEEL;
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = Math.PI / 6 + i * Math.PI / 3;
@@ -796,30 +932,41 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       }
       ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2; ctx.stroke();
+      // Кромка света по верхней грани + teal-огонь по основанию.
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(bx - 11, by - 12, 22, 1.5);
+      ctx.save();
+      ctx.shadowColor = WIN; ctx.shadowBlur = 6;
+      ctx.globalAlpha = 0.5 + 0.3 * pulse;
+      ctx.fillStyle = WIN;
+      ctx.fillRect(bx - 9, by + 8, 18, 2);
+      ctx.restore();
       ctx.fillStyle = '#a7aeb6';
       ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, Math.PI * 2); ctx.fill();
-      // Башня со спаренными стволами — clearly пушка.
+      ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, 0, Math.PI * 2); ctx.stroke();
+      // Башня со спаренными стволами — явно пушка.
       ctx.save();
       ctx.translate(bx, by); ctx.rotate(ang);
       const rec = recoil * 3;
-      ctx.fillStyle = '#3b4047';
+      ctx.fillStyle = FACED;
       ctx.fillRect(-4 - rec, -6.5, 21, 4);
       ctx.fillRect(-4 - rec, 2.5, 21, 4);
       ctx.fillStyle = '#22252a';
       ctx.fillRect(14 - rec, -7.5, 4, 6);
       ctx.fillRect(14 - rec, 1.5, 4, 6);
-      ctx.fillStyle = '#565c64';
+      ctx.fillStyle = STEEL_D;
       ctx.fillRect(-4 - rec, -6.5, 21, 1.2);
       ctx.fillRect(-4 - rec, 2.5, 21, 1.2);
       // Вспышка выстрела.
       if (recoil > 0.75) {
         ctx.fillStyle = 'rgba(255,220,140,' + (0.9 * recoil).toFixed(2) + ')';
-        poly(ctx, [19 - rec, 0, 26 - rec, -4, 26 - rec, 4]);
+        poly(ctx, [19 - rec, 0, 26 - rec, -4, 26 - rec, 4]); ctx.fill();
       }
       ctx.fillStyle = '#596069';
       ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#22252a'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       // Барабан и прицел.
       ctx.fillStyle = '#2e7d8c';
@@ -832,18 +979,25 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillRect(px, py + 4, w, h - 4);
       ctx.fillStyle = '#8f979f';
       ctx.fillRect(px, py + 4, w, 12);
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
       ctx.fillRect(px, py + 4, w, 2);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(px, py + h - 4, w, 4);
+      // Верхний прилив: светлая грань брони — стена читается с дальности.
+      ctx.fillStyle = '#c3c9d1';
+      ctx.fillRect(px, py + 4, w, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(px, py + 4, w, 1.5);
       // Заклёпки двумя рядами и шеврон по центру.
       ctx.fillStyle = '#2b2e33';
       for (let i = 0; i < 4; i++) {
-        ctx.beginPath(); ctx.arc(px + 5 + i * 8, py + 9, 1.4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px + 5 + i * 8, py + 21, 1.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + 5 + i * 8, py + 10, 1.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + 5 + i * 8, py + 22, 1.4, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.strokeStyle = '#e8913a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(cx - 5, py + 24); ctx.lineTo(cx, py + 19); ctx.lineTo(cx + 5, py + 24); ctx.stroke();
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(cx - 6, py + 26); ctx.lineTo(cx, py + 19); ctx.lineTo(cx + 6, py + 26); ctx.stroke();
+      ctx.fillStyle = 'rgba(125,243,226,0.55)';
+      ctx.fillRect(cx - 2, py + 27, 4, 2);
       // Угловые столбы — швы между секциями.
       ctx.fillStyle = '#33373d';
       ctx.fillRect(px, py + 4, 3, h - 4);
@@ -853,8 +1007,10 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     } else if (b.type === 'bunker') {
       // Бункер 2×2: приземистый дот, мешки, бойница со стволами гарнизона.
       bshadow(ctx, px, py, w, h, 6, 8);
+      hoverPad(ctx, cx, py + h - 2, w * 0.5, 5, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 3, py + 7, w - 6, h - 7, 12, FOUND, '#6a6f76', '#43484f', '#989fa7');
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 3, 2, '#767c84');
+      rim(ctx, R.rx, R.ry, R.rw, 2);
       // Мешки с песком двумя рядами на крыше.
       for (let r = 0; r < 2; r++) {
         for (let i = 0; i < 5; i++) {
@@ -865,13 +1021,13 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         }
       }
       // Люк и перископ.
-      ctx.fillStyle = '#3b4047';
+      ctx.fillStyle = FACED;
       ctx.beginPath(); ctx.arc(R.rx + R.rw - 10, R.ry + R.rh - 8, 5, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#22252a'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(R.rx + R.rw - 10, R.ry + R.rh - 8, 5, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = '#22252a'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(R.rx + 8, R.ry + R.rh - 4); ctx.lineTo(R.rx + 8, R.ry + R.rh - 14); ctx.stroke();
-      ctx.fillStyle = '#7df3e2'; ctx.fillRect(R.rx + 8, R.ry + R.rh - 16, 4, 3);
+      ctx.fillStyle = WIN; ctx.fillRect(R.rx + 8, R.ry + R.rh - 16, 4, 3);
       // Бойница: по стволу на бойца гарнизона.
       ctx.fillStyle = '#14171b';
       ctx.fillRect(R.fx + 4, R.fy + 2, R.fw - 8, 6);
@@ -880,6 +1036,8 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         const sx = R.fx + 10 + i * ((R.fw - 20) / Math.max(1, n - 1 || 1));
         ctx.fillStyle = '#22252a';
         ctx.fillRect(sx - 1.5, R.fy + 3, 3, 8);
+        ctx.fillStyle = '#565c64';
+        ctx.fillRect(sx - 1.5, R.fy + 3, 3, 1.5);
       }
       if (!n) {
         ctx.fillStyle = 'rgba(125,243,226,0.5)';
@@ -888,13 +1046,17 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     } else if (b.type === 'factory') {
       // Завод 3×3: цех с фонарями, труба с дымом, горн, кран-балка.
       bshadow(ctx, px, py, w, h, 8, 11);
+      hoverPad(ctx, cx, py + h - 3, w * 0.52, 7, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 3, py + 8, w - 6, h - 8, 13, FOUND, FACE, FACED, '#9aa1a9');
+      rim(ctx, R.rx, R.ry, R.rw, 2);
       // Световые фонари цеха — три узкие светящиеся полосы в рамах.
       for (let i = 0; i < 3; i++) {
         const sx = R.rx + 12 + i * ((R.rw - 30) / 3);
         ctx.fillStyle = '#2b2e33'; ctx.fillRect(sx, R.ry + 8, 13, R.rh - 40);
         ctx.fillStyle = 'rgba(125,243,226,' + (0.55 + 0.3 * pulse).toFixed(2) + ')';
         ctx.fillRect(sx + 2, R.ry + 10, 9, R.rh - 44);
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillRect(sx + 2, R.ry + 10, 9, 1.5);
       }
       // Вентблоки и коллекторная труба вдоль низа крыши.
       for (let i = 0; i < 2; i++) {
@@ -908,19 +1070,26 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       const chX = R.rx + R.rw - 22;
       ctx.fillStyle = '#6a6f76'; ctx.fillRect(chX, R.ry - 34, 15, 42);
       ctx.fillStyle = '#43484f'; ctx.fillRect(chX, R.ry - 34, 15, 4);
-      ctx.fillStyle = '#e8913a'; ctx.fillRect(chX, R.ry - 20, 15, 4);
-      ctx.fillStyle = '#e8913a'; ctx.fillRect(chX, R.ry - 6, 15, 3);
+      ctx.fillStyle = '#a7aeb6'; ctx.fillRect(chX, R.ry - 34, 15, 1.5);
+      ctx.fillStyle = ORANGE; ctx.fillRect(chX, R.ry - 20, 15, 4);
+      ctx.fillStyle = ORANGE; ctx.fillRect(chX, R.ry - 6, 15, 3);
       smoke(ctx, chX + 7, R.ry - 36, t, (bid % 7) * 0.13);
       mast(ctx, chX + 7, R.ry - 34, 7, blink);
       // Горн: оранжевые окна на фасаде + ворота.
       for (let i = 0; i < 3; i++) {
         ctx.fillStyle = 'rgba(255,' + (140 + Math.round(60 * pulse)) + ',60,0.9)';
         ctx.fillRect(R.fx + 8 + i * 16, R.fy + 2, 10, 5);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(R.fx + 8 + i * 16, R.fy + 2, 10, 1);
       }
       hazard(ctx, R.fx + R.fw - 30, R.fy + R.fh - 6, 24, 6);
+      ctx.fillStyle = 'rgba(243,197,121,0.75)';
+      ctx.fillRect(R.fx, R.fy + R.fh - 3, R.fw, 2);
       // Кран-балка над воротами.
-      ctx.fillStyle = '#e8913a';
+      ctx.fillStyle = ORANGE;
       ctx.fillRect(R.fx + 6, R.fy - 6, R.fw - 12, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(R.fx + 6, R.fy - 6, R.fw - 12, 1);
       ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(R.fx + 6, R.fy - 6); ctx.lineTo(R.fx + 6, R.fy); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(R.fx + R.fw - 6, R.fy - 6); ctx.lineTo(R.fx + R.fw - 6, R.fy); ctx.stroke();
@@ -930,13 +1099,16 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     } else if (b.type === 'lab') {
       // Лаборатория 3×3: белый корпус, обсерватория, тарелка, чаны.
       bshadow(ctx, px, py, w, h, 8, 11);
+      hoverPad(ctx, cx, py + h - 3, w * 0.52, 7, COLORS.playerBright, t, bid);
       const R = hull(ctx, px + 3, py + 8, w - 6, h - 8, 13, FOUND, '#7d8590', '#4c525a', '#ccd2d9');
       roofPanels(ctx, R.rx, R.ry, R.rw, R.rh, 3, 3, '#a9b0b8');
+      rim(ctx, R.rx, R.ry, R.rw, 2, 0.6);
       // Обсерватория: купол со щелью телескопа.
       dome(ctx, R.rx + 22, R.ry + 24, 14, '#274b55', '#3f9aab', '#c2f2ff');
       ctx.save();
       ctx.translate(R.rx + 22, R.ry + 24); ctx.rotate(-0.5 + Math.sin(t * 0.5) * 0.25);
       ctx.fillStyle = '#12333c'; ctx.fillRect(-2, -14, 4, 16);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(-2, -14, 1.5, 16);
       ctx.restore();
       // Тарелка: качается, следя за небом.
       const dx = R.rx + R.rw - 24, dy = R.ry + 22;
@@ -952,34 +1124,39 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.beginPath(); ctx.ellipse(0, 0, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#4c525a'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -10); ctx.stroke();
-      ctx.fillStyle = '#e8913a';
+      ctx.fillStyle = ORANGE;
       ctx.beginPath(); ctx.arc(0, -10, 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      // Чаны с светящейся жижей.
+      // Чаны со светящейся жижей.
       for (let i = 0; i < 2; i++) {
         const vx = R.rx + 14 + i * 20, vy = R.ry + R.rh - 14;
         ctx.fillStyle = '#9aa1a9'; ctx.fillRect(vx, vy - 14, 14, 16);
+        ctx.fillStyle = '#c3c9d1'; ctx.fillRect(vx, vy - 14, 14, 2);
         ctx.fillStyle = 'rgba(126,255,190,' + (0.5 + 0.35 * pulse).toFixed(2) + ')';
         ctx.fillRect(vx + 2, vy - 12, 10, 6);
         ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 1.5; ctx.strokeRect(vx, vy - 14, 14, 16);
       }
       // Полоса окон и эмблема-атом на фасаде.
-      winRow(ctx, R.fx + 6, R.fy + 2, 5, 8, 4, 5, '#7df3e2', '#23383c', bid);
-      ctx.strokeStyle = '#e8913a'; ctx.lineWidth = 1.5;
+      winRow(ctx, R.fx + 6, R.fy + 2, 5, 8, 4, 5, WIN, '#23383c', bid);
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.ellipse(R.fx + R.fw - 12, R.fy + 6, 7, 3, 0.5, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.ellipse(R.fx + R.fw - 12, R.fy + 6, 7, 3, -0.5, 0, Math.PI * 2); ctx.stroke();
     }
   } else {
     // ================= КХАРИД: плоть, хитин, слизь =================
+    // Один язык на все 8 зданий: курган плоти с радиальным градиентом
+    // (свет сверху-слева), жилы, мембраны-мешки, костяные шипы, глаза-стражи,
+    // капли слизи. Ничего прямолинейного — только эллипсы и дуги.
     const FD = '#3d1c26', FM = '#71334a', FL = '#ab6072';
     if (b.type === 'cc') {
       // Гнездо-улей 4×3: великий курган, венец рогов, бьющееся сердце.
       mound(ctx, cx, cy + 4, w * 0.46, h * 0.44, FD, FM, FL);
-      // Венец рогов по верхней дуге.
+      veins(ctx, cx, cy + 4, w * 0.42, h * 0.4, 7, bid * 0.7);
+      // Венец рогов по верхней дуге: чем дальше от центра, тем длиннее.
       for (let i = 0; i < 5; i++) {
         const a = Math.PI * (1.15 + 0.7 * (i / 4));
-        const hx = cx + Math.cos(a) * w * 0.32, hy = cy + 4 + Math.sin(a) * h * 0.34;
-        spike(ctx, hx, hy, 9, 15 + (i % 2) * 5, '#2c141c', '#d9cfc0');
+        const hx = cx + Math.cos(a) * w * 0.33, hy = cy + 4 + Math.sin(a) * h * 0.35;
+        spike(ctx, hx, hy, 11, 18 + (i % 2) * 7, '#2c141c', '#d9cfc0');
       }
       // Сердце в полости: бьётся.
       const hb = 1 + 0.1 * Math.max(0, Math.sin(t * 5));
@@ -993,8 +1170,8 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillStyle = 'rgba(255,180,190,0.7)';
       ctx.beginPath(); ctx.ellipse(cx - 3, cy + 3, 3.5 * hb, 2.5 * hb, -0.4, 0, Math.PI * 2); ctx.fill();
       // Глаза-стражи и дыхательные щели.
-      aeye(ctx, cx - 30, cy - 6, 5);
-      aeye(ctx, cx + 30, cy - 6, 5);
+      aeye(ctx, cx - 25, cy - 6, 5);
+      aeye(ctx, cx + 25, cy - 6, 5);
       for (const sx of [-1, 1]) {
         const ex = cx + sx * 24, ey = cy + 18;
         ctx.fillStyle = '#1c0d12';
@@ -1012,9 +1189,13 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.fillStyle = '#a8ff9e';
         ctx.beginPath(); ctx.arc(tx, ty, 2, 0, Math.PI * 2); ctx.fill();
       }
+      // Слизь на рогах — улей «плачет» эргом.
+      slime(ctx, cx - w * 0.3, cy - h * 0.3, 2.4, t, bid);
+      slime(ctx, cx + w * 0.3, cy - h * 0.28, 2, t, bid + 1);
     } else if (b.type === 'depot') {
       // Нарост-кладовая 2×2: большая мешкообразная полость с зародышами.
       mound(ctx, cx, cy + 3, w * 0.44, h * 0.42, FD, FM, FL);
+      veins(ctx, cx, cy + 3, w * 0.4, h * 0.38, 6, bid * 0.9);
       // Главный мешок: полупрозрачная мембрана, внутри зёрна.
       const mx = cx - 4, my = cy + 1, mr = 15 * breathe;
       ctx.fillStyle = 'rgba(214,120,140,0.85)';
@@ -1037,11 +1218,13 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       }
       ctx.strokeStyle = '#d68a9a'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(mx + 8, my - 4); ctx.quadraticCurveTo(cx + 10, cy - 8, cx + 16, cy - 8); ctx.stroke();
+      slime(ctx, cx + 18, cy + 14, 2, t, bid + 2);
     } else if (b.type === 'barracks') {
       // Инкубатор 3×2: родильная яма, три яйца, кольцо зубов.
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.ellipse(cx + 4, cy + 12, w * 0.44, h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
       mound(ctx, cx, cy + 2, w * 0.46, h * 0.44, FD, FM, FL);
+      veins(ctx, cx, cy + 2, w * 0.42, h * 0.4, 6, bid * 0.5);
       // Яма выводка.
       ctx.fillStyle = '#200d14';
       ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.3, h * 0.26, 0, 0, Math.PI * 2); ctx.fill();
@@ -1050,6 +1233,16 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.strokeStyle = '#3f7a4a'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.3, h * 0.26, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
+      // Мембранная бахрома по краю ямы.
+      ctx.strokeStyle = 'rgba(217,207,192,0.35)'; ctx.lineWidth = 1.4;
+      for (let i = 0; i < 7; i++) {
+        const a = Math.PI * (0.1 + 0.8 * (i / 6));
+        const ex = cx + Math.cos(a) * w * 0.3, ey = cy + 3 + Math.sin(a) * h * 0.26;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex + Math.cos(a) * 5 + Math.sin(t * 2 + i) * 1.5, ey + Math.sin(a) * 4 + 2);
+        ctx.stroke();
+      }
       // Зубы венца вокруг ямы.
       teethRing(ctx, cx, cy + 3, w * 0.3 + 3, 6, -Math.PI / 2, Math.PI, 9, '#d9cfc0');
       // Три яйца; крайнее трескается и дрожит.
@@ -1076,6 +1269,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     } else if (b.type === 'turret') {
       // Жвала 1×1: стреляющая пасть с зубами, наводится на цель.
       mound(ctx, cx, cy + 2, 14, 12, FD, FM, FL);
+      veins(ctx, cx, cy + 2, 12, 10, 5, bid * 0.6);
       // Глаза на стебельках.
       for (const sx of [-1, 1]) {
         ctx.strokeStyle = FM; ctx.lineWidth = 2;
@@ -1100,6 +1294,8 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.fillStyle = 'rgba(168,255,158,' + (recoil * 0.9).toFixed(2) + ')';
         ctx.beginPath(); ctx.arc(px2, py2, 3, 0, Math.PI * 2); ctx.fill();
       }
+      // Слизь на жерлах.
+      slime(ctx, cx - 12, cy + 12, 1.8, t, bid);
     } else if (b.type === 'wall') {
       // Хитиновая стена 1×1 во весь тайл: крупная чешуя, живая жила.
       ctx.fillStyle = '#401f2a';
@@ -1119,12 +1315,15 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       // Жила по центру + шипики сверху.
       ctx.fillStyle = 'rgba(168,255,158,' + (0.65 + 0.3 * pulse).toFixed(2) + ')';
       ctx.fillRect(px, cy - 1.5, w, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(px, cy - 1.5, w, 1);
       for (let i = 0; i < 4; i++) spike(ctx, px + 5 + i * 8, py + 6, 4, 5, '#2c141c', '#d9cfc0');
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(px, py + h - 4, w, 4);
     } else if (b.type === 'bunker') {
       // Кокон 2×2: плетёное гнездо, щель с глазами гарнизона.
       mound(ctx, cx, cy + 3, w * 0.44, h * 0.42, '#4a2030', '#7d3a52', '#b96a80');
+      veins(ctx, cx, cy + 3, w * 0.4, h * 0.38, 6, bid * 0.8, 'rgba(30,8,18,0.45)');
       // Плетение: дуги волокон.
       ctx.strokeStyle = 'rgba(217,207,192,0.5)'; ctx.lineWidth = 1.6;
       for (let k = 0; k < 3; k++) {
@@ -1148,11 +1347,11 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.beginPath(); ctx.ellipse(cx, cy + 4, 12, 2.5, 0, 0, Math.PI * 2); ctx.fill();
       }
       // Капля слизи.
-      ctx.fillStyle = 'rgba(150,230,170,0.75)';
-      ctx.beginPath(); ctx.ellipse(cx + 14, cy + 18 + Math.sin(t * 2) * 1.5, 2.5, 4, 0, 0, Math.PI * 2); ctx.fill();
+      slime(ctx, cx + 14, cy + 18, 2.2, t, bid);
     } else if (b.type === 'factory') {
       // Яма выводка 3×3: кратер с кладкой, щупальца, светящаяся топь.
       mound(ctx, cx, cy + 3, w * 0.47, h * 0.45, FD, FM, FL);
+      veins(ctx, cx, cy + 3, w * 0.43, h * 0.41, 8, bid * 0.4);
       // Кратер.
       ctx.fillStyle = '#1c0d12';
       ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.28, h * 0.24, 0, 0, Math.PI * 2); ctx.fill();
@@ -1183,9 +1382,11 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.fillStyle = '#a8ff9e';
         ctx.beginPath(); ctx.arc(tipX, tipY, 2.2, 0, Math.PI * 2); ctx.fill();
       }
+      slime(ctx, cx - w * 0.36, cy + h * 0.34, 2.4, t, bid + 3);
     } else if (b.type === 'lab') {
       // Узел эволюции 3×3: витой шпиль, парящие осколки, полипы.
       mound(ctx, cx, cy + 8, w * 0.46, h * 0.4, FD, FM, FL);
+      veins(ctx, cx, cy + 8, w * 0.42, h * 0.36, 7, bid * 0.3);
       // Шпиль: широкие сужающиеся сегменты.
       const segs = 5, baseW = 34, segH = 12;
       let tipX = cx, tipY = cy;
@@ -1226,6 +1427,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.fillStyle = 'rgba(168,255,158,' + (0.55 + 0.3 * pulse).toFixed(2) + ')';
         ctx.beginPath(); ctx.arc(cx + ox, cy + 12 - s * 2, s, 0, Math.PI * 2); ctx.fill();
       }
+      slime(ctx, cx + w * 0.38, cy + h * 0.36, 2.2, t, bid + 5);
     }
   }
 
