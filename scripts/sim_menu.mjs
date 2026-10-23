@@ -162,7 +162,7 @@ await check('M7 secondary menu: Universe, Season 2 briefing and confirmed reset 
   assert(!el('codex-overlay').classList.contains('hidden'), 'Universe screen did not open');
   el('btn-codex-back').click();
   el('btn-season2').click();
-  assert(!el('brief-overlay').classList.contains('hidden') && el('brief-title').textContent === 'Чужие на пороге', 'Season 2 no longer opens the M1 briefing');
+  assert(!el('brief-overlay').classList.contains('hidden') && el('brief-title').textContent === 'Первый импульс', 'Season 2 no longer opens the M1 briefing');
   assert(!game.started, 'Season 2 launched without an explicit briefing confirmation');
   el('btn-brief-back').click();
   assert(!el('landing-page').classList.contains('hidden'), 'Season 2 briefing did not return to the landing page');

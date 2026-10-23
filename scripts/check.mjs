@@ -195,5 +195,14 @@ try {
   err('sim_season2 упал (см. вывод выше)');
 }
 
+// 12) sim_touch — общая обработка жестов, включая рамочное выделение.
+console.log('\n[12] sim_touch (вложенно):');
+try {
+  execFileSync('node', ['scripts/sim_touch.mjs'], { cwd: ROOT, stdio: 'inherit' });
+  ok('sim_touch прошёл');
+} catch (e) {
+  err('sim_touch упал (см. вывод выше)');
+}
+
 console.log(failed ? '\nПРОВЕРКА ПРОВАЛЕНА' : '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ');
 process.exit(failed);
