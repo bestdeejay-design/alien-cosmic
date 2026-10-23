@@ -2020,7 +2020,7 @@ export function drawUnit(ctx, u, rx, ry) {
 
   // Рендерное время анимации (на симуляцию не влияет).
   const t = performance.now() * 0.001 + u.id * 1.618;
-  const pulse = 0.5 + 0.5 * Math.sin(t * 3.4);       // пульс ядер 0..1
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2.85);      // пульс ядер 0..1 — 2.85 рад/с (DESIGN_SYSTEM §9)
   const flick = 0.72 + 0.28 * Math.sin(t * 23 + u.id); // мерцание тяги
   const step = u.moving ? Math.sin(t * 14) : 0;      // шаг лап на ходу
   const sway = Math.sin(t * 2.1) * 0.5;              // ленивое покачивание
@@ -2028,6 +2028,8 @@ export function drawUnit(ctx, u, rx, ry) {
   const recoil = u.cd > 0 ? Math.min(1, u.cd / cdMax) : 0; // 1 — только выстрелил
   const heatGlow = Math.max(pulse * 0.35, recoil);   // жар сопла/дула
   const eng = u.moving ? 1 : 0.45;                   // тяга двигателей
+  // Фракционная читаемость 0.2с — тонкая кромка стороны на верхней грани (геометрия+цвет).
+  // Углы vs эллипсы уже в силуэте, здесь — доп. сигнал стороны без лишнего blur.
 
   if (alien) {
     // ============ КХАРИД: кристаллическая органика ============
@@ -2620,6 +2622,11 @@ export function drawUnit(ctx, u, rx, ry) {
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     poly(ctx, [-6, -8.5, -4.4, -3.4, -6, -1]); ctx.fill();
   }
+  // Фракционная метка носа — читаемость стороны за 0.2 с (DESIGN_SYSTEM §2.1).
+  // Тонкий штрих в цвете стороны на носу (+X), поверх корпуса и груза.
+  ctx.fillStyle = bright; ctx.globalAlpha = 0.95;
+  ctx.fillRect(u.r * 0.45, -1.2, 3.5, 2.4);
+  ctx.globalAlpha = 1;
   if (u.flashT > 0) {
     ctx.fillStyle = `rgba(255,255,255,${u.flashT * 2.8})`;
     ctx.beginPath(); ctx.arc(0, 0, u.r + 2, 0, Math.PI * 2); ctx.fill();

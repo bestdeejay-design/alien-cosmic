@@ -1229,6 +1229,14 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
     }
   }
 
+  // Фракционная кромка на крыше — читаемость стороны за 0.2с (DESIGN_SYSTEM §2.1).
+  // Тонкая линия в цвете стороны на верхней грани, поверх корпуса.
+  if (!ghost && b.done !== false) {
+    ctx.fillStyle = faction === 'human' ? '#76e3d7' : '#9ff5b8';
+    ctx.globalAlpha = 0.92;
+    ctx.fillRect(cx - w * 0.42, py + 6, w * 0.84, 1.6);
+    ctx.globalAlpha = 1;
+  }
   // Призрак: цветная вуаль поверх силуэта.
   if (ghost || b.done === false) {
     ctx.globalAlpha = 1;
