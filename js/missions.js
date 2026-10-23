@@ -57,9 +57,10 @@ export function missionIndex(m) {
 // Фильтр меню стройки/производства: глобальный UNLOCK_AT + per-mission
 // запрет (banBuild №18). Уже построенное/очереди не трогает — только меню.
 export function isUnlocked(mission, type) {
+  // Scripted missions may live outside MISSIONS but still own build bans.
+  if ((mission && mission.banBuild || []).includes(type)) return false;
   const idx = missionIndex(mission);
-  if (idx < 0) return true; // скирмиш — всё открыто
-  if ((mission.banBuild || []).includes(type)) return false;
+  if (idx < 0) return true; // скирмиш/отдельный сценарий — всё остальное открыто
   return (UNLOCK_AT[type] === undefined ? -1 : UNLOCK_AT[type]) <= idx;
 }
 

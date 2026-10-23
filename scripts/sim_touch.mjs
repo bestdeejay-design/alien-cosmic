@@ -217,7 +217,7 @@ try {
   assert(game.touchHintShown === true, 'touchHintShown не взведён');
   const ui = await import('../js/ui.js');
   const msg = ui.toast.last ? String(ui.toast.last.msg) : '';
-  assert(msg.includes('Тап по карте') && !msg.includes('object Object'),
+  assert(msg.includes('Тап — приказ') && msg.includes('рамкой') && !msg.includes('object Object'),
     `текст тоста сломан: "${msg.slice(0, 60)}"`);
   pass('T11  подсказка жестов показана (один раз), текст тоста корректный');
 } catch (e) { fail('T11', e); }
@@ -501,6 +501,37 @@ try {
     'П1: hideTip не снимает таймер');
   pass('T23 пакет X: тач-пик транзиентен (таймер 5 c, тап мимо, disabled, пересборка)');
 } catch (e) { fail('T23', e); }
+
+// ---------- T24: box-select общей логики доступен в первой кампании ----------
+try {
+  const firstCampaign = missionsMod.MISSIONS[0];
+  game.startMission(firstCampaign);
+  const st = game.state;
+  const workers = st.units.filter((u) => u.side === 'player' && u.type === 'worker' && !u.dead);
+  assert(workers.length >= 3, 'в первой кампании нет рабочих для проверки рамки');
+  const base = st.map.bases.player.cc;
+  const setAt = (unit, tx, ty) => {
+    unit.x = (tx + 0.5) * 32; unit.y = (ty + 0.5) * 32;
+    unit.prevX = unit.x; unit.prevY = unit.y;
+    unit.path = null; unit.moving = false; unit.order = { kind: 'idle' };
+  };
+  setAt(workers[0], base.x + 5, base.y + 5);
+  setAt(workers[1], base.x + 7, base.y + 5);
+  setAt(workers[2], base.x + 10, base.y + 5);
+  const a = toScr(workers[0].x, workers[0].y);
+  const b = toScr(workers[1].x + 18, workers[1].y + 22);
+  fire('pointerdown', { pointerType: 'touch', pointerId: 901, clientX: a.x, clientY: a.y, cancelable: true, preventDefault() {} });
+  fire('pointermove', { pointerType: 'touch', pointerId: 901, clientX: b.x, clientY: b.y, cancelable: true, preventDefault() {} });
+  fire('pointerup', { pointerType: 'touch', pointerId: 901, clientX: b.x, clientY: b.y, cancelable: true, preventDefault() {} });
+  assert(st.selection.length === 2 && st.selection.includes(workers[0]) && st.selection.includes(workers[1]),
+    'touch drag не выделил обоих рабочих рамкой в первой кампании');
+  assert(!st.selection.includes(workers[2]), 'рамка выделила юнита за пределами прямоугольника');
+  const { default: ru } = await import('../locales/ru.js');
+  const { default: en } = await import('../locales/en.js');
+  assert(ru.messages.touchOrders.human.includes('рамкой'), 'RU touch-подсказка не называет выделение рамкой');
+  assert(en.messages.touchOrders.human.includes('box-select'), 'EN touch hint does not mention box selection');
+  pass('T24 общая touch-механика: drag выделяет группу в первой кампании, подсказка RU/EN объясняет рамку');
+} catch (e) { fail('T24', e); }
 
 // ---------- ИТОГ ----------
 console.log(failures.length

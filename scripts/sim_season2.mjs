@@ -1,11 +1,11 @@
 // ============================================================
-// sim_season2.mjs — smoke-тест сценарной миссии «Чужие на пороге».
-// Проверяет запуск из меню, героев/ауру, Тропы, следы, разделение
-// патруля, тупик, финал с капитаном Рейном и условия поражения.
+// sim_season2.mjs — smoke-тест новой обучающей миссии S2 M1.
+// Проверяет стартовый отряд, отключённый аванпост, активацию ретранслятора,
+// строительную зону, боевого героя, гарнизон и scripted-налёты.
 // Запуск: node scripts/sim_season2.mjs
 // ============================================================
 import './harness.mjs';
-import { el, endStatsHTML } from './harness.mjs';
+import { el } from './harness.mjs';
 
 const failures = [];
 function fail(phase, err) {
@@ -16,9 +16,11 @@ function pass(msg) { console.log(`PASS  ${msg}`); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
 
 await import('../js/game.js');
-const { SEASON2_M1, isOnSeason2Trail, updateSeason2Mission } = await import('../js/season2.js');
+const { SEASON2_M1, updateSeason2Mission, season2EndObjectives } = await import('../js/season2.js');
 const U = await import('../js/units.js');
+const B = await import('../js/buildings.js');
 const { TILE } = await import('../js/config.js');
+const { isUnlocked } = await import('../js/missions.js');
 const game = globalThis.game;
 if (!game) { console.log('FAIL  boot: window.game не создан'); process.exit(1); }
 const center = (tile) => (tile + 0.5) * TILE;
@@ -28,219 +30,187 @@ function move(unit, tx, ty) {
   unit.path = null; unit.moving = false;
   unit.order = { kind: 'idle' };
 }
-function rebuildGrid(st) {
-  game.grid.clear();
-  for (const unit of st.units) if (!unit.dead && !unit.garrison) game.grid.insert(unit);
+function freshMission() {
+  game.startMission(SEASON2_M1);
+  return game.state;
 }
+function createFinishedBuilding(st, type, tx, ty) {
+  const building = new B.Building(st, 'player', type, tx, ty, true);
+  st.map.markBuilding(building);
+  st.bcount.player++;
+  return building;
+}
+function openBuildSpot(st, type) {
+  const cfg = (awaitConfig)[type];
+  const zone = st.s2.buildZone;
+  for (let y = zone.y; y <= zone.y + zone.h - cfg.h; y++) {
+    for (let x = zone.x; x <= zone.x + zone.w - cfg.w; x++) {
+      let explored = true;
+      for (let dy = 0; dy < cfg.h; dy++) for (let dx = 0; dx < cfg.w; dx++) {
+        if (!st.fog.tileExplored(x + dx, y + dy)) explored = false;
+      }
+      if (explored && B.zoneAllows(st, x, y, cfg.w, cfg.h) && B.canPlace(st.map, x, y, cfg.w, cfg.h)) return { x, y };
+    }
+  }
+  throw new Error(`no open explored build tile for ${type}`);
+}
+const awaitConfig = (await import('../js/config.js')).BUILDINGS;
 
-// ---------- M1-1: лендинг → брифинг → старт миссии ----------
+// ---------- M1-1: запуск и штатный состав ----------
+let st, s2;
 try {
-  el('btn-season2').click();
-  assert(!el('brief-overlay').classList.contains('hidden'), 'кнопка Сезона 2 не открыла брифинг');
-  assert(el('brief-title').textContent === 'Чужие на пороге', 'в брифинге неверное название');
-  el('btn-brief-back').click();
-  assert(el('brief-overlay').classList.contains('hidden'), 'возврат не закрыл брифинг');
-  assert(!el('landing-page').classList.contains('hidden'), 'возврат из брифинга не вернул на лендинг');
-
-  el('btn-season2').click();
-  el('btn-brief-go').click();
-  assert(game.started && game.mission.id === 's2_1', 'брифинг не запустил S2 M1');
-  assert(game.state.factions.player === 'alien' && game.state.factions.enemy === 'human', 'неверные фракции');
-  assert(game.state.s2 && game.state.s2.patrol.length === 6, 'скриптовый патруль не создан');
-  assert(!game.state.buildings.some((building) => building.side === 'enemy'), 'враг получил обычную базу');
-  assert(game.state.units.some((unit) => unit.side === 'player' && unit.type === 'hero'), 'Тха-Рисса не появилась');
-  assert(game.state.units.some((unit) => unit.side === 'enemy' && unit.type === 'hero'), 'капитан Рейн не появился');
-  for (let i = 0; i < 4; i++) game.tick();
+  st = freshMission();
+  s2 = st.s2;
+  const count = (type) => st.units.filter((unit) => unit.side === 'player' && unit.type === type && !unit.dead).length;
+  assert(game.mission === SEASON2_M1 && game.mission.id === 's2_1', 'S2 M1 не запустилась');
+  assert(st.map.w === 48 && st.map.h === 48, 'карта не небольшая');
+  assert(st.factions.player === 'human' && st.factions.enemy === 'alien', 'неверные фракции');
+  assert(count('hero') === 1 && count('scout') === 1 && count('marine') === 3 && count('worker') === 2,
+    'неверный состав стартового отряда');
+  assert(st.buildings.filter((building) => building.side === 'enemy').length === 0, 'враг получил обычную базу');
+  assert(st.buildings.filter((building) => building.side === 'player' && building.type === 'cc').length === 1,
+    'на аванпосте нет существующего командного центра');
+  assert(s2.cc.s2Hidden && s2.cc.s2Offline && s2.cc.cfg.produces === null, 'командный центр должен быть скрыт, обесточен и не производить рабочих');
+  assert(st.minerals.player === 250 && st.buildZone === null, 'неверные стартовые ресурсы или ранняя зона стройки');
+  assert(s2.hero.cfg.dmg > 0 && s2.hero.cfg.projectile === 'bullet', 'герой не имеет боевой атаки');
+  assert(!B.zoneAllows(st, 22, 24, 3, 2), 'строительство доступно до включения ретранслятора');
+  const initialBuildings = st.buildings.length;
+  st.selection = [s2.workers[0]];
+  st.placing = { type: 'barracks', tx: 18, ty: 15 };
+  game.tryPlace(18, 15);
+  st.placing = null;
+  assert(st.buildings.length === initialBuildings, 'команда tryPlace строит до включения ретранслятора');
+  assert(!isUnlocked(SEASON2_M1, 'cc') && !isUnlocked(SEASON2_M1, 'turret') &&
+    isUnlocked(SEASON2_M1, 'barracks') && isUnlocked(SEASON2_M1, 'bunker') && isUnlocked(SEASON2_M1, 'wall'),
+    'неверные запреты/доступность построек');
   game.render(1);
-  pass('M1-1 меню/брифинг: стартует отдельная миссия за кхарид без базы противника');
-} catch (e) { fail('M1-1 menu/setup', e); }
+  pass('M1-1 старт: герой, Следопыт, 3 рейнджера, 2 сборщика и выключенная база');
+} catch (e) { fail('M1-1 setup', e); }
 
-// ---------- M1-2: первый след и три боевые стороны ауры ----------
+// ---------- M1-2: обнаружение аванпоста и активация героем ----------
 try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  const heroine = s2.heroine;
+  st = st || freshMission();
+  s2 = st.s2;
   const scout = s2.scout;
-  const marine = st.units.find((unit) => unit.side === 'player' && unit.type === 'marine');
-  assert(heroine && scout && marine, 'в стартовом отряде нет героя/Следопыта/морпеха');
-  s2.patrol[0].visible = true;
-  updateSeason2Mission(game, st);
-  assert(!s2.spotted, 'патруль найден до первой подсказки Следопыта');
-  s2.patrol[0].visible = false;
-
-  move(scout, 25, 38);
-  updateSeason2Mission(game, st);
-  assert(s2.foundTracks === 1, 'Следопыт не обнаружил первую улику');
-  assert(/по следам/.test(game.objectiveText()), 'HUD не переключился на поиск патруля');
-
-  // Обзор союзника растёт только внутри ауры Тха-Риссы.
-  move(heroine, 20, 20);
-  move(marine, 26, 20);
+  const hero = s2.hero;
+  assert(B.buildingAt(st, s2.cc.x, s2.cc.y) === null, 'скрытый командный центр доступен для клика до разведки');
+  move(scout, s2.relay.tx - 2, s2.relay.ty);
   st.fog.recompute(st);
-  assert(st.fog.tileVisible(34, 20), 'аура не добавила союзнику два тайла обзора');
-  heroine.dead = true;
-  st.fog.recompute(st);
-  assert(!st.fog.tileVisible(34, 20), 'обзор ауры остался после смерти героини');
-  heroine.dead = false;
-  st.fog.recompute(st);
-
-  // Боевой бонус активен внутри ауры и не применяется за её границей.
-  const target = s2.patrol[1];
-  move(target, 28, 20);
-  U.shoot(st, marine, target);
-  const boostedDamage = st.projectiles.at(-1).dmg;
-  assert(boostedDamage === Math.round(marine.cfg.dmg * 1.15), `неверный бонус урона ауры: ${boostedDamage}`);
-  move(marine, 40, 20);
-  move(target, 42, 20);
-  U.shoot(st, marine, target);
-  assert(st.projectiles.at(-1).dmg === marine.cfg.dmg, 'бонус урона действует вне ауры');
-
-  const repairGain = (withAura) => {
-    game.startMission(SEASON2_M1);
-    const repairState = game.state, rs2 = repairState.s2;
-    const worker = repairState.units.find((unit) => unit.side === 'player' && unit.type === 'worker');
-    const patient = repairState.units.find((unit) => unit.side === 'player' && unit.type === 'marine');
-    move(rs2.heroine, withAura ? 20 : 8, 20);
-    move(worker, 26, 20);
-    move(patient, 27, 20);
-    patient.hp = 10;
-    U.orderRepair(repairState, worker, patient);
-    for (let i = 0; i < 30; i++) game.tick();
-    return patient.hp - 10;
-  };
-  const auraRepair = repairGain(true), ordinaryRepair = repairGain(false);
-  assert(auraRepair > ordinaryRepair, `ремонт не ускоряется аурой: ${auraRepair} vs ${ordinaryRepair}`);
-  pass('M1-2 следы и аура: обзор, урон, ремонт и первая подсказка работают');
-} catch (e) { fail('M1-2 tracks/aura', e); }
-
-// ---------- M1-2b: реальный маршрут Следопыта открывает патруль ----------
-try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  U.orderMove(st, s2.scout, center(44), center(21));
-  for (let i = 0; i < 600 && !st.gameOver; i++) game.tick();
-  assert(s2.foundTracks === 3, `Следопыт не прошёл все три точки: ${s2.foundTracks}`);
-  assert(s2.spotted && s2.foundBeforeDeadline, 'маршрут не открыл патруль до срока');
-  assert(/· \d\d:\d\d$/.test(game.objectiveText()), 'после обнаружения нет оценки времени до гнезда');
-  assert(st.time < s2.findDeadline, `патруль найден поздно: ${st.time.toFixed(1)}с`);
-  pass('M1-2b маршрут: Следопыт проходит следы, раскрывает дозор и получает бонус до срока');
-} catch (e) { fail('M1-2b scout route', e); }
-
-// ---------- M1-3: Тропы скрывают кхарид от вражеского патруля ----------
-try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  const marine = st.units.find((unit) => unit.side === 'player' && unit.type === 'marine');
-  const enemy = s2.patrol[1];
-  move(marine, 25, 38);
-  move(enemy, 25, 38);
-  assert(isOnSeason2Trail(st, marine), 'кхарид на Тропе не распознан');
-  rebuildGrid(st);
-  assert(U.acquireTarget(st, enemy, game.grid) === null, 'патруль обнаружил кхарид на Тропе');
-  move(marine, 25, 42);
-  move(enemy, 25, 42);
-  assert(!isOnSeason2Trail(st, marine), 'обычная местность ошибочно считается Тропой');
-  rebuildGrid(st);
-  assert(U.acquireTarget(st, enemy, game.grid) === marine, 'патруль не заметил кхарид вне Тропы');
-  pass('M1-3 Тропы: враг не выбирает скрытого бойца, но видит его вне маршрута');
-} catch (e) { fail('M1-3 trail stealth', e); }
-
-// ---------- M1-4: шум делит патруль, часть попадает в тупик ----------
-try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  const heroine = s2.heroine;
-  move(heroine, s2.trap.x, s2.trap.y);
-  const wounded = s2.patrol[1];
-  move(wounded, s2.trap.x, s2.trap.y);
-  wounded.hp -= 1;
   updateSeason2Mission(game, st);
-  assert(s2.noise, 'урон не создал шум');
-  assert(s2.trapBaited, 'шум у кристального тупика не заманил патруль');
-  assert(s2.investigators.length === 3, `шум не отделил половину патруля: ${s2.investigators.length}`);
-  assert(s2.investigators.every((unit) => unit.s2Investigator), 'следователи не получили сценарную роль');
+  assert(s2.baseFound && !s2.cc.s2Hidden, 'разведка не открыла аванпост');
+  assert(B.buildingAt(st, s2.cc.x, s2.cc.y) === s2.cc, 'найденный командный центр нельзя выбрать');
+  assert(game.objectiveText().includes('героя'), 'цель после обнаружения не объясняет активацию ретранслятора');
 
-  const trapX = center(s2.trap.x), trapY = center(s2.trap.y);
-  for (const unit of s2.investigators.slice(0, 2)) {
-    unit.x = trapX; unit.y = trapY; unit.prevX = trapX; unit.prevY = trapY;
+  st.selection = [scout];
+  game.issueRMB(s2.relay.x, s2.relay.y);
+  assert(!s2.relayActivationRequested, 'разведчик активирует ретранслятор вместо героя');
+  st.selection = [hero];
+  game.issueRMB(s2.relay.x, s2.relay.y);
+  assert(s2.relayActivationRequested && hero.order.kind === 'move', 'правый клик героем не запустил активацию');
+  move(hero, s2.relay.tx, s2.relay.ty);
+  updateSeason2Mission(game, st);
+  assert(s2.relay.active && !s2.cc.s2Offline && !s2.cc.s2Hidden, 'ретранслятор/командный центр не включились');
+  assert(st.buildZone && st.buildZone.length === 1 && B.zoneAllows(st, 22, 24, 3, 2) &&
+    !B.zoneAllows(st, 5, 5, 3, 2), 'после активации не появилась или не ограничивает территорию зона строительства');
+  assert(s2.cc.cfg.produces === 'worker', 'командный центр не восстановил производство');
+  assert(B.enqueueUnit(st, s2.cc, 'worker') === 'ok', 'включённый командный центр не принимает очередь');
+  B.cancelQueueItem(st, s2.cc, 0);
+  game.render(1);
+  pass('M1-2 разведчик находит базу; только герой включает ретранслятор и открывает зону');
+} catch (e) { fail('M1-2 relay', e); }
+
+// ---------- M1-3: рамки стройки, строительство и боевой урон героя ----------
+try {
+  st = st || freshMission();
+  s2 = st.s2;
+  if (!s2.relay.active) {
+    move(s2.scout, s2.relay.tx - 2, s2.relay.ty);
+    st.fog.recompute(st); updateSeason2Mission(game, st);
+    move(s2.hero, s2.relay.tx, s2.relay.ty);
+    st.selection = [s2.hero]; game.issueRMB(s2.relay.x, s2.relay.y); updateSeason2Mission(game, st);
   }
-  updateSeason2Mission(game, st);
-  assert(s2.trapped, 'двое следователей не зафиксировались в тупике');
-  assert(s2.investigators.filter((unit) => unit.s2Trapped).length >= 2, 'тупик не удержал часть патруля');
-  pass('M1-4 шум/тупик: группа разделилась, двое следователей заперты в проходе');
-} catch (e) { fail('M1-4 noise/trap', e); }
+  const spot = openBuildSpot(st, 'barracks');
+  st.selection = [s2.workers[0]];
+  st.placing = { type: 'barracks', tx: spot.x, ty: spot.y };
+  game.tryPlace(spot.x, spot.y);
+  const barracks = st.buildings.find((building) => building.side === 'player' && building.type === 'barracks');
+  assert(barracks && !barracks.done, 'строительство не создало недострой в разрешённой зоне');
+  barracks.done = true; barracks.progress = 1; barracks.hp = barracks.maxHp;
+  st.placing = null;
+  st.selection = [barracks];
+  assert(!game.getCommands().some((command) => command.icon === 'grade'), 'в обучающей миссии доступен апгрейд');
 
-// ---------- M1-4b: изолированные следователи не держат миссию в софтлоке ----------
+  const hero = s2.hero;
+  const target = U.spawnUnit(st, 'enemy', 'marine', hero.x + 32, hero.y);
+  const before = target.hp;
+  U.shoot(st, hero, target);
+  U.updateProjectiles(st, 0.2);
+  assert(target.hp < before, 'боевой выстрел героя не нанёс урон');
+  target.dead = true;
+  pass('M1-3 граница зоны блокирует лишнюю стройку, казарма размещается, апгрейда нет, герой наносит урон');
+} catch (e) { fail('M1-3 build/combat', e); }
+
+// ---------- M1-4: укрытие рейнджеров, три налёта и scripted-победа ----------
 try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  move(s2.heroine, s2.trap.x, s2.trap.y);
-  const wounded = s2.patrol[1];
-  move(wounded, s2.trap.x, s2.trap.y);
-  wounded.hp -= 1;
-  updateSeason2Mission(game, st);
-  const trapX = center(s2.trap.x), trapY = center(s2.trap.y);
-  for (const unit of s2.investigators.slice(0, 2)) {
-    unit.x = trapX; unit.y = trapY; unit.prevX = trapX; unit.prevY = trapY;
+  st = st || freshMission();
+  s2 = st.s2;
+  if (!s2.relay.active) {
+    move(s2.scout, s2.relay.tx - 2, s2.relay.ty);
+    st.fog.recompute(st); updateSeason2Mission(game, st);
+    move(s2.hero, s2.relay.tx, s2.relay.ty);
+    st.selection = [s2.hero]; game.issueRMB(s2.relay.x, s2.relay.y); updateSeason2Mission(game, st);
   }
-  updateSeason2Mission(game, st);
-  for (const unit of s2.patrol) {
-    if (!unit.dead && !unit.s2Investigator && !unit.s2Trapped) U.damageEntity(st, unit, unit.hp + 1, null);
+  let spot = openBuildSpot(st, 'barracks');
+  const barracks = st.buildings.find((building) => building.type === 'barracks') || createFinishedBuilding(st, 'barracks', spot.x, spot.y);
+  barracks.done = true; barracks.progress = 1; barracks.hp = barracks.maxHp;
+  spot = openBuildSpot(st, 'bunker');
+  const bunker = createFinishedBuilding(st, 'bunker', spot.x, spot.y);
+  for (let i = 0; i < 3; i++) {
+    spot = openBuildSpot(st, 'wall');
+    createFinishedBuilding(st, 'wall', spot.x, spot.y);
   }
+  st.stats.mined = 120;
   updateSeason2Mission(game, st);
-  assert(st.gameOver === 'win', 'последние участники похода не завершили миссию победой');
-  assert(s2.patrol.some((unit) => !unit.dead && unit.s2Investigator), 'изолированные следователи исчезли вместо ожидания');
-  assert(el('end-epilogue').textContent === '', 'эпилог о Рейне показан без финального контакта');
-  pass('M1-4b остановка: выжившие следователи не блокируют победу после остановки главного отряда');
-} catch (e) { fail('M1-4b stopped patrol', e); }
+  assert(s2.bunker === bunker, 'миссия не распознала построенный бункер');
+  st.selection = [...s2.rangers];
+  game.issueRMB(bunker.x, bunker.y);
+  assert(s2.rangers.every((ranger) => ranger.order.kind === 'garrison'), 'правый клик не отправил рейнджеров в гарнизон');
+  for (const ranger of s2.rangers) {
+    ranger.garrison = bunker;
+    ranger.order = { kind: 'idle' };
+    bunker.garrison.push(ranger);
+  }
 
-// ---------- M1-5: финал — Рейн не стреляет; вторичные цели в отчёте ----------
+  st.time = s2.relayOnAt + 146;
+  updateSeason2Mission(game, st);
+  assert(s2.raidGroups[0] && s2.raidGroups[0].length === 2, 'первый малый налёт не создан');
+  st.time = s2.relayOnAt + 326;
+  updateSeason2Mission(game, st);
+  assert(s2.raidGroups[1] === null, 'герой противника пришёл до отражения первого налёта');
+  for (const raider of s2.raidGroups[0]) raider.dead = true;
+  updateSeason2Mission(game, st);
+  assert(s2.raidGroups[1] && s2.raidGroups[1].length === 3 && s2.finalBoss &&
+    s2.finalBoss.type === 'hero' && s2.finalBoss.s2RetakeHero,
+    'герой противника не пришёл отбивать ретранслятор после малого налёта');
+  assert(s2.finalBoss.order.kind === 'attackMove', 'герой противника не направлен к ретранслятору');
+  for (const raider of s2.raidGroups[1]) raider.dead = true;
+  updateSeason2Mission(game, st);
+  assert(st.gameOver === 'win', 'выполненные условия scripted-миссии не дали победу');
+  assert(season2EndObjectives(st).every((objective) => objective.complete), 'итоговые цели показывают невыполненную задачу');
+  pass('M1-4 рейнджеры укрываются; один малый налёт и герой противника; победа по целям обучения');
+} catch (e) { fail('M1-4 raids/win', e); }
+
+// ---------- M1-5: поражение при гибели героя ----------
 try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  move(s2.heroine, 27, 35);
-  move(s2.captain, 29, 35);
+  st = freshMission();
+  s2 = st.s2;
+  s2.hero.dead = true;
   updateSeason2Mission(game, st);
-  assert(s2.finale, 'контакт Тха-Риссы и Рейна не начался');
-  assert(st.gameOver === 'win', 'финальная встреча не завершила миссию победой');
-  assert(s2.captain.s2Ceasefire && s2.captain.cfg.dmg === 0, 'Рейн не опустил оружие');
-  assert(/не нажал на спуск/.test(el('end-epilogue').textContent), 'финальный эпилог не сохранил момент, когда Рейн не стреляет');
-  assert(/Чужие на пороге|Вторичные цели/.test(endStatsHTML()), 'в итогах нет вторичных целей');
-  assert(/выполнено/.test(endStatsHTML()) && /не выполнено/.test(endStatsHTML()), 'в итогах не показаны статусы целей');
-  pass('M1-5 финал: победа, прекращение огня Рейна и отчёт по вторичным целям');
-} catch (e) { fail('M1-5 finale', e); }
-
-// ---------- M1-6: две обязательные причины поражения ----------
-try {
-  game.startMission(SEASON2_M1);
-  let st = game.state, s2 = st.s2;
-  U.damageEntity(st, s2.heroine, s2.heroine.hp + 1, null);
-  updateSeason2Mission(game, st);
-  assert(st.gameOver === 'lose', 'смерть Тха-Риссы не привела к поражению');
-
-  game.startMission(SEASON2_M1);
-  st = game.state; s2 = st.s2;
-  const patrol = s2.patrol[0];
-  patrol.x = s2.basePoint.x; patrol.y = s2.basePoint.y;
-  patrol.prevX = patrol.x; patrol.prevY = patrol.y;
-  updateSeason2Mission(game, st);
-  assert(st.gameOver === 'lose', 'выход патруля к гнезду не привёл к поражению');
-  pass('M1-6 поражение: гибель героини и достижение гнезда завершают миссию');
-} catch (e) { fail('M1-6 lose conditions', e); }
-
-// ---------- M1-7: idle path remains a loss, not an accidental scripted win ----------
-try {
-  game.startMission(SEASON2_M1);
-  const st = game.state, s2 = st.s2;
-  for (let i = 0; i < 3000 && !st.gameOver; i++) game.tick();
-  assert(st.gameOver === 'lose', 'патруль без вмешательства не завершил миссию поражением');
-  assert(!s2.finale, 'героиня сама покинула позицию и запустила финал');
-  assert(st.time > s2.findDeadline && st.time < 90, `неверный темп маршрута патруля: ${st.time.toFixed(1)}с`);
-  assert(/достиг гнезда/.test(el('end-reason').textContent), 'поражение получено не из-за достижения гнезда');
-  pass('M1-7 idle: патруль идёт по маршруту, героиня не запускает финал сама, пропуск ведёт к поражению');
-} catch (e) { fail('M1-7 idle progression', e); }
+  assert(st.gameOver === 'lose', 'гибель героя не завершила сценарий поражением');
+  pass('M1-5 гибель героя вызывает поражение');
+} catch (e) { fail('M1-5 loss', e); }
 
 console.log(failures.length
-  ? `\nИТОГ SIM_SEASON2: ${failures.length} ОШИБОК (${failures.join(', ')})`
-  : '\nИТОГ SIM_SEASON2: ВСЕ СЦЕНАРИИ ПРОШЛИ');
-process.exit(failures.length ? 1 : 0);
+  ? `\nИТОГ SIM_SEASON2: ПРОВАЛЕНО ${failures.length}: ${failures.join(', ')}`
+  : '\nИТОГ SIM_SEASON2: ВСЕ ПРОВЕРКИ ПРОШЛИ');
+process.exitCode = failures.length ? 1 : 0;
