@@ -22,6 +22,12 @@ import * as ui from './ui.js';
 import { createProfile } from './profile.js';
 import { attachInput, updateCamera } from './input.js';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
+import {
+  createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
+  populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
+  validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
+  RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
+} from './raid.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -107,6 +113,8 @@ export class Game {
     // ставятся здесь, до первой отрисовки UI.
     this.profile = createProfile();
     this.placementCancelHintShown = false; // одноразовый хинт «ПКМ — отмена» на десктопе
+    this.raidSession = null;               // R0: сессия постоянной домашней базы рейда
+    this.raidPausedBeforeModal = false;
 
     window.addEventListener('resize', () => this.resize());
     // Хотфикс M2: fullscreen/поворот экрана. resize-событие приходит ДО того,
@@ -204,12 +212,18 @@ export class Game {
     this.state = st;
     this.box = null;
     this.paused = false;
+    this.raidPausedBeforeModal = false;
     ui.setPausedUI(false);
+
+    if (m.raidMode) {
+      populateRaidState(this, st, m);
+    }
 
     // Стартовые базы: командный центр + рабочие (враг — зеркален).
     for (const side of ['player', 'enemy']) {
       const base = st.map.bases[side];
-      if (side === 'player' && st.noBase) continue; // стелс-миссия — отряд вместо базы
+      if (side === 'player' && (st.noBase || m.raidMode)) continue; // стелс-миссия или рейд
+      if (side === 'enemy' && m.noEnemyBase) continue;
       const cc = new B.Building(st, side, 'cc', base.cc.x, base.cc.y, true);
       st.map.markBuilding(cc);
       st.bcount[side]++;
@@ -269,9 +283,10 @@ export class Game {
     calcSupply(st);
     st.fog.recompute(st);
 
-    // Камера — на базу игрока.
+    // Камера — на базу игрока (или на челночную площадку вылазки).
     const pb = st.map.bases.player.cc;
-    this.centerCamera((pb.x + 2) * TILE, (pb.y + 2) * TILE);
+    if (st.raidDrop) this.centerCamera(st.raidDrop.x, st.raidDrop.y);
+    else this.centerCamera((pb.x + 2) * TILE, (pb.y + 2) * TILE);
 
     ui.resetPanel();
     ui.update(this);
@@ -299,6 +314,7 @@ export class Game {
   // ----------------------------------------------------------
   startMission(m) {
     this.sound.unlock();      // жест пользователя — легально включаем звук
+    if (!m.raidMode) this.syncRaidHomeSnapshot();
     this.mission = m;
     this.newGame();
     this.started = true;
@@ -307,7 +323,8 @@ export class Game {
     ui.hideMissions();
     ui.hideBrief();
     ui.hideEnd();
-    ui.toast(objectiveLabel(m));
+    ui.hideRaidLaunch();
+    ui.toast(m.raidMode ? this.objectiveText() : objectiveLabel(m));
   }
 
   // G.5: dims {w,h} из пресетов скирмиша; без них — классика 64×64.
@@ -329,18 +346,212 @@ export class Game {
     });
   }
 
+  // ---------- R0: локальный raid-loop (домашняя база и вылазка) ----------
+  hasRaidHome() {
+    return !!(this.raidSession && this.raidSession.starterGiftClaimed);
+  }
+
+  syncRaidHomeSnapshot() {
+    if (this.raidSession && this.state && this.state.raidMode === 'home' && !this.state.gameOver) {
+      this.raidSession.homeDto = captureHomeBaseDTO(this.state, this.raidSession, new Set());
+    }
+  }
+
+  startRaidHome(faction, { forceNew = false } = {}) {
+    if (!this.raidSession || forceNew || (!this.hasRaidHome() && faction)) {
+      const side = faction || (this.raidSession && this.raidSession.faction) || 'human';
+      this.raidSession = createRaidSession(side);
+    } else {
+      this.syncRaidHomeSnapshot();
+      this.raidSession.activeExpedition = null;
+      this.raidSession.pendingReturn = null;
+    }
+    this.startMission(buildRaidHomeMission(this.raidSession));
+    ui.syncRaidMenu(this);
+  }
+
+  resetRaidHome(faction) {
+    const side = faction || (this.raidSession && this.raidSession.faction) || 'human';
+    this.raidSession = createRaidSession(side);
+    ui.syncRaidMenu(this);
+  }
+
+  nextRaidSeed(tier = 1) {
+    const seq = this.raidSession ? this.raidSession.raidSeq : 0;
+    return deriveTargetSeed(RAID_PLANET.homeSeed, seq, tier);
+  }
+
+  getRaidConsoleModel(draft) {
+    const st = this.state;
+    const unlockedTier = unlockedRaidTier(st);
+    const roster = countHomeRoster(st);
+    const homeMinerals = st ? Math.max(0, Math.floor(Number(st.minerals.player) || 0)) : 0;
+    const raidSeq = this.raidSession ? this.raidSession.raidSeq : 0;
+    const validation = draft ? validateRaidLoadout(st, draft) : null;
+    return {
+      unlockedTier,
+      tiers: RAID_TIERS,
+      unitOrder: RAID_UNIT_ORDER,
+      roster,
+      homeMinerals,
+      raidSeq,
+      validation,
+    };
+  }
+
+  openRaidLaunch() {
+    if (!this.started || !this.state || this.state.raidMode !== 'home' || this.state.gameOver) return;
+    if (ui.isRaidOverlayOpen()) return;
+    this.raidPausedBeforeModal = this.paused;
+    this.paused = true;
+    ui.showRaidLaunch(this);
+    this.sound.click();
+  }
+
+  closeRaidLaunch() {
+    if (!ui.isRaidOverlayOpen()) return;
+    ui.hideRaidLaunch();
+    this.paused = !!this.raidPausedBeforeModal;
+    this.raidPausedBeforeModal = false;
+    this.sound.click();
+  }
+
+  launchRaidExpedition(draft) {
+    const st = this.state;
+    const v = validateRaidLoadout(st, draft);
+    if (!v.ok || !this.raidSession) return v;
+
+    const dispatchedIds = new Set();
+    const dispatchedList = [];
+    for (const [type, need] of Object.entries(v.units)) {
+      if (!need) continue;
+      const pool = st.units
+        .filter((u) => !u.dead && !u.garrison && u.side === 'player' && u.kind === 'unit' && u.type === type)
+        .sort((a, b) => b.hp - a.hp || a.id - b.id);
+      for (let i = 0; i < need && i < pool.length; i++) {
+        dispatchedIds.add(pool[i].id);
+        dispatchedList.push({ type: pool[i].type, hp: Math.max(1, Math.ceil(pool[i].hp)) });
+      }
+    }
+
+    st.minerals.player = Math.max(0, Math.floor(st.minerals.player) - v.budget);
+    this.raidSession.raidSeq++;
+    this.raidSession.homeDto = captureHomeBaseDTO(st, this.raidSession, dispatchedIds);
+    this.raidSession.activeExpedition = {
+      tier: v.tier,
+      seed: v.seed,
+      budget: v.budget,
+      units: dispatchedList,
+    };
+
+    ui.hideRaidLaunch();
+    this.raidPausedBeforeModal = false;
+    this.paused = false;
+    this.mission = buildRaidExpeditionMission(this.raidSession, v);
+    this.newGame();
+    this.started = true;
+    this.sleepMouse();
+    ui.syncRaidMenu(this);
+    ui.toast(t('ui.raid.toastLaunch', { tier: v.tier, n: v.totalUnits }), 'info');
+    this.sound.ready();
+    return v;
+  }
+
+  triggerRaidEvac() {
+    const st = this.state;
+    if (!st || st.raidMode !== 'expedition' || st.gameOver) return;
+    const pad = st.raidDrop;
+    if (!st.raidEvacuating) {
+      st.raidEvacuating = true;
+      if (pad) {
+        const movers = st.units.filter(
+          (u) => !u.dead && !u.evacuated && !u.garrison && u.side === 'player' && u.kind === 'unit' &&
+            Math.hypot(u.x - pad.x, u.y - pad.y) > pad.r * TILE * 0.85,
+        );
+        if (movers.length) U.orderMoveGroup(st, movers, pad.x, pad.y);
+      }
+      ui.update(this);
+      ui.setObjective(this.objectiveText());
+      ui.toast(t('ui.raid.toastEvacStart'), 'info');
+      this.sound.ping();
+      return;
+    }
+    if (st.raidBoarded && st.raidBoarded.length > 0) {
+      this.finishRaidExpedition('evac');
+      return;
+    }
+    st.raidEvacuating = false;
+    for (const u of st.units) if (u.side === 'player') u.evacT = 0;
+    ui.update(this);
+    ui.setObjective(this.objectiveText());
+    ui.toast(t('ui.raid.toastEvacCancel'), 'info');
+    this.sound.click();
+  }
+
+  finishRaidExpedition(outcome) {
+    const st = this.state;
+    if (!st || st.raidMode !== 'expedition' || !this.raidSession) return;
+    const ok = outcome === 'evac';
+    const cargo = ok ? Math.max(0, Math.floor(st.raidCargo || 0)) : 0;
+    const returnedBudget = ok ? Math.max(0, Math.floor(st.minerals.player || 0)) : 0;
+    const boarded = ok && Array.isArray(st.raidBoarded) ? st.raidBoarded.slice() : [];
+    const sentCount = st.raidInitialCount || 0;
+
+    this.raidSession.lastReturn = {
+      outcome: ok ? 'evac' : 'wiped',
+      cargo,
+      returnedBudget,
+      boardedCount: boarded.length,
+      sentCount,
+      tier: st.raidTier || 1,
+      seed: st.raidTargetSeed || st.seed,
+    };
+    this.raidSession.pendingReturn = { cargo, returnedBudget, boarded };
+    this.raidSession.activeExpedition = null;
+
+    ui.hideEnd();
+    ui.hideRaidLaunch();
+    this.mission = buildRaidHomeMission(this.raidSession);
+    this.newGame();
+    this.started = true;
+    this.sleepMouse();
+    ui.syncRaidMenu(this);
+    if (ok) {
+      ui.toast(t('ui.raid.toastReturnOk', {
+        cargo: cargo + returnedBudget,
+        n: boarded.length,
+        sent: sentCount,
+      }), 'info');
+      this.sound.win();
+    } else {
+      ui.toast(t('ui.raid.toastReturnWiped'), 'error');
+      this.sound.lose();
+    }
+  }
+
   restart() {
     ui.hideEnd();
+    ui.hideRaidLaunch();
+    if (this.state && this.state.raidMode === 'expedition') {
+      this.finishRaidExpedition('wiped');
+      return;
+    }
+    if (this.state && this.state.raidMode === 'home' && this.raidSession) {
+      this.raidSession = createRaidSession(this.raidSession.faction);
+      this.mission = buildRaidHomeMission(this.raidSession);
+      ui.syncRaidMenu(this);
+    }
     this.newGame();
     this.started = true;
     this.sleepMouse();
     ui.hideStart();
-    ui.toast(objectiveLabel(this.mission));
+    ui.toast(this.mission.raidMode ? this.objectiveText() : objectiveLabel(this.mission));
     this.sound.click();
   }
 
   togglePause() {
     if (!this.started || (this.state && this.state.gameOver)) return;
+    if (ui.isRaidOverlayOpen()) { this.closeRaidLaunch(); return; }
     this.paused = !this.paused;
     ui.setPausedUI(this.paused);
     this.sound.click();
@@ -510,8 +721,14 @@ export class Game {
   // П2: выход в главное меню. Прогресс кампании не трогаем (сейвы целы):
   // записывается он только победой. Состояние партии остаётся фоном меню.
   toMenu() {
+    this.syncRaidHomeSnapshot();
+    if (this.raidSession && this.state && this.state.raidMode === 'expedition') {
+      this.raidSession.activeExpedition = null;
+      this.raidSession.pendingReturn = null;
+    }
     this.started = false;
     this.paused = false;
+    this.raidPausedBeforeModal = false;
     this.box = null;
     if (this.state) { this.state.placing = null; this.state.attackMoveMode = false; }
     ui.setPausedUI(false);
@@ -519,6 +736,8 @@ export class Game {
     ui.hideMissions();
     ui.hideBrief();
     ui.hideCodex();
+    ui.hideRaidLaunch();
+    ui.syncRaidMenu(this);
     ui.showStart();
     this.sound.click();
   }
@@ -621,6 +840,13 @@ export class Game {
           on: () => this.hooks.orderMassRally(b),
         });
       }
+      if (b.done && b.type === 'cc' && st.raidMode === 'home') {
+        cmds.push({
+          code: 'KeyE', icon: 'shuttle', label: t('ui.raid.cmdLaunch'),
+          tip: { title: t('ui.raid.cmdLaunch'), lines: t('ui.raid.cmdLaunchTip') },
+          on: () => this.openRaidLaunch(),
+        });
+      }
       if (b.done && b.gradeUp) {
         cmds.push({
           code: 'KeyX', icon: 'stop', label: t('ui.cmds.undo'),
@@ -669,6 +895,18 @@ export class Game {
               this.canvas.style.cursor = st.attackMoveMode ? 'crosshair' : '';
               this.sound.click();
             },
+          });
+        }
+        if (st.raidMode === 'expedition') {
+          const boarded = st.raidBoarded ? st.raidBoarded.length : 0;
+          const evLabel = !st.raidEvacuating
+            ? t('ui.raid.cmdEvac')
+            : (boarded > 0 ? t('ui.raid.cmdLiftoff', { n: boarded }) : t('ui.raid.cmdEvacCancel'));
+          cmds.push({
+            code: 'KeyE', icon: 'shuttle', label: evLabel,
+            tip: { title: t('ui.raid.cmdEvac'), lines: t('ui.raid.cmdEvacTip') },
+            selected: !!st.raidEvacuating,
+            on: () => this.triggerRaidEvac(),
           });
         }
         cmds.push({ code: 'KeyS', icon: 'stop', label: t('ui.cmds.stop'), on: () => this.hooks.stopSelected() });
@@ -1101,8 +1339,12 @@ export class Game {
     U.syncSelectionFlags(st); // кольца выделения видимы каждый тик
     U.updateProjectiles(st, LOGIC_DT);
     U.updateEffects(st, LOGIC_DT);
-    st.ai.update(LOGIC_DT, st);
+    if (!this.mission.noEnemyBase) st.ai.update(LOGIC_DT, st);
     this.updateWin(st, LOGIC_DT);
+    if (st.raidMode) {
+      updateRaidTick(this, st, LOGIC_DT);
+      if (this.state !== st) return; // вылазка завершилась и вернула игрока на домашнюю базу
+    }
 
     if (st.tick % 3 === 0) st.fog.recompute(st);
     calcSupply(st);
@@ -1172,6 +1414,7 @@ export class Game {
   objectiveText() {
     const st = this.state;
     if (!st) return '';
+    if (st.raidMode) return raidObjectiveText(this, st);
     const m = this.mission;
     const def = m && m.defense;
     const w = st.win;
@@ -1206,6 +1449,7 @@ export class Game {
   checkEnd() {
     const st = this.state;
     if (st.gameOver) return;
+    if (st.raidMode) { checkRaidEnd(this, st); return; }
     const def = this.mission && this.mission.defense;
     const w = st.win;
     const fac = st.factions.player;
@@ -1299,6 +1543,7 @@ export class Game {
     const st = this.state;
     st.gameOver = 'win';
     st.stats.time = st.time;
+    ui.hideRaidLaunch();
     this.sound.win();
     if (this.mission.id >= 0) saveProgress(missionIndex(this.mission) + 1); // П8: шкала — порядок массива
     ui.showEnd(true, st.stats, this.endOpts(true, reason));
@@ -1308,6 +1553,7 @@ export class Game {
     const st = this.state;
     st.gameOver = 'lose';
     st.stats.time = st.time;
+    ui.hideRaidLaunch();
     this.sound.lose();
     ui.showEnd(false, st.stats, this.endOpts(false, reason));
   }
@@ -1451,6 +1697,7 @@ export class Game {
         ctx.restore();
       }
     }
+    drawRaidZone(ctx, st, cam, inView);
 
     // Юниты с интерполяцией между логическими тиками.
     for (const u of st.units) {
