@@ -6,10 +6,12 @@ import re
 import subprocess
 import sys
 import urllib.request
+from pathlib import Path
 
 REMOTE = subprocess.run(
     ['git', 'remote', 'get-url', 'origin'],
-    capture_output=True, text=True, cwd='/home/z/my-project/alien-cosmic'
+    capture_output=True, text=True,
+    cwd=str(Path(__file__).resolve().parent.parent)
 ).stdout.strip()
 m = re.search(r'https://([^@]+)@', REMOTE)
 TOKEN = m.group(1) if m else None
