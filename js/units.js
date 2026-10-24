@@ -2061,52 +2061,72 @@ function healAura(ctx, u, rx, ry, t) {
   const R = u.r + 8;
   const ph = 0.5 + 0.5 * Math.sin(t * 3.4 + u.id);
   if (alien) {
-    // Кхарид: облако спор — несколько мягких пятен вместо ровного купола.
-    for (let i = 0; i < 5; i++) {
+    // Кхарид: облако спор — плотнее и зеленее, чем у техники: пыльца
+    // стелется вокруг тела и висит в воздухе.
+    for (let i = 0; i < 7; i++) {
       const a = i * 1.35 + u.id * 0.8;
-      const d = R * (0.42 + 0.34 * ((i * 37) % 11) / 11);
-      const rr2 = R * (0.48 + 0.16 * ((i * 53) % 7) / 7);
-      ctx.globalAlpha = 0.1 + 0.05 * ph;
+      const d = R * (0.4 + 0.36 * ((i * 37) % 11) / 11);
+      const rr2 = R * (0.46 + 0.18 * ((i * 53) % 7) / 7);
+      ctx.globalAlpha = 0.12 + 0.06 * ph;
       ctx.fillStyle = A;
       ctx.beginPath();
-      ctx.ellipse(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.7,
-        rr2, rr2 * 0.78, 0, 0, Math.PI * 2);
+      ctx.ellipse(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.72,
+        rr2, rr2 * 0.76, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Пыльца: точки по краю облака, мигают своим тактом.
-    for (let i = 0; i < 7; i++) {
-      const a = i * 0.9 + u.id * 0.6 + t * 0.25;
-      const d = R * 0.78 + Math.sin(t * 1.7 + i) * 2;
-      ctx.globalAlpha = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(t * 2.6 + i * 1.3));
-      ctx.fillStyle = '#b6ffb0';
+    // Пыльца: точки по краю облака — крутятся, мигают и меняют размер.
+    for (let i = 0; i < 10; i++) {
+      const a = i * 0.9 + u.id * 0.6 + t * 0.22;
+      const d = R * (0.7 + 0.22 * ((i * 29) % 5) / 5);
+      const blink = 0.5 + 0.5 * Math.sin(t * 2.6 + i * 1.3);
+      ctx.globalAlpha = 0.28 + 0.45 * blink;
+      ctx.fillStyle = blink > 0.6 ? '#c8ffbe' : '#8fe87f';
       ctx.beginPath();
-      ctx.arc(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.8, 1.1, 0, Math.PI * 2);
+      ctx.arc(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.8,
+        0.9 + blink * 0.7, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
     // Гелиос: ровный купол-поле с кромкой и расходящейся волной.
-    ctx.globalAlpha = 0.09 + ph * 0.05;
+    ctx.globalAlpha = 0.1 + ph * 0.06;
     ctx.fillStyle = A;
     ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.4;
+    // Ядро-крест: мягкое зелёное сияние вокруг аппарата (слоями, без blur).
+    ctx.globalAlpha = 0.24 + 0.1 * ph;
+    ctx.beginPath(); ctx.arc(rx, ry, u.r + 4, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.45;
     ctx.strokeStyle = A; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.stroke();
     const wave = (t * 0.85 + u.id * 0.37) % 1;
-    ctx.globalAlpha = (1 - wave) * 0.45;
+    ctx.globalAlpha = (1 - wave) * 0.5;
     ctx.lineWidth = 1.3;
     ctx.beginPath(); ctx.arc(rx, ry, u.r + 2 + wave * 8, 0, Math.PI * 2); ctx.stroke();
-    // Рой нанодронов: пять блюдец на орбите вокруг ядра-креста.
+    // Рой нанодронов: пять настоящих блюдец на орбите — корпус, ободок,
+    // окошко и свой крестик; к ядру каждый tied дугой «связи».
+    const orbR = u.r + 3.6;
     for (let i = 0; i < 5; i++) {
       const a = i * 1.256 + t * 0.5 + u.id * 0.4;
-      const dx = rx + Math.cos(a) * (u.r + 2.5);
-      const dy = ry + Math.sin(a) * (u.r + 2.5) * 0.72;
-      ctx.globalAlpha = 0.92;
-      ctx.fillStyle = '#c3c9d1';
-      ctx.beginPath(); ctx.ellipse(dx, dy, 2.9, 2.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.55;
+      const dx = rx + Math.cos(a) * orbR;
+      const dy = ry + Math.sin(a) * orbR * 0.72;
+      ctx.globalAlpha = 0.28 + 0.22 * ph;
+      ctx.strokeStyle = A; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.quadraticCurveTo(rx + Math.cos(a) * orbR * 0.55,
+        ry + Math.sin(a) * orbR * 0.36, dx, dy);
+      ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#e8eef2';
+      ctx.beginPath(); ctx.ellipse(dx, dy, 3.5, 2.7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#596069';
+      ctx.beginPath(); ctx.ellipse(dx, dy - 0.7, 3.5, 1.6, 0, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#7df3e2';
+      ctx.fillRect(dx - 1.6, dy - 0.5, 3.2, 1.3);
       ctx.fillStyle = A;
-      ctx.fillRect(dx - 0.7, dy - 1.6, 1.4, 3.2);
-      ctx.fillRect(dx - 1.6, dy - 0.7, 3.2, 1.4);
+      ctx.fillRect(dx - 0.35, dy - 2, 0.7, 4);
+      ctx.fillRect(dx - 2, dy - 0.35, 4, 0.7);
     }
   }
   // «+» здоровья: три плюсика дрейфуют вверх и тают (обе расы).
@@ -2114,11 +2134,14 @@ function healAura(ctx, u, rx, ry, t) {
     const k = (t * 0.5 + i * 0.34 + u.id * 0.21) % 1;
     const a = i * 2.09 + u.id * 0.7;
     const pr = u.r + 1 + k * 7;
-    const ps = 1.6 + k * 0.9;
+    const ps = 1.9 + k * 1.1;
     const x = rx + Math.cos(a) * pr;
     const y = ry + Math.sin(a) * pr - k * 4;
-    ctx.globalAlpha = (1 - k) * 0.8;
+    // Мягкое сияние плюсика — слоем, без shadowBlur.
+    ctx.globalAlpha = (1 - k) * 0.16;
     ctx.fillStyle = A;
+    ctx.beginPath(); ctx.arc(x, y, ps * 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = (1 - k) * 0.9;
     ctx.fillRect(x - ps * 0.26, y - ps, ps * 0.52, ps * 2);
     ctx.fillRect(x - ps, y - ps * 0.26, ps * 2, ps * 0.52);
   }
@@ -2365,6 +2388,12 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.strokeStyle = bio; ctx.globalAlpha = 0.75; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.moveTo(-7, -3); ctx.quadraticCurveTo(-11, -4, -13, -6 + step * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-7, 3); ctx.quadraticCurveTo(-11, 4, -13, 6 - step * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Сияние мякоти: спора лечит изнутри — зелёный ореол вокруг капли
+      // (слоями, без shadowBlur: свечение остаётся за свечой-ростком).
+      ctx.globalAlpha = 0.2 + 0.12 * pulse;
+      ctx.fillStyle = '#a8ff9e';
+      ctx.beginPath(); ctx.ellipse(0, 0, 11, 10, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(0, 0, 8, 7, 0, 0, Math.PI * 2); ctx.fill();
