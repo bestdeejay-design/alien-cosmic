@@ -396,9 +396,14 @@ export class GameMap {
         for (let k = 0; k < 6; k++) { x += (R() - 0.5) * 130; y += (R() - 0.5) * 130; g.lineTo(x, y); }
         g.stroke(); g.globalAlpha = 1;
       }
-      // Кусты кристаллов: 3 ромба + точки спор.
+      // Кусты кристаллов: 3 ромба + точки спор · V-5: только на проходимой
+      // земле (куст в озере или на скале читается мусором и путается с
+      // преградой) + тень у корня, чтобы куст стоял на грунте.
       for (let i = 0; i < 130; i++) {
         const x = R() * this.pxW, y = R() * this.pxH, st = 2 + R() * 4;
+        if (terr((x / TILE) | 0, (y / TILE) | 0) !== T_GROUND) continue;
+        g.fillStyle = 'rgba(0,0,0,0.3)';
+        g.beginPath(); g.ellipse(x, y + 2, 6, 2, 0, 0, Math.PI * 2); g.fill();
         for (let k = 0; k < 3; k++) {
           const ox = (R() - 0.5) * 14, oy = (R() - 0.5) * 10, s2 = st * (0.6 + R() * 0.7);
           g.fillStyle = B.flora;
@@ -437,17 +442,42 @@ export class GameMap {
         for (let k = 0; k < 4; k++) { x += (R() - 0.5) * 40; y += (R() - 0.5) * 40; g.lineTo(x, y); }
         g.stroke();
       }
-      // Сухие кусты (марс) / стеклянные осколки (луна).
+      // Сухие кусты (марс) / стеклянные осколки (луна) · V-5: куст стал
+      // читаемым растением (тёмные задние ветви + светлые передние +
+      // контактная тень + плоды), а не бледными штрихами. Флора — только
+      // на проходимой земле: куст в озере или на скале читается мусором и
+      // путается с преградой. Кусты НЕ блокируют постройку — они мелкие,
+      // без обводки и не занимают тайл (в отличие от скал).
       const nBush = this.preset.biome === 'moon' ? 45 : 95;
       for (let i = 0; i < nBush; i++) {
         const x = R() * this.pxW, y = R() * this.pxH;
-        g.strokeStyle = B.flora; g.lineWidth = 1.4;
+        if (terr((x / TILE) | 0, (y / TILE) | 0) !== T_GROUND) continue;
+        // Тень у корня — куст стоит на грунте.
+        g.fillStyle = 'rgba(0,0,0,0.32)';
+        g.beginPath(); g.ellipse(x, y + 1.5, 5.5, 2, 0, 0, Math.PI * 2); g.fill();
         for (let k = 0; k < 5; k++) {
           const a = -Math.PI / 2 + (k - 2) * 0.5 + (R() - 0.5) * 0.3;
+          const L = 6 + R() * 7;
+          // Задняя ветвь — тёмная, для объёма.
+          g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.8;
           g.beginPath(); g.moveTo(x, y);
-          g.lineTo(x + Math.cos(a) * (5 + R() * 6), y + Math.sin(a) * (5 + R() * 6));
+          g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L);
+          g.stroke();
+          // Передняя ветвь — цвет флоры биома.
+          g.strokeStyle = B.flora; g.lineWidth = 1.3;
+          g.beginPath(); g.moveTo(x, y);
+          g.lineTo(x + Math.cos(a) * (L - 1.5), y + Math.sin(a) * (L - 1.5));
           g.stroke();
         }
+        // Плоды/кончики — мелкие точки спереди.
+        g.fillStyle = B.floraGlow;
+        for (let k = 0; k < 3; k++) {
+          g.globalAlpha = 0.5;
+          g.beginPath();
+          g.arc(x + (R() - 0.5) * 9, y - 1 - R() * 7, 1.1, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.globalAlpha = 1;
       }
     }
 
@@ -527,23 +557,77 @@ export class GameMap {
     }
     g.lineCap = 'butt';
 
-    // 7) Скалы: гранёные осколки — тёмное основание, средняя грань,
-    // светлый скол, верхнее ребро, трещины.
+    // 7) Скалы · V-5 (вопрос владельца «не видно преграду»): скальный тайл
+    // должен читаться как ЗАНЯТЫЙ целиком, а не как мелкий камешек где-то в
+    // середине клетки. Поэтому у скалы два слоя:
+    //   7.1 щебневая подошва — неровный многоугольник во весь тайл
+    //       (тайл явно занят, край обведён тёмным контуром);
+    //   7.2 гранёный валун на ней — тёмное основание, средняя грань,
+    //       светлый скол, верхнее ребро, трещины.
+    // Свет — сверху-слева (канон DESIGN_SYSTEM §1): световая грань и блик
+    // слева-сверху, тень и обводка справа-снизу. Палитра биома остаётся
+    // базой, свет/тень накладываются поверх — работает на марсе, в гнезде
+    // и на луне без правки конфига.
     for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (terr(x, y) !== T_ROCK) continue;
-      const cx = x * TILE + TILE / 2 + (R() - 0.5) * 8;
-      const cy = y * TILE + TILE / 2 + (R() - 0.5) * 8;
-      const r = 13 + R() * 5;
-      g.fillStyle = 'rgba(0,0,0,0.32)';
-      g.beginPath(); g.ellipse(cx + 3, cy + r * 0.62, r * 0.95, r * 0.4, 0, 0, Math.PI * 2); g.fill();
+      const cx = x * TILE + TILE / 2 + (R() - 0.5) * 3;
+      const cy = y * TILE + TILE / 2 + (R() - 0.5) * 3;
+      // 7.1 Подошва во весь тайл.
+      const pl = [];
+      for (let k = 0; k < 7; k++) {
+        const a = k * Math.PI * 2 / 7 + R() * 0.6;
+        const rr2 = TILE * (0.43 + R() * 0.06);
+        pl.push(x * TILE + TILE / 2 + Math.cos(a) * rr2,
+                y * TILE + TILE / 2 + Math.sin(a) * rr2 * 0.97);
+      }
+      g.save();
+      g.translate(1.5, 2.5);                 // тень подошвы — приподнятость
+      g.fillStyle = 'rgba(0,0,0,0.5)'; polyG(pl);
+      g.restore();
+      // Подошва — средний тон биома (не самый тёмный: самый тёмный уходит
+      // валуну), чтобы масса читается выходом породы со светлым венцом,
+      // а не дыркой в грунте.
+      g.fillStyle = B.rock[1]; polyG(pl);
+      // Нижняя половина подошвы чуть темнее — объём.
+      g.save();
+      g.beginPath(); g.rect(x * TILE, y * TILE + TILE / 2, TILE, TILE / 2);
+      g.clip();
+      g.fillStyle = 'rgba(0,0,0,0.22)'; polyG(pl);
+      g.restore();
+      g.strokeStyle = 'rgba(0,0,0,0.62)'; g.lineWidth = 2; g.stroke();
+      // Кромка света сверху-слева: без неё тёмная подошва тонет в грунте
+      // того же тона (марс: коричневый грунт / серый камень).
+      g.strokeStyle = 'rgba(255,255,255,0.24)'; g.lineWidth = 1.6;
+      g.beginPath();
+      for (let k = 0; k < 7; k++) {
+        const ax = pl[k * 2], ay = pl[k * 2 + 1];
+        const bx2 = pl[((k + 1) % 7) * 2], by2 = pl[((k + 1) % 7) * 2 + 1];
+        const mx = (ax + bx2) / 2 - (x * TILE + TILE / 2), my = (ay + by2) / 2 - (y * TILE + TILE / 2);
+        if (my < 1 && mx < 3) { g.moveTo(ax, ay); g.lineTo(bx2, by2); }
+      }
+      g.stroke();
+      // Щебень на подошве: внутренняя светлая кромка + камешки.
+      g.fillStyle = 'rgba(255,255,255,0.07)';
+      g.beginPath(); g.ellipse(cx - 1, cy - 2, TILE * 0.30, TILE * 0.24, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.28)';
+      for (let k = 0; k < 4; k++) {
+        g.beginPath();
+        g.arc(cx + (R() - 0.5) * TILE * 0.5, cy + (R() - 0.5) * TILE * 0.5, 1 + R() * 1.6, 0, Math.PI * 2);
+        g.fill();
+      }
+      // 7.2 Валун.
+      const r = 12 + R() * 4;
+      g.fillStyle = 'rgba(0,0,0,0.42)';
+      g.beginPath(); g.ellipse(cx + 2, cy + r * 0.6, r * 1.0, r * 0.45, 0, 0, Math.PI * 2); g.fill();
       // Основание — тёмный шестигранник со сдвигом.
       const base = [];
       for (let k = 0; k < 6; k++) {
         const a = k * Math.PI / 3 + R() * 0.5;
-        const rr2 = r * (0.82 + R() * 0.25);
+        const rr2 = r * (0.85 + R() * 0.2);
         base.push(cx + Math.cos(a) * rr2, cy + Math.sin(a) * rr2 * 0.9);
       }
       g.fillStyle = B.rock[0]; polyG(base);
+      g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 1.8; g.stroke();
       // Средняя грань — пятигранник вверх-влево.
       const mid = [];
       for (let k = 0; k < 5; k++) {
@@ -552,19 +636,27 @@ export class GameMap {
         mid.push(cx - 2 + Math.cos(a) * rr2, cy - 3 + Math.sin(a) * rr2 * 0.85);
       }
       g.fillStyle = B.rock[1]; polyG(mid);
+      // Световая грань сверху-слева (общий язык света).
+      g.fillStyle = 'rgba(255,255,255,0.15)';
+      polyG([cx - r * 0.78, cy - r * 0.18, cx - r * 0.12, cy - r * 0.8,
+             cx + r * 0.5, cy - r * 0.58, cx + r * 0.16, cy - r * 0.04]);
       // Светлый скол — треугольник.
       const sa = R() * Math.PI * 2;
       g.fillStyle = B.rock[2];
       polyG([cx + Math.cos(sa) * r * 0.55, cy + Math.sin(sa) * r * 0.45,
              cx + Math.cos(sa + 2.2) * r * 0.5, cy + Math.sin(sa + 2.2) * r * 0.42,
              cx - 3, cy - r * 0.42]);
+      // Тень на нижне-правом склоне — объём.
+      g.fillStyle = 'rgba(0,0,0,0.22)';
+      polyG([cx + r * 0.2, cy + r * 0.1, cx + r * 0.72, cy + r * 0.3,
+             cx + r * 0.35, cy + r * 0.72]);
       // Верхнее ребро бликует.
-      g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.6;
+      g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 1.6;
       g.beginPath();
       g.moveTo(cx - r * 0.5, cy - r * 0.34); g.lineTo(cx + r * 0.1, cy - r * 0.52);
       g.stroke();
       // Трещины.
-      g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 1;
+      g.strokeStyle = 'rgba(0,0,0,0.32)'; g.lineWidth = 1;
       for (let k = 0; k < 2; k++) {
         const a = Math.PI * (0.3 + R() * 0.7);
         g.beginPath();
