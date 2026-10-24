@@ -1361,31 +1361,32 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.beginPath(); ctx.moveTo(mx + 8, my - 4); ctx.quadraticCurveTo(cx + 10, cy - 8, cx + 16, cy - 8); ctx.stroke();
       slime(ctx, cx + 18, cy + 14, 2, t, bid + 2);
     } else if (b.type === 'barracks') {
-      // Инкубатор 3×2: родильная яма, три яйца, кольцо зубов.
+      // Инкубатор 3×2 · V-4: компактное «стоячее» гнездо (а не широкая
+      // низкая яма — это силуэт фабрики), три яйца, кольцо зубов.
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(cx + 4, cy + 12, w * 0.44, h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
-      mound(ctx, cx, cy + 2, w * 0.46, h * 0.44, FD, FM, FL);
-      veins(ctx, cx, cy + 2, w * 0.42, h * 0.4, 6, bid * 0.5);
+      ctx.beginPath(); ctx.ellipse(cx + 4, cy + 12, w * 0.40, h * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      mound(ctx, cx, cy + 2, w * 0.38, h * 0.46, FD, FM, FL);
+      veins(ctx, cx, cy + 2, w * 0.34, h * 0.42, 6, bid * 0.5);
       // Яма выводка.
       ctx.fillStyle = '#200d14';
-      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.3, h * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.26, h * 0.28, 0, 0, Math.PI * 2); ctx.fill();
       ctx.save();
       ctx.shadowColor = '#a8ff9e'; ctx.shadowBlur = 8;
       ctx.strokeStyle = '#3f7a4a'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.3, h * 0.26, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.26, h * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       // Мембранная бахрома по краю ямы.
       ctx.strokeStyle = 'rgba(217,207,192,0.35)'; ctx.lineWidth = 1.4;
       for (let i = 0; i < 7; i++) {
         const a = Math.PI * (0.1 + 0.8 * (i / 6));
-        const ex = cx + Math.cos(a) * w * 0.3, ey = cy + 3 + Math.sin(a) * h * 0.26;
+        const ex = cx + Math.cos(a) * w * 0.26, ey = cy + 3 + Math.sin(a) * h * 0.28;
         ctx.beginPath();
         ctx.moveTo(ex, ey);
         ctx.lineTo(ex + Math.cos(a) * 5 + Math.sin(t * 2 + i) * 1.5, ey + Math.sin(a) * 4 + 2);
         ctx.stroke();
       }
       // Зубы венца вокруг ямы.
-      teethRing(ctx, cx, cy + 3, w * 0.3 + 3, 6, -Math.PI / 2, Math.PI, 9, '#d9cfc0');
+      teethRing(ctx, cx, cy + 3, w * 0.26 + 3, 6, -Math.PI / 2, Math.PI, 9, '#d9cfc0');
       // Три яйца; крайнее трескается и дрожит.
       const eggs = [[-0.17, 0.02, 9, 0], [0.02, -0.03, 11, 1], [0.2, 0.04, 8, 2]];
       for (const [ex, ey, er, k] of eggs) {
@@ -1462,56 +1463,89 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(px, py + h - 4, w, 4);
     } else if (b.type === 'bunker') {
-      // Кокон 2×2: плетёное гнездо, щель с глазами гарнизона.
-      mound(ctx, cx, cy + 3, w * 0.44, h * 0.42, '#4a2030', '#7d3a52', '#b96a80');
-      veins(ctx, cx, cy + 3, w * 0.4, h * 0.38, 6, bid * 0.8, 'rgba(30,8,18,0.45)');
-      // Плетение: дуги волокон.
+      // Кокон 2×2 · V-4: СТОЯЧИЙ кокон вместо шара — свой силуэт «стоячее
+      // яйцо», чтобы семейство кхарид не читалось четырьмя одинаковыми
+      // каплями (КЦ — шар с шипами, фабрика — низкая яма, лаб — башня,
+      // бункер — стоячий кокон).
+      // Ножка: кокон поднят над землёй и слегка качается.
+      const sway = Math.sin(t * 1.3 + bid) * 0.03;
+      ctx.save();
+      ctx.translate(cx, cy + 6);
+      ctx.rotate(sway);
+      ctx.translate(-cx, -(cy + 6));
+      ctx.strokeStyle = '#3b1a26'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(cx - 7, cy + 14); ctx.lineTo(cx - 4, cy + 22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 7, cy + 14); ctx.lineTo(cx + 4, cy + 22); ctx.stroke();
+      // Тело кокона: вертикальный овал (выше, чем шире).
+      ctx.fillStyle = '#4a2030';
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, 17, 21 * breathe, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#7d3a52';
+      ctx.beginPath(); ctx.ellipse(cx - 1, cy, 14, 18 * breathe, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#b96a80';
+      ctx.beginPath(); ctx.ellipse(cx - 3, cy - 4, 8, 10 * breathe, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,235,240,0.3)';
+      ctx.beginPath(); ctx.ellipse(cx - 5, cy - 8, 4.5, 6, -0.4, 0, Math.PI * 2); ctx.fill();
+      // Плетение: волокна поперёк кокона.
       ctx.strokeStyle = 'rgba(217,207,192,0.5)'; ctx.lineWidth = 1.6;
-      for (let k = 0; k < 3; k++) {
+      for (let k = 0; k < 4; k++) {
+        const yy = cy - 10 + k * 7;
         ctx.beginPath();
-        ctx.ellipse(cx, cy + 3, w * 0.36 - k * 6, (h * 0.34 - k * 5) * breathe, 0.3, Math.PI * 1.7, Math.PI * 2.6);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.ellipse(cx, cy + 3, w * 0.36 - k * 6, (h * 0.34 - k * 5) * breathe, 0, Math.PI * 0.7, Math.PI * 1.5);
+        ctx.ellipse(cx, yy, 15 - Math.abs(k - 1.5) * 2, 3.5, 0, Math.PI * 1.05, Math.PI * 1.95);
         ctx.stroke();
       }
-      // Щель выводка: по глазу на каждого сидящего внутри.
+      veins(ctx, cx, cy + 2, 13, 17, 5, bid * 0.8, 'rgba(30,8,18,0.4)');
+      // Щель выводка — ВЕРТИКАЛЬНАЯ (как у стоячего кокона), по глазу на
+      // каждого сидящего внутри.
       ctx.fillStyle = '#1c0d12';
-      ctx.beginPath(); ctx.ellipse(cx, cy + 4, 20, 7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 2, 5.5, 13, 0, 0, Math.PI * 2); ctx.fill();
       const n = Math.min(gar, 4);
       for (let i = 0; i < n; i++) {
-        const ex = cx - 12 + i * (24 / Math.max(1, n - 1 || 1));
-        aeye(ctx, ex, cy + 4, 3);
+        aeye(ctx, cx, cy - 7 + i * 5.5, 3);
       }
       if (!n) {
         ctx.fillStyle = 'rgba(168,255,158,0.4)';
-        ctx.beginPath(); ctx.ellipse(cx, cy + 4, 12, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx, cy + 2, 2.5, 9, 0, 0, Math.PI * 2); ctx.fill();
       }
-      // Капля слизи.
-      slime(ctx, cx + 14, cy + 18, 2.2, t, bid);
+      ctx.restore();
+      // Капля слизи у основания.
+      slime(ctx, cx + 16, cy + 20, 2.2, t, bid);
     } else if (b.type === 'factory') {
-      // Яма выводка 3×3: кратер с кладкой, щупальца, светящаяся топь.
-      mound(ctx, cx, cy + 3, w * 0.47, h * 0.45, FD, FM, FL);
-      veins(ctx, cx, cy + 3, w * 0.43, h * 0.41, 8, bid * 0.4);
-      // Кратер.
+      // Яма выводка 3×3 · V-4: НИЗКАЯ ШИРОКАЯ яма вместо капли — силуэт
+      // «разверзтая пасть у самой земли», чтобы отличаться от круглого КЦ,
+      // башни-лаба и стоячего бункера.
+      // Тело: плоская широкая линза.
+      mound(ctx, cx, cy + 6, w * 0.50, h * 0.30, FD, FM, FL);
+      veins(ctx, cx, cy + 6, w * 0.46, h * 0.26, 8, bid * 0.4);
+      // Губы ямы: приподнятые валики слева и справа.
+      ctx.fillStyle = FL;
+      ctx.beginPath(); ctx.ellipse(cx - w * 0.34, cy + 6, w * 0.10, h * 0.10, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + w * 0.34, cy + 6, w * 0.10, h * 0.10, 0.3, 0, Math.PI * 2); ctx.fill();
+      // Кратер: широкая тёмная пасть.
       ctx.fillStyle = '#1c0d12';
-      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.28, h * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.34, h * 0.17, 0, 0, Math.PI * 2); ctx.fill();
       ctx.save();
       ctx.shadowColor = '#a8ff9e'; ctx.shadowBlur = 9;
       ctx.fillStyle = 'rgba(120,220,130,' + (0.5 + 0.35 * pulse).toFixed(2) + ')';
-      ctx.beginPath(); ctx.ellipse(cx, cy + 2, w * 0.2, h * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, w * 0.25, h * 0.10, 0, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      // Кладка в топи.
+      // Кладка в топи: ряд яиц по всей ширине пасти.
       for (let i = 0; i < 5; i++) {
-        const a = i * 2.4 + 0.5;
-        const ex = cx + Math.cos(a) * w * 0.13, ey = cy + 2 + Math.sin(a) * h * 0.1;
+        const ex = cx - w * 0.24 + i * (w * 0.12);
+        const ey = cy + 4 + (i % 2 ? 2 : 0);
         ctx.fillStyle = '#cfe8b8';
-        ctx.beginPath(); ctx.ellipse(ex, ey, 4, 5, a, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(ex, ey, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'rgba(168,255,158,0.6)';
-        ctx.beginPath(); ctx.ellipse(ex, ey + 1, 2, 2.6, a, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(ex, ey + 1, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();
       }
-      // Зубы венца и щупальца.
-      teethRing(ctx, cx, cy + 2, w * 0.28 + 2, 7, -Math.PI / 2, Math.PI, 10, '#d9cfc0');
+      // Зубы: два ряда на губах пасти (сверху вниз и снизу вверх), яйца —
+      // между ними.
+      ctx.fillStyle = '#d9cfc0';
+      for (let i = 0; i < 7; i++) {
+        const tx = cx - w * 0.30 + i * (w * 0.10);
+        poly(ctx, [tx - 2.4, cy - 10, tx + 2.4, cy - 10, tx, cy - 3]); ctx.fill();
+        poly(ctx, [tx - 2.4, cy + 17, tx + 2.4, cy + 17, tx, cy + 10]); ctx.fill();
+      }
+      // Щупальца у краёв ямы.
       for (let i = 0; i < 3; i++) {
         const a = Math.PI * (0.15 + 0.35 * i) + (i === 1 ? Math.PI * 0.7 : 0);
         const bx = cx + Math.cos(a) * w * 0.3, by = cy + 3 + Math.sin(a) * h * 0.28;
@@ -1523,13 +1557,18 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.fillStyle = '#a8ff9e';
         ctx.beginPath(); ctx.arc(tipX, tipY, 2.2, 0, Math.PI * 2); ctx.fill();
       }
-      slime(ctx, cx - w * 0.36, cy + h * 0.34, 2.4, t, bid + 3);
+      slime(ctx, cx - w * 0.36, cy + h * 0.30, 2.4, t, bid + 3);
     } else if (b.type === 'lab') {
-      // Узел эволюции 3×3: витой шпиль, парящие осколки, полипы.
-      mound(ctx, cx, cy + 8, w * 0.46, h * 0.4, FD, FM, FL);
-      veins(ctx, cx, cy + 8, w * 0.42, h * 0.36, 7, bid * 0.3);
-      // Шпиль: широкие сужающиеся сегменты.
-      const segs = 5, baseW = 34, segH = 12;
+      // Узел эволюции 3×3 · V-4: БАШНЯ — узкий пьедестал + высокий витой
+      // шпиль, чтобы силуэт читался «высокая башня», а не «ещё одна капля»
+      // рядом с круглым КЦ, низкой фабрикой и стоячим бункером.
+      // Пьедестал: маленький вертикальный узел, башня доминирует.
+      mound(ctx, cx, cy + 8, w * 0.26, h * 0.30, FD, FM, FL);
+      veins(ctx, cx, cy + 8, w * 0.22, h * 0.26, 5, bid * 0.3);
+      // Шпиль: сужающиеся сегменты — выше и уже прежнего, но влезает в
+      // футпринт 3×3 (TILE=30): при segs=7/segH=13 шпиль вылезал на 31
+      // единицу над клеткой и срезался камерой у верхней кромки карты.
+      const segs = 6, baseW = 26, segH = 12;
       let tipX = cx, tipY = cy;
       for (let i = 0; i < segs; i++) {
         const sw = baseW * (1 - i / (segs + 0.5));
@@ -1539,6 +1578,8 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         g.addColorStop(0, '#c07a8c'); g.addColorStop(0.45, FM); g.addColorStop(1, FD);
         ctx.fillStyle = g;
         poly(ctx, [cx - sw / 2 + lean, sy, cx + sw / 2 + lean, sy, cx + sw * 0.32 + lean + 2, sy - segH, cx - sw * 0.32 + lean + 2, sy - segH]);
+        ctx.fill();   // было: без fill() весь шпиль был невидим — видны
+        //             только штрихи кромок, и лаб читался «летящими чёрточками»
         ctx.strokeStyle = '#e0a0b0'; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(cx - sw / 2 + lean, sy); ctx.lineTo(cx - sw * 0.32 + lean + 2, sy - segH); ctx.stroke();
         if (i === segs - 1) { tipX = cx + lean + 2; tipY = sy - segH; }
