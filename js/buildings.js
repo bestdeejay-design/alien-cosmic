@@ -617,7 +617,8 @@ function teethRing(ctx, x, y, ringR, toothL, ang, spread, n, color) {
     const tx = x + Math.cos(a) * (ringR + toothL), ty = y + Math.sin(a) * (ringR + toothL);
     const px = -Math.sin(a) * toothL * 0.32, py = Math.cos(a) * toothL * 0.32;
     poly(ctx, [bx - px, by - py, bx + px, by + py, tx, ty]);
-  }
+    ctx.fill();   // было: без fill() клыки не рисовались вовсе; fill() обязан
+  }               // быть в цикле — poly() сбрасывает путь через beginPath()
 }
 
 // ------------------------------------------------------------
@@ -1557,6 +1558,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         const s = 3.5 + Math.sin(a) * 1.2;
         ctx.fillStyle = '#c99aff';
         poly(ctx, [ox, oy - s, ox + s * 0.6, oy, ox, oy + s, ox - s * 0.6, oy]);
+        ctx.fill();   // было: без fill() осколки не рисовались — только блик
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         ctx.fillRect(ox - 1, oy - s * 0.5, 2, s * 0.6);
       }
