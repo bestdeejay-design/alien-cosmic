@@ -1411,6 +1411,11 @@ export class Game {
     st.units = st.units.filter((u) => !u.dead);
     st.buildings = st.buildings.filter((b) => !b.dead);
     U.syncSelectionFlags(st); // кольца выделения видимы каждый тик
+    // ВЛАДЕЛЕЦ 25.10: баланс сбора на рейде виден всегда (обновление HUD раз в ~0.5с).
+    if (st.raidMode === 'expedition') {
+      st._hudT = (st._hudT || 0) + LOGIC_DT;
+      if (st._hudT >= 0.5) { st._hudT = 0; ui.setObjective(this.objectiveText()); }
+    }
     U.updateProjectiles(st, LOGIC_DT);
     U.updateEffects(st, LOGIC_DT);
     if (!this.mission.noEnemyBase) st.ai.update(LOGIC_DT, st);
