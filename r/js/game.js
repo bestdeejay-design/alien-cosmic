@@ -23,6 +23,9 @@ import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, mission
 import * as ui from './ui.js?v=10262510';
 import { drawRankMark } from './skins.js?v=10262510';
 import { openAdmin } from './admin.js?v=10262510';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262510';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262510';
+import { openCommander } from './commander-ui.js?v=10262510';
 import { showChests } from './chests-ui.js?v=10262510';
 import { createProfile } from './profile.js?v=10262510';
 import { attachInput, updateCamera } from './input.js?v=10262510';
@@ -389,7 +392,37 @@ export class Game {
       this.raidSession.pendingReturn = null;
     }
     this.startMission(buildRaidHomeMission(this.raidSession));
+    // Э7: на домашней базе живёт командир (капитан → генерал) и тикает
+    // расписание входящих рейдов. На вылазке командир остаётся на базе.
+    if (this.state && this.state.raidMode === 'home') {
+      ensureCommander(this.state);
+      initHomeRaid(this.state);
+    }
     ui.syncRaidMenu(this);
+  }
+
+  // Э7: события обороны базы → тосты, звук и метка на миникарте.
+  handleHomeRaidEvent(ev) {
+    const st = this.state;
+    if (!st || !ev) return;
+    if (ev.type === 'warn') {
+      ui.toast(t('ui.commander.warnToast', { s: ev.seconds }), 'warn', 4200);
+      this.sound.ping();
+      const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc' && !b.dead);
+      if (cc) st.pings.push({ x: cc.x, y: cc.y, t: 0 });
+    } else if (ev.type === 'incoming') {
+      ui.toast(t('ui.commander.incomingToast', { n: ev.wave }), 'error', 4200);
+      this.sound.alarm();
+    } else if (ev.type === 'repelled') {
+      if (ev.training) {
+        ui.toast(t('ui.commander.trainingWin'), 'info', 3000);
+      } else {
+        ui.toast(ev.levelUp
+          ? t('ui.commander.repelledToastXp', { erg: ev.reward, n: ev.level })
+          : t('ui.commander.repelledToast', { erg: ev.reward }), 'info', 3600);
+        this.sound.win();
+      }
+    }
   }
 
   resetRaidHome(faction) {
@@ -604,6 +637,14 @@ export class Game {
     this.started = true;
     this.sleepMouse();
     ui.syncRaidMenu(this);
+    // Э7: вылет — это служба командира. Опыт только за успешный возврат.
+    if (ok && this.state) {
+      const c = ensureCommander(this.state);
+      c.stats.raids++;
+      const gained = addXp(this.state, 40 + (Number(st.raidTier) || 1) * 6);
+      logEvent(this.state, t('ui.commander.logRaid', { tier: Number(st.raidTier) || 1 }), 'info');
+      if (gained.levelUp) ui.toast(t('ui.commander.levelUpToast', { n: gained.level }), 'info', 3200);
+    }
     if (ok) {
       let extra = '';
       if (overflow > 0) extra += ' ' + t('ui.raid.toastOverflow', { n: overflow });
@@ -946,7 +987,9 @@ export class Game {
         const tip = gradeTip(b.type, to, st.factions.player, g);
         if (lines.length) tip.lines.push(...lines);
         cmds.push({
-          code: 'KeyR', icon: 'grade',
+          // В лаборатории KeyR занят исследованием «Плиты техники», поэтому
+          // грейд там висит на Y — иначе горячая клавиша молча уводила в ресерч.
+          code: b.cfg.research ? 'KeyY' : 'KeyR', icon: 'grade',
           label: t('ui.cmds.grade', { r: GRADE_ROMAN[to] }) + (chk.ok ? '' : t('ui.cmds.lockMark')),
           cost: g.cost, level: to, lock,
           tip,
@@ -981,10 +1024,19 @@ export class Game {
           on: () => openAdmin(this),
         });
       }
+      // Э7: командир базы — капитан → генерал (звание, бонусы, оборона).
+      if (b.done && b.type === 'cc') {
+        cmds.push({
+          code: 'KeyK', icon: 'officer', label: t('ui.cmds.commander'),
+          tip: { title: t('ui.cmds.commander'), lines: t('ui.cmds.commanderTip') },
+          on: () => openCommander(this),
+        });
+      }
       // ВЛАДЕЛЕЦ 25.10: профиль/сохранения — команда КЦ (не в хедере).
       if (b.done && b.type === 'cc' && window.showProfilePanel) {
         cmds.push({
-          code: 'KeyP', icon: 'recon', label: t('ui.cmds.profile'),
+          // KeyP занят глобальной паузой (input.js), поэтому профиль — на U.
+          code: 'KeyU', icon: 'recon', label: t('ui.cmds.profile'),
           tip: { title: t('ui.cmds.profile'), lines: t('ui.cmds.profileTip') },
           on: () => window.showProfilePanel(),
         });
@@ -1315,7 +1367,7 @@ export class Game {
     if (!B.canPlace(st.map, tx, ty, b.w, b.h) ||
         Math.hypot(tx - st.map.bases.player.center.x, ty - st.map.bases.player.center.y) < 4) {
       st.map.markBuilding(b);
-      ui.toast(t('ui.cmds.houseMoveBlocked'), 'warn');
+      ui.toast(t('ui.raid.houseMoveBlocked'), 'warn');
       this.sound.click();
       return;
     }
@@ -1611,6 +1663,13 @@ export class Game {
     if (st.raidMode) {
       updateRaidTick(this, st, LOGIC_DT);
       if (this.state !== st) return; // вылазка завершилась и вернула игрока на домашнюю базу
+    }
+    // Э7: входящие рейды и автооборона — только на домашней базе.
+    if (st.raidMode === 'home' && !st.gameOver) {
+      const events = updateHomeRaid(this, st, LOGIC_DT);
+      for (const ev of events) this.handleHomeRaidEvent(ev);
+      const ccB = st.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+      if (ccB) ccB.commanderLevel = st.commander ? st.commander.level : 0;
     }
 
     if (st.tick % 3 === 0) st.fog.recompute(st);
@@ -1974,12 +2033,11 @@ export class Game {
       const wy = u.prevY + (u.y - u.prevY) * alpha;
       if (!inView(wx, wy, 30)) continue;
       try {
-        U.drawUnit(ctx, u, wx - cam.x, wy - cam.y);
-        // Э5: шевроны ранга над своим юнитом (ранг = технологии лаборатории).
-        if (u.side === 'player' && u.kind === 'unit') {
-          const rk = unitRank(st, 'player', u.cfg);
-          if (rk > 0) drawRankMark(ctx, wx - cam.x, wy - cam.y - (u.r || 10) - 8, rk, '#f3c579');
-        }
+        // Э5: ранг юнита (технологии лаборатории) виден и в самом спрайте
+        // (сегменты брони/огни/размер), и шевронами над корпусом.
+        const rk = u.side === 'player' && u.kind === 'unit' ? unitRank(st, 'player', u.cfg) : 0;
+        U.drawUnit(ctx, u, wx - cam.x, wy - cam.y, rk);
+        if (rk > 0) drawRankMark(ctx, wx - cam.x, wy - cam.y - (u.r || 10) - 8, rk, '#f3c579');
       } catch (e) { this.drawWarnOnce('unit:' + u.type, e); }
     }
 
@@ -2468,6 +2526,7 @@ function calcSupply(st) {
     for (const b of st.buildings) {
       if (!b.dead && b.side === side && b.done) cap += b.cfg.supplyGain || 0;
     }
+    if (side === 'player') cap += supplyBonus(st); // Э7: места от командира базы
     st.supply[side].cap = (st.noBase && side === 'player') ? 99 : Math.min(cap, SUPPLY_MAX);
   }
 }

@@ -304,6 +304,21 @@ export function icon(type) {
       g.stroke();
       g.fillStyle = red; g.beginPath(); g.arc(0, 0, 1.8, 0, Math.PI * 2); g.fill();
       break;
+    case 'officer': // Э7: командир — фуражка с козырьком и звезда звания.
+      g.fillStyle = amber;
+      g.beginPath(); g.ellipse(0, 1, 8, 5, 0, Math.PI, Math.PI * 2); g.fill();
+      g.fillStyle = dark;
+      g.fillRect(-9, 1, 18, 3);
+      g.fillStyle = cyan;
+      g.beginPath(); g.arc(0, -4, 2.2, 0, Math.PI * 2); g.fill();
+      break;
+    case 'capsule': // Э6+: капсула снабжения — контейнер с крышкой.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath(); g.roundRect ? g.roundRect(-5, -9, 10, 18, 4) : g.rect(-5, -9, 10, 18); g.stroke();
+      g.beginPath(); g.moveTo(-5, 0); g.lineTo(5, 0); g.stroke();
+      g.fillStyle = amber;
+      g.beginPath(); g.arc(0, -5, 2, 0, Math.PI * 2); g.fill();
+      break;
     case 'shuttle': // R0: десантный челнок вылазки / эвакуации.
       g.fillStyle = steel;
       g.beginPath();
@@ -908,7 +923,12 @@ export function renderRaidLaunch(game) {
   }
 }
 
+// Канон владельца: в топбаре НЕТ отдельных кнопок полигона. Кнопка
+// «Вылазка/Эвакуация» жила здесь раньше — теперь всё через команды строений:
+// Дом → «Вылазка» (Г2+), Дом/отряд в экспедиции → «Эвакуация».
+// Функция оставлена заглушкой, чтобы не плодить условных вызовов.
 function updateRaidTopbar(game) {
+  void game;
   if (!els || !els.raidAction) return;
   const st = game && game.state;
   if (!st || !st.raidMode) {

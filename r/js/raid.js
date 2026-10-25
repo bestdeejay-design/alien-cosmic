@@ -16,6 +16,7 @@ import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
 } from './economy.js?v=10262510';
 import * as U from './units.js?v=10262510';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262510';
 import * as B from './buildings.js?v=10262510';
 import { nearestFreeTileAround } from './pathfinding.js?v=10262510';
 import { t, message } from './i18n.js?v=10262510';
@@ -254,6 +255,9 @@ export function captureHomeBaseDTO(st, session, dispatchedIds = new Set()) {
     starterGiftClaimed: true,
     raidSeq: session.raidSeq | 0,
     minerals: Math.max(0, Math.floor(Number(st.minerals.player) || 0)),
+    // Э7: командир живёт на базе, поэтому его звание/опыт/настройки
+    // переживают вылет вместе с остальным DTO.
+    commander: serializeCommander(st.commander),
     tech: {
       infAtk: tp.infAtk | 0,
       infArm: tp.infArm | 0,
@@ -360,6 +364,8 @@ function hydrateHomeBaseIntoState(st, dto, pendingReturn) {
     const created = st.map.crystals[st.map.crystals.length - 1];
     if (created && c.max > created.max) created.max = c.max;
   }
+  // 1б) Командир базы (Э7): звание, опыт, автозащита, журнал.
+  hydrateCommander(st, dto.commander);
   // 2) Технологии и минералы (+ возврат неистраченного стройбюджета и добытого эрга).
   for (const k of ['infAtk', 'infArm', 'vehAtk', 'vehArm', 'autoRepair']) {
     if (dto.tech && Number.isFinite(dto.tech[k])) st.tech.player[k] = dto.tech[k] | 0;

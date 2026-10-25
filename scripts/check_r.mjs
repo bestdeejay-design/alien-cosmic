@@ -14,6 +14,9 @@
 //       а прогресс S1 при этом остаётся нетронутым (живой прогон).
 //   [6] В r/index.html подключён ровно один движок — r/js/game.js.
 //   [7] Капсулы снабжения (Э6): headless-прогон sim_chests_ui.mjs.
+//   [8] Вид 20 уровней (Э5+): контрольный рендер sim_skins.mjs.
+//   [9] Командир КЦ и оборона базы (Э7): sim_commander.mjs.
+//  [10] Локали: каждый литеральный ключ t('…') есть в RU и EN.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -152,5 +155,32 @@ try {
   bad('sim_chests_ui упал:\n' + String(e.stdout || e.stderr || e.message));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы зелёные');
+// ---------- [8] вид 20 уровней: контрольный рендер (Э5+) ----------
+console.log('\n[8] Вид 20 уровней (здания 1–20, юниты 0–20):');
+try {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_skins.mjs')], { stdio: 'pipe' });
+  ok('фазы, знаковые цвета и слои грейдов рисуются без исключений');
+} catch (e) {
+  bad('sim_skins упал:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+// ---------- [9] командир и оборона базы (Э7) ----------
+console.log('\n[9] Командир КЦ и оборона базы:');
+try {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_commander.mjs')], { stdio: 'pipe' });
+  ok('звания 1–20, бонусы, входящие рейды, автозащита и карточка работают');
+} catch (e) {
+  bad('sim_commander упал:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+// ---------- [10] локали: все литеральные ключи есть в RU и EN ----------
+console.log('\n[10] Ключи локалей r/:');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'check_i18n_keys.mjs')], { stdio: 'pipe' }).toString();
+  ok(out.trim().replace(/^✓\s*/, ''));
+} catch (e) {
+  bad('check_i18n_keys:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир зелёные');
 process.exit(failed ? 1 : 0);

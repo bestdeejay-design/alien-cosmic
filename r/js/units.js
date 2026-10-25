@@ -14,6 +14,7 @@ import {
   REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262510';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262510';
 import { t, message } from './i18n.js?v=10262510';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262510';
 
 let nextId = 1;
 
@@ -48,13 +49,20 @@ export function atkBonus(st, attacker) {
   if (!t) return 0;
   const veh = attacker.kind === 'unit' && attacker.cfg.vehicle;
   const lvl = t[veh ? 'vehAtk' : 'infAtk'] || 0;
-  if (!lvl) return 0;
   // Э1: ранг даёт +4% БАЗОВОГО урона за уровень (на 20 ур. ×1.8).
   // Турель (здание) считается пехотным оружием, база — её грейдовый урон.
   const base = attacker.kind === 'building'
     ? gradeDmg(attacker.type, attacker.level || 1, attacker.cfg.dmg)
     : attacker.cfg.dmg;
-  return Math.round(base * (attackMul(lvl) - 1) * 10) / 10;
+  // Э7: во время обороны базы командир даёт своей стороне +X% урона.
+  // Важно: бонус работает и без изученных рангов (lvl = 0), иначе на старте
+  // командир был бы «невидимым».
+  let bonus = lvl ? Math.round(base * (attackMul(lvl) - 1) * 10) / 10 : 0;
+  if (st.homeRaid && st.homeRaid.active && attacker.side === 'player') {
+    const buff = Number(st.homeRaid.active.buff) || 1;
+    if (buff > 1) bonus = Math.round((bonus + base * (buff - 1)) * 10) / 10;
+  }
+  return bonus;
 }
 // Э1: доля снижения урона от ранга брони (2.5%/ур., потолок 50%).
 export function damageTakenMul(st, victim) {
@@ -2237,7 +2245,9 @@ function healAura(ctx, u, rx, ry, t) {
 // мерцание тяги, покачивание лап на ходу, откат стволов по u.cd.
 // Контракт §3: нос по +X, габарит ±(r+8), тень/кольцо/HP снаружи.
 // ------------------------------------------------------------
-export function drawUnit(ctx, u, rx, ry) {
+// rank (0…20) — ранг юнита из лаборатории; влияет ТОЛЬКО на вид:
+// масштаб картинки и «сегменты брони» (см. skins.drawUnitGrade).
+export function drawUnit(ctx, u, rx, ry, rank = 0) {
   const isP = u.side === 'player';
   const main = isP ? COLORS.player : COLORS.enemy;
   const dark = isP ? COLORS.playerDark : COLORS.enemyDark;
@@ -2276,6 +2286,9 @@ export function drawUnit(ctx, u, rx, ry) {
   ctx.save();
   ctx.translate(rx, ry);
   ctx.rotate(u.angle);
+  // Э5+: ранг чуть увеличивает картинку юнита (до +8 %), хитбокс не меняется.
+  const rankScale = skinUnitScale(rank);
+  if (rankScale !== 1) ctx.scale(rankScale, rankScale);
 
   // Рендерное время анимации (на симуляцию не влияет).
   const t = performance.now() * 0.001 + u.id * 1.618;
@@ -2930,6 +2943,8 @@ export function drawUnit(ctx, u, rx, ry) {
     ctx.fillStyle = `rgba(255,255,255,${u.flashT * 2.8})`;
     ctx.beginPath(); ctx.arc(0, 0, u.r + 2, 0, Math.PI * 2); ctx.fill();
   }
+  // Э5+: слой ранга — сегменты брони, огни, антенна, неон/призма.
+  if (rank > 0 && u.side === 'player') drawUnitGrade(ctx, u, rank, t);
   ctx.restore();
 
   // Метка недостижимой цели: красный «!» — игрок видит, что приказ

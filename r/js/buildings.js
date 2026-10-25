@@ -5,7 +5,7 @@
 // ============================================================
 import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262510';
 import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262510';
-import { drawGradeTrim } from './skins.js?v=10262510';
+import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262510';
 import { nearestFreeTileAround } from './pathfinding.js?v=10262510';
 import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262510';
 import { icon } from './ui.js?v=10262510'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
@@ -1659,6 +1659,10 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
   // призма) — по одному взгляду видно, насколько здание прокачано.
   if (!ghost && b.done !== false && (b.level || 1) > 1) {
     drawGradeTrim(ctx, b, px, py, w, h, performance.now() * 0.001);
+  }
+  // Э7: вымпел командира над КЦ (уровень ставит движок: b.commanderLevel).
+  if (!ghost && b.type === 'cc' && b.commanderLevel) {
+    drawCommanderMark(ctx, b, px, py, w, h, b.commanderLevel, performance.now() * 0.001);
   }
 
   // Трещины урона: тёмные рваные линии по корпусу.
