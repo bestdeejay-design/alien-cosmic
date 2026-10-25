@@ -15,6 +15,13 @@ if (!game) {
   console.error('[r] game не загрузился');
 } else {
   try {
+    // ВЛАДЕЛЕЦ 25.10: на этапе рейдов интерфейс полигона — русский.
+    try {
+      if (!localStorage.getItem('terranrts.language')) {
+        localStorage.setItem('terranrts.language', 'ru');
+        if (window.i18nSetLocale) window.i18nSetLocale('ru');
+      }
+    } catch { /* */ }
     // 1) Кнопки топбара, связанные с рейдом и рестартом, скрыть (канон: без кнопок).
     for (const id of ['btn-raid-action', 'btn-restart']) {
       const el = document.getElementById(id);

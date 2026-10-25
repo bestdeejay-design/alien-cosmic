@@ -1754,7 +1754,11 @@ export function update(game) {
   updateRaidTopbar(game);
 
   // Верхняя панель.
-  els.minerals.textContent = Math.floor(st.minerals.player);
+  // ВЛАДЕЛЕЦ 25.10: баланс ОДИН — счётчик в хедере. На вылазке он показывает
+  // трюм Дома (баланс на локации), дома — минералы базы.
+  els.minerals.textContent = Math.floor(
+    st.raidMode === 'expedition' ? (st.raidCargo || 0) : st.minerals.player,
+  );
   const sup = st.supply.player;
   els.supply.textContent = `${sup.used}/${sup.cap}`;
   els.supply.classList.toggle('blocked', sup.used >= sup.cap);
