@@ -855,7 +855,9 @@ export class Game {
       // возможен в принципе, и честно объясняет, что мешает (находка
       // владельца: «не всегда показываются кнопки» — раньше кнопка молча
       // исчезала при упоре в уровень КЦ).
-      if (b.done && !b.gradeUp && (b.level || 1) < MAX_BUILDING_LEVEL && GRADES[b.type]) {
+      // На карте вылазки грейдить нечего: КЦ там нет (banBuild), Дом-шаттл
+      // грейдится только на базе — иначе кнопка была бы вечно «закрыта».
+      if (b.done && !b.gradeUp && st.raidMode !== 'expedition' && (b.level || 1) < MAX_BUILDING_LEVEL && GRADES[b.type]) {
         const to = (b.level || 1) + 1;
         const g = gradeEntry(b.type, to);
         const chk = canGradeBuilding(st, 'player', b);
