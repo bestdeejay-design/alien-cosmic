@@ -5,29 +5,33 @@
 // (Гелиос-люди / кхарид-аборигены), миссия-оборона с волнами,
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
-import { HOUSE,
+import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10252058';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10252058';
-import { Fog } from './fog.js?v=10252058';
-import { Sound } from './audio.js?v=10252058';
-import * as U from './units.js?v=10252058';
-import * as B from './buildings.js?v=10252058';
-import { AIController } from './ai.js?v=10252058';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10252058';
-import * as ui from './ui.js?v=10252058';
-import { createProfile } from './profile.js?v=10252058';
-import { attachInput, updateCamera } from './input.js?v=10252058';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10252058';
+} from './config.js?v=10262510';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262510';
+import { Fog } from './fog.js?v=10262510';
+import { Sound } from './audio.js?v=10262510';
+import * as U from './units.js?v=10262510';
+import * as B from './buildings.js?v=10262510';
+import { AIController } from './ai.js?v=10262510';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262510';
+import * as ui from './ui.js?v=10262510';
+import { createProfile } from './profile.js?v=10262510';
+import { attachInput, updateCamera } from './input.js?v=10262510';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262510';
+import {
+  MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
+  gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
+} from './economy.js?v=10262510';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10252058';
+} from './raid.js?v=10262510';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -46,9 +50,17 @@ function gradeTip(type, to, fac, g) {
   if (g.dmg) lines.push(t('ui.gradeTip.dmg', { d: g.dmg, r: g.range }));
   if (g.rate) lines.push(t('ui.gradeTip.rate', { r: g.rate, q: g.queue }));
   if (g.gar) lines.push(t('ui.gradeTip.gar', { n: g.gar, m: g.hpMul }));
+  if (g.hpMul && !g.gar) lines.push(t('ui.gradeTip.hp', { m: g.hpMul }));
   if (type === 'cc') lines.push(to === 2 // H.0: грейды-ключи — разблокировки, не статы
     ? t('ui.gradeTip.opensAuto', { u: fname(UPGRADES.autoRepair, fac) })
-    : t('ui.gradeTip.opensCmds'));
+    : to <= MAX_LEVEL ? t('ui.gradeTip.opensCmds') : '');
+  if (type === 'depot') {
+    // Э1: Дом — рейдовая станция: трюм, места, лечение, ход по уровням.
+    lines.push(t('ui.gradeTip.house', { s: HOUSE.slotsAt(to), c: HOUSE.cargoAt(to) }));
+    if (to >= HOUSE.moveFrom && to - 1 < HOUSE.moveFrom) lines.push(t('ui.gradeTip.houseMove'));
+    if (to === 4) lines.push(t('ui.gradeTip.houseHeal', { h: HOUSE.healAt(to) }));
+  }
+  if (type === 'lab') lines.push(t('ui.gradeTip.lab', { r: g.rate }));
   return { title: t('ui.gradeTip.title', { r: GRADE_ROMAN[to], name: fname(BUILDINGS[type], fac) }), cost: g.cost, lines };
 }
 
@@ -81,10 +93,15 @@ function unitTip(type, fac) {
 }
 function upgradeTip(key, fac, lvl) {
   const u = UPGRADES[key];
+  const per = Math.round((u.perLevel || 0) * 1000) / 10; // 0.04 → 4 (%)
+  const lines = [t('ui.upgradeTip.time', { t: u.times[lvl] })];
+  if (u.effect === 'atk') lines.push(t('ui.upgradeTip.atk', { p: per, total: Math.round(per * (lvl + 1) * 10) / 10 }));
+  else if (u.effect === 'arm') lines.push(t('ui.upgradeTip.arm', { p: per, total: Math.round(per * (lvl + 1) * 10) / 10 }));
+  else lines.push(t('ui.upgradeTip.global'));
+  lines.push(t('ui.upgradeTip.rankMax', { a: lvl + 1, max: u.max }));
   return {
     title: t('ui.upgradeTip.title', { name: fname(u, fac), n: lvl + 1 }), cost: u.costs[lvl],
-    desc: fdesc(u, fac),
-    lines: [t('ui.upgradeTip.time', { t: u.times[lvl] }), t('ui.upgradeTip.global')],
+    desc: fdesc(u, fac), lines,
   };
 }
 
@@ -388,9 +405,14 @@ export class Game {
     const homeMinerals = st ? Math.max(0, Math.floor(Number(st.minerals.player) || 0)) : 0;
     const raidSeq = this.raidSession ? this.raidSession.raidSeq : 0;
     const validation = draft ? validateRaidLoadout(st, draft) : null;
+    // Э1: мест в челноке не больше, чем даёт грейд Дома — консоль показывает
+    // реальный лимит тира, а не «до 22 ед.» при Доме-Г2.
+    const houseSlots = HOUSE.slotsAt(Math.max(2, houseLevelOf(st) || 2));
+    const tiers = RAID_TIERS.map((t) => (t.maxUnits <= houseSlots ? t : { ...t, maxUnits: houseSlots }));
     return {
       unlockedTier,
-      tiers: RAID_TIERS,
+      houseSlots,
+      tiers,
       unitOrder: RAID_UNIT_ORDER,
       roster,
       homeMinerals,
@@ -442,6 +464,8 @@ export class Game {
       seed: v.seed,
       budget: v.budget,
       units: dispatchedList,
+      // Э1: грейд Дома-шаттла летит с отрядом — от него трюм и места.
+      houseLevel: houseLevelOf(st),
     };
 
     ui.hideRaidLaunch();
@@ -776,6 +800,9 @@ export class Game {
           cmds.push({
             code: PRODUCE_KEYS[i], icon: b.faction === 'alien' ? 'a_' + type : type,
             label: fname(ut, st.factions.player), cost: ut.cost,
+            // Э1: бейдж ранга, с которым выйдет юнит (находка владельца:
+            // «не видно уровней юнитов в командном меню»).
+            level: unitRank(st, 'player', ut) + 1,
             tip: unitTip(type, st.factions.player),
             enabled: () => st.minerals.player >= ut.cost,
             on: () => this.hooks.train(b, type),
@@ -789,12 +816,21 @@ export class Game {
           const lvl = st.tech.player[key] || 0;
           if (lvl >= up.max) return; // изучено до максимума
           // H.1: ресерч за грейдом виден замком (кнопка неактивна + строка в типе).
-          const locked = up.requiresGrade && B.bestCCLevel(st, 'player') < up.requiresGrade.level;
+          const ccl = econCcLevel(st, 'player');
+          // Э1 (правило R3): ранг юнита не выше уровня КЦ.
+          const locked = (up.requiresGrade && ccl < up.requiresGrade.level) || (lvl + 1 > ccl);
           const tip = upgradeTip(key, st.factions.player, lvl);
-          if (locked) tip.lines.push(message('needCC2', st.factions.player));
+          let lock = '';
+          if (locked) {
+            lock = up.requiresGrade && ccl < up.requiresGrade.level
+              ? message('needCC2', st.factions.player)
+              : t('ui.cmds.needCc', { n: lvl + 1 });
+            tip.lines.push(lock);
+          }
           cmds.push({
             code: RESEARCH_KEYS[i], icon: 'u_' + key,
-            label: fname(up, st.factions.player) + t('ui.upgradeTip.title', { name: '', n: lvl + 1 }).slice(2) + (locked ? t('ui.cmds.lockMark') : ''), cost: up.costs[lvl],
+            label: fname(up, st.factions.player) + t('ui.cmds.rankArrow', { a: lvl, b: lvl + 1 }) + (locked ? t('ui.cmds.lockMark') : ''), cost: up.costs[lvl],
+            level: lvl + 1, lock,
             tip,
             enabled: () => !locked && !b.res && st.minerals.player >= up.costs[lvl],
             on: () => this.hooks.startResearch(b, key),
@@ -815,19 +851,32 @@ export class Game {
           on: () => { U.releaseGarrison(st, b); this.sound.click(); },
         });
       }
-      // F.2: грейд своего достроенного (Г1→Г2→Г3). Чужие/недострой/Г3 — мимо.
-      const gTo = (b.level || 1) + 1;
-      // ВЛАДЕЛЕЦ 25.10: грейд зданий не выше уровня КЦ.
-      const ccLv = Math.max(1, ...st.buildings
-        .filter((x) => !x.dead && x.side === 'player' && x.type === 'cc' && x.done)
-        .map((x) => x.level || 1));
-      if (b.done && GRADES[b.type] && gTo <= 3 && gTo <= ccLv && !b.gradeUp) {
-        const g = GRADES[b.type][gTo];
+      // Э1: ГРЕЙД ЗДАНИЯ 1→20. Кнопка показывается ВСЕГДА, когда грейд
+      // возможен в принципе, и честно объясняет, что мешает (находка
+      // владельца: «не всегда показываются кнопки» — раньше кнопка молча
+      // исчезала при упоре в уровень КЦ).
+      if (b.done && !b.gradeUp && (b.level || 1) < MAX_BUILDING_LEVEL && GRADES[b.type]) {
+        const to = (b.level || 1) + 1;
+        const g = gradeEntry(b.type, to);
+        const chk = canGradeBuilding(st, 'player', b);
+        const lines = [];
+        let lock = '';
+        if (chk.code === 'cclow') {
+          lock = t('ui.cmds.needCc', { n: chk.needCc });
+          lines.push(lock);
+        }
+        if (chk.code === 'gate') {
+          lock = t('ui.cmds.needGate', { have: chk.gate.have, need: chk.gate.need, lvl: GRADE_ROMAN[chk.gate.minLevel] });
+          lines.push(lock);
+        }
+        const tip = gradeTip(b.type, to, st.factions.player, g);
+        if (lines.length) tip.lines.push(...lines);
         cmds.push({
           code: 'KeyR', icon: 'grade',
-          label: t('ui.cmds.grade', { r: GRADE_ROMAN[gTo] }), cost: g.cost,
-          tip: gradeTip(b.type, gTo, st.factions.player, g),
-          enabled: () => st.minerals.player >= g.cost,
+          label: t('ui.cmds.grade', { r: GRADE_ROMAN[to] }) + (chk.ok ? '' : t('ui.cmds.lockMark')),
+          cost: g.cost, level: to, lock,
+          tip,
+          enabled: () => canGradeBuilding(st, 'player', b).ok,
           on: () => this.hooks.startGrade(b),
         });
       }
@@ -844,8 +893,7 @@ export class Game {
           on: () => this.hooks.orderMassRally(b),
         });
       }
-      // ВЛАДЕЛЕЦ 25.10: Дом в экспедиции — команда «Эвакуация» внутри Дома.
-      // ВЛАДЕЛЕЦ 25.10: профиль/сохранения — команда КЦ (внутри КЦ, не в хедере).
+      // ВЛАДЕЛЕЦ 25.10: профиль/сохранения — команда КЦ (не в хедере).
       if (b.done && b.type === 'cc' && window.showProfilePanel) {
         cmds.push({
           code: 'KeyP', icon: 'recon', label: t('ui.cmds.profile'),
@@ -853,6 +901,7 @@ export class Game {
           on: () => window.showProfilePanel(),
         });
       }
+      // ВЛАДЕЛЕЦ 25.10: Дом в экспедиции — команда «Эвакуация» внутри Дома.
       if (b.done && b.type === 'depot' && st.raidMode === 'expedition' && b === st.raidHouse) {
         cmds.push({
           code: 'KeyE', icon: 'shuttle',
@@ -870,7 +919,7 @@ export class Game {
         });
       }
       // ВЛАДЕЛЕЦ 25.10: Г3 — Дом перемещается как юнит (приказ точкой ПКМ).
-      if (b.done && b.type === 'depot' && (b.level || 1) >= 3 && !b.flight) {
+      if (b.done && b.type === 'depot' && (b.level || 1) >= HOUSE.moveFrom && !b.flight) {
         cmds.push({
           code: 'KeyM', icon: 'rally', label: t('ui.cmds.houseMove'),
           tip: { title: t('ui.cmds.houseMove'), lines: t('ui.cmds.houseMoveTip') },
@@ -994,9 +1043,19 @@ export class Game {
       startGrade: (b) => {
         const r = B.startGrade(st(), b);
         const fac = st().factions.player;
-        if (r === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
-        else if (r === 'cclow') { ui.toast(t('ui.raid.errCcLevel'), 'warn'); this.sound.error(); }
-        else if (r === 'busy' || r === 'max' || r === 'wrong') { this.sound.error(); }
+        const code = typeof r === 'string' ? r : (r && r.code) || 'wrong';
+        if (code === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
+        else if (code === 'cclow') {
+          ui.toast(t('ui.raid.errCcLevel'), 'warn'); this.sound.error();
+        } else if (code === 'gate') {
+          const g = (r && r.gate) || { have: 0, need: 2, minLevel: 1 };
+          ui.toast(t('ui.cmds.gateToast', {
+            have: g.have, need: g.need, lvl: GRADE_ROMAN[g.minLevel],
+          }), 'warn');
+          this.sound.error();
+        } else if (code === 'max') {
+          ui.toast(t('ui.cmds.maxLevel', { n: MAX_BUILDING_LEVEL }), 'warn'); this.sound.error();
+        } else if (code === 'busy' || code === 'wrong') { this.sound.error(); }
         else this.sound.click();
       },
 

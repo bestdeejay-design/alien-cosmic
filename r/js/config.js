@@ -10,7 +10,11 @@
 // здесь только баланс, ID и стабильные ключи (I18N.md §5.2).
 // ============================================================
 
-import { entityText } from './i18n.js?v=10252058';
+import { entityText } from './i18n.js?v=10262510';
+import {
+  GRADE_TABLE, TECH, TECH_KEYS, MAX_LEVEL, HOUSE_LEVELS,
+  ECON_SCALE, gradeEntry, ccGate, ccGateProgress,
+} from './economy.js?v=10262510';
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
 export const GAME_VERSION = 'Y';
@@ -123,21 +127,20 @@ export const BUILDINGS = {
 };
 
 // --- Улучшения (исследуются в Лаборатории / Узле эволюции) ---
-// Бонусы применяются автоматически ко ВСЕМ своим юнитам (и новым тоже):
-//   infAtk — +3 к урону пехоты за уровень; vehAtk — +5 к урону техники;
-//   infArm — −2 к получаемому урону пехоты;  vehArm — −3 у техники.
-export const UPGRADES = {
-  infAtk: { key: 'infAtk', max: 3,
-    costs: [100, 175, 250], times: [40, 55, 70] },
-  infArm: { key: 'infArm', max: 3,
-    costs: [100, 175, 250], times: [40, 55, 70] },
-  vehAtk: { key: 'vehAtk', max: 3,
-    costs: [100, 175, 250], times: [45, 60, 75] },
-  vehArm: { key: 'vehArm', max: 3,
-    costs: [100, 175, 250], times: [45, 60, 75] },
-  autoRepair: { key: 'autoRepair', max: 1,
-    costs: [150], times: [60], requiresGrade: { type: 'cc', level: 2 } }, // H.1: открывает КЦ Г2
-};
+// 20 РАНГОВ ЮНИТОВ из r/js/economy.js (единый источник чисел). Бонусы —
+// ПРОЦЕНТНЫЕ, потому что на 20 уровнях плоские «+3 к урону» ломают единицы:
+//   infAtk/vehAtk — +4% урона за ранг (на 20 ур. ×1.8);
+//   infArm/vehArm — −2.5% получаемого урона за ранг (потолок 50%).
+// Правило владельца R3: ранг юнита не выше уровня КЦ.
+export const UPGRADES = {};
+for (const key of TECH_KEYS) {
+  const t = TECH[key];
+  UPGRADES[key] = {
+    key, max: t.max, costs: t.costs.slice(), times: t.times.slice(),
+    perLevel: t.perLevel, effect: t.kind,
+    ...(t.requiresGrade ? { requiresGrade: t.requiresGrade } : {}),
+  };
+}
 
 // kind — маршрут в локаль: entityText(kind, key, faction, field).
 // Проставляется циклом, чтобы не шуметь в каждом литерале.
@@ -158,35 +161,38 @@ export const RECON_FLEE_TILES = 6;     // H.3: отход от угрозы, т�
 export const RECON_SAMPLES = 12;       // H.3: сэмплов неразведанного за выбор
 export const CONTACT_COOLDOWN = 10;    // H.3: кулдаун доклада «контакт», сек
 
-// --- F.2: грейды зданий Г1→Г2→Г3. GRADES[type][to] — цена/время/статы ЦЕЛЕВОГО уровня.
-export const GRADES = {
-  turret: [null, null, // F.2: индекс = целевой уровень (2, 3)
-    { cost: 60, time: 30, dmg: 10, range: 165 },
-    { cost: 100, time: 45, dmg: 12, range: 180 }],
-  barracks: [null, null, // F.2: индекс = целевой уровень (2, 3)
-    { cost: 90, time: 30, rate: 1.25, queue: 7 },
-    { cost: 150, time: 45, rate: 1.5, queue: 9 }],
-  factory: [null, null, // F.2: индекс = целевой уровень (2, 3)
-    { cost: 150, time: 30, rate: 1.25, queue: 7 },
-    { cost: 250, time: 45, rate: 1.5, queue: 9 }],
-  bunker: [null, null, // F.2: индекс = целевой уровень (2, 3)
-    { cost: 72, time: 30, gar: 6, hpMul: 1.25 },
-    { cost: 120, time: 45, gar: 8, hpMul: 1.5 }],
-  cc: [null, null, // H.0: грейды-ключи без статов (только разблокировки)
-    { cost: 240, time: 30 },
-    { cost: 400, time: 45 }],
-  depot: [null, null, // ВЛАДЕЛЕЦ 25.10: Дом — карман рейдов (design/HOUSE_GRADES_RAID.md)
-    { cost: 1200, time: 30, hpMul: 1.15 }, // Г2: полёт в рейд (10 мест, хранилище 3000)
-    { cost: 2600, time: 45, hpMul: 1.3 }], // Г3: передвижная база
-};
-// ВЛАДЕЛЕЦ 25.10: параметры Дома как носителя рейдов
+// --- F.2/Э1: ГРЕЙДЫ ЗДАНИЙ 1→20 из r/js/economy.js ---
+// GRADES[type][to] — цена/время/статы ЦЕЛЕВОГО уровня (индекс = уровень).
+// Якоря низких уровней — прежний баланс (КЦ-II 240, турель 60/100 и т.д.).
+// Правила владельца: цель грейда ≤ уровень КЦ (R1), сам КЦ — по условию
+// «L зданий уровня L−1» (R2, ccGate).
+export const GRADES = GRADE_TABLE;
+export const MAX_BUILDING_LEVEL = MAX_LEVEL;
+
+// ВЛАДЕЛЕЦ 25.10: параметры Дома как носителя рейдов (эволюция Г1→Г20):
+//   места юнитов, трюм рейда, аура лечения, ход с Г3 — всё в HOUSE_LEVELS.
 export const HOUSE = Object.freeze({
-  slots1: 8,      // ВЛАДЕЛЕЦ 25.10: Г1 — 8 мест юнитов
-  slots: 10,      // Г2+ — 10 мест
-  cargo: 3000,    // хранилище рейда с Г2
-  moveSpeed: 96,  // скорость Дома-Г3 (как у рабочего)
+  slots1: HOUSE_LEVELS.slots(1),   // 8 мест на Г1
+  slots: HOUSE_LEVELS.slots(2),    // 10 мест на Г2+ (базовое значение)
+  cargo: HOUSE_LEVELS.cargo(2),    // 3000 на Г2
+  moveSpeed: HOUSE_LEVELS.moveSpeed,
+  slotsAt: (level) => HOUSE_LEVELS.slots(level),
+  cargoAt: (level) => HOUSE_LEVELS.cargo(level),
+  healAt: (level) => HOUSE_LEVELS.heal(level),
+  moveFrom: HOUSE_LEVELS.moveFrom,
+  healRadius: HOUSE_LEVELS.healRadius,
 });
-export const GRADE_ROMAN = ['', 'I', 'II', 'III'];
+
+// Римские номера уровней 1…20 (в панели команд и тостах).
+// Обратная совместимость: раньше GRADE_ROMAN был массивом до III.
+export const GRADE_ROMAN = (() => {
+  const out = [''];
+  const tens = ['', 'X', 'XX'];
+  const ones = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX'];
+  for (let n = 1; n <= 20; n++) out[n] = tens[Math.floor(n / 10)] + ones[n % 10];
+  return out;
+})();
+
 export function glevel(type, level) { const g = GRADES[type]; return g ? g[level] || null : null; }
 export function gradeDmg(type, level, base) { const e = glevel(type, level); return e && e.dmg ? e.dmg : base; }
 export function gradeRange(type, level, base) { const e = glevel(type, level); return e && e.range ? e.range : base; }

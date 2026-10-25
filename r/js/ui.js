@@ -7,11 +7,12 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10252058';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10252058';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10252058';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10252058';
-import { crystalAt } from './units.js?v=10252058'; // F.1: тултип кристалла
+} from './config.js?v=10262510';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262510';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262510';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262510';
+import { crystalAt } from './units.js?v=10262510'; // F.1: тултип кристалла
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262510';
 
 const $ = (id) => document.getElementById(id);
 
@@ -754,7 +755,7 @@ export function renderRaidLaunch(game) {
     });
   }
 
-  // 1) Уровни вылазки 1–5.
+  // 1) Уровни вылазки 1–20 (Э1): тир открывает уровень КЦ.
   els.raidTierGrid.innerHTML = '';
   for (const tc of model.tiers) {
     const locked = tc.tier > model.unlockedTier;
@@ -770,9 +771,16 @@ export function renderRaidLaunch(game) {
     head.textContent = t('ui.raid.tierBtn', { tier: tc.tier }) + (locked ? t('ui.cmds.lockMark') : '');
     const sub = document.createElement('span');
     sub.className = 'rt-sub';
+    // Подпись: что даёт тир (добыча/бур/состав) и чем он открывается.
     sub.textContent = locked
-      ? t('ui.raid.tierUnlock.' + tc.tier)
+      ? t('ui.raid.tierNeedCC', { n: tc.unlockCC })
       : t('ui.raid.tierCaps', { units: tc.maxUnits, budget: tc.maxBudget });
+    const loot = document.createElement('span');
+    loot.className = 'rt-loot';
+    loot.textContent = t('ui.raid.tierLoot', {
+      yieldTotal: fmtNum(tc.yieldTotal), trip: tc.tripYield,
+    });
+    btn.appendChild(loot);
     btn.appendChild(head);
     btn.appendChild(sub);
     btn.addEventListener('click', () => {
@@ -2001,8 +2009,11 @@ function rebuildPanel(game, sel) {
     box.className = 'sel-box';
     const name = document.createElement('div');
     name.className = 'sel-name';
+    const tech = (game.state.tech && game.state.tech.player) || {};
+    const rankOf = (cfg2) => (cfg2.vehicle ? tech.vehAtk : tech.infAtk) || 0;
     const parts = Object.entries(counts).map(([t, n]) => fname(UNITS[t], first.faction) + ' ×' + n);
-    name.textContent = parts.join(', ');
+    const rank = rankOf(first.cfg);
+    name.textContent = parts.join(', ') + (rank > 0 ? ' · ' + t('ui.cmds.rankN', { n: GRADE_ROMAN[rank] || rank }) : '');
     box.appendChild(name);
     const hp = bar(first.hp / first.maxHp);
     box.appendChild(hp.el);
@@ -2012,7 +2023,8 @@ function rebuildPanel(game, sel) {
     dyn.unitLed = usl.led; dyn.unitText = usl.text;
     const sub = document.createElement('div');
     sub.className = 'small';
-    sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: first.cfg.dmg, cd: first.cfg.cooldown });
+    const effDmg = Math.round(first.cfg.dmg * attackMul(rank) * 10) / 10;
+    sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: effDmg, cd: first.cfg.cooldown });
     box.appendChild(sub);
     els.selInfo.appendChild(box);
     }
@@ -2035,6 +2047,14 @@ function rebuildPanel(game, sel) {
     label.textContent = c.label;
     btn.appendChild(label);
 
+    // Э1: уровень прямо на кнопке (находка владельца: «не видно уровней в
+    // командном меню»). Здание — целевой грейд, лаборатория — ранг юнита.
+    if (Number(c.level) > 1) {
+      const lvl = document.createElement('span');
+      lvl.className = 'cmd-lvl';
+      lvl.textContent = t('ui.cmds.levelN', { n: GRADE_ROMAN[c.level] || c.level });
+      btn.appendChild(lvl);
+    }
     const refund = refundForCommand(c, selectedBuilding);
     const shownCost = c.cost ? fmtNum(c.cost) : (refund !== null
       ? t('ui.process.refundShort', { n: fmtNum(refund) }) : '');
@@ -2255,6 +2275,10 @@ function commandAvailability(command, game, building) {
   const st = game.state;
   const faction = st.factions.player;
   if (st.gameOver) return { disabled: true, reason: t('ui.cmds.gameOver') };
+
+  // Э1: команда может нести готовую причину блокировки (правила КЦ/грейда) —
+  // она информативнее, чем общее «сейчас недоступно».
+  if (command.lock) return { disabled: true, reason: command.lock };
 
   const unitType = producedUnitForCommand(command, building);
   if (unitType && building.queue.length >= gradeQueue(building.type, building.level || 1)) {

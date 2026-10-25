@@ -11,11 +11,14 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10252058';
-import * as U from './units.js?v=10252058';
-import * as B from './buildings.js?v=10252058';
-import { nearestFreeTileAround } from './pathfinding.js?v=10252058';
-import { t, message } from './i18n.js?v=10252058';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262510';
+import {
+  RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
+} from './economy.js?v=10262510';
+import * as U from './units.js?v=10262510';
+import * as B from './buildings.js?v=10262510';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262510';
+import { t, message } from './i18n.js?v=10262510';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -39,18 +42,13 @@ export const RAID_UNIT_ORDER = Object.freeze([
   'worker', 'marine', 'flamer', 'medic', 'buggy', 'tank', 'arty', 'scout',
 ]);
 
-// Диапазон новичка: уровни допуска 1–5 (лимит отряда и стройбюджета вылазки).
-export const RAID_TIERS = Object.freeze([
-  Object.freeze({ tier: 1, maxUnits: 4, maxBudget: 100, w: 48, h: 48, rocks: 6, rich: 1.0 }),
-  Object.freeze({ tier: 2, maxUnits: 6, maxBudget: 150, w: 56, h: 56, rocks: 7, rich: 1.1 }),
-  Object.freeze({ tier: 3, maxUnits: 8, maxBudget: 220, w: 64, h: 64, rocks: 8, rich: 1.2 }),
-  Object.freeze({ tier: 4, maxUnits: 10, maxBudget: 300, w: 64, h: 64, rocks: 9, rich: 1.3 }),
-  Object.freeze({ tier: 5, maxUnits: 12, maxBudget: 400, w: 72, h: 72, rocks: 10, rich: 1.4 }),
-]);
+// Э1: уровни допуска 1–20 (единый источник — r/js/economy.js).
+// Тир T открывает КЦ уровня T; полёт требует Дом Г2+. Тиры задают:
+// состав челнока, полевой бюджет, размер карты и ДОБЫЧУ месторождения.
+export { RAID_TIERS };
 
 export function getRaidTierConfig(tier) {
-  const n = Math.max(1, Math.min(5, Math.floor(Number(tier) || 1)));
-  return RAID_TIERS[n - 1];
+  return raidTierAt(tier);
 }
 
 // Чистый детерминированный миксер uint32 для выбора seed сектора цели.
@@ -62,23 +60,9 @@ export function deriveTargetSeed(homeSeed, raidSeq, tier = 1) {
   return x || 1;
 }
 
-// Открытый уровень вылазки (1–5) по развитию постоянной домашней базы.
+// Открытый уровень вылазки: КЦ уровня T открывает вылазку T (1…20).
 export function unlockedRaidTier(st) {
-  if (!st || !Array.isArray(st.buildings)) return 1;
-  let hasDepot = false, hasBarracks = false, hasFactory = false, hasLab = false, ccLevel = 1;
-  for (const b of st.buildings) {
-    if (!b || b.dead || b.side !== 'player' || !b.done) continue;
-    if (b.type === 'cc') ccLevel = Math.max(ccLevel, b.level || 1);
-    else if (b.type === 'depot') hasDepot = true;
-    else if (b.type === 'barracks') hasBarracks = true;
-    else if (b.type === 'factory') hasFactory = true;
-    else if (b.type === 'lab') hasLab = true;
-  }
-  if (ccLevel >= 3 || (hasFactory && hasLab)) return 5;
-  if (hasFactory || hasLab) return 4;
-  if (hasBarracks && ccLevel >= 2) return 3;
-  if (hasDepot || hasBarracks || ccLevel >= 2) return 2;
-  return 1;
+  return unlockedRaidTierByCC(st);
 }
 
 // Живой свободный состав домашней базы (вне бункеров), доступный для посадки в челнок.
@@ -103,7 +87,7 @@ export function validateRaidLoadout(st, draft = {}) {
     return { ok: false, reasonKey: 'ui.raid.errNotHome', reasonParams: {} };
   }
   const rawTier = Math.floor(Number(draft.tier));
-  if (!Number.isFinite(rawTier) || rawTier < 1 || rawTier > 5) {
+  if (!Number.isFinite(rawTier) || rawTier < 1 || rawTier > MAX_LEVEL) {
     return { ok: false, reasonKey: 'ui.raid.errTierRange', reasonParams: {} };
   }
   const maxUnlocked = unlockedRaidTier(st);
@@ -133,9 +117,10 @@ export function validateRaidLoadout(st, draft = {}) {
   if (totalUnits <= 0) {
     return { ok: false, reasonKey: 'ui.raid.errEmptySquad', reasonParams: {} };
   }
-  // ВЛАДЕЛЕЦ 25.10: Дом вмещает HOUSE.slots юнитов (тиры тоже ограничивают).
-  if (totalUnits > HOUSE.slots) {
-    return { ok: false, reasonKey: 'ui.raid.errSlots', reasonParams: { n: HOUSE.slots } };
+  // Э1: места юнитов даёт ГРЕЙД Дома (Г1 — 8, Г2–Г4 — 10, Г5+ — +4/ур.).
+  const houseSlots = HOUSE_LEVELS.slots(house.level || 2);
+  if (totalUnits > houseSlots) {
+    return { ok: false, reasonKey: 'ui.raid.errSlots', reasonParams: { n: houseSlots } };
   }
   if (totalUnits > tierCfg.maxUnits) {
     return {
@@ -226,7 +211,7 @@ export function captureHomeBaseDTO(st, session, dispatchedIds = new Set()) {
       maxHp: Math.max(1, Number(b.maxHp) || BUILDINGS[b.type].hp),
       done: !!b.done,
       progress: Number(b.progress) || 0,
-      level: Math.max(1, Math.min(3, b.level || 1)),
+      level: Math.max(1, Math.min(MAX_LEVEL, b.level || 1)),
       gradeUp: b.gradeUp ? {
         to: b.gradeUp.to,
         t: Number(b.gradeUp.t) || 1,
@@ -296,7 +281,12 @@ export function buildRaidHomeMission(session) {
       h: RAID_PLANET.h,
       lakes: 'default',
       rocks: 6,
-      rich: 1.1,
+      // Э1: домашнее месторождение — СТАРТОВЫЙ КАПИТАЛ, а не вечный доход:
+      // ~15 000 эрга на весь ранний этап (КЦ 1→8). Дальше ресурсы возят
+      // рейдами — это и есть смысл Дома-шаттла. Нейтральные поля выключены,
+      // чтобы домашний «запас» был конечным и предсказуемым.
+      rich: 1.25,
+      neutral: [],
       base: { x: RAID_PLANET.base.x, y: RAID_PLANET.base.y },
     },
     ai: {},
@@ -323,7 +313,10 @@ export function buildSeededTargetMapPreset(seed, tier) {
     h,
     lakes: 'default',
     rocks: tc.rocks + ((s >>> 3) % 3),
-    rich: +(tc.rich + (((s >>> 7) % 3) * 0.08)).toFixed(2),
+    // Э1: «богатство» карты = добыча тира; нейтральные поля выключены,
+    // чтобы вывоз был предсказуем (см. economy.js raidTier()).
+    rich: +(tc.rich + (((s >>> 7) % 3) * 0.02)).toFixed(3),
+    neutral: [],
     base,
   };
 }
@@ -451,18 +444,24 @@ function spawnRandomOutpost(game, st, m) {
     st.bcount.enemy++;
     return b;
   };
+  const tier = m.raidTier || 1;
   const ccE = put('cc', 0, 0);
   if (!ccE) return;
+  if (ccE) ccE.level = Math.min(MAX_LEVEL, 1 + Math.floor(tier / 2));
   put('barracks', -4, 0);
-  put('turret', 0, -3);
-  put('turret', 0, 3);
-  const tier = m.raidTier || 1;
-  const guards = tier >= 3 ? ['marine', 'marine', 'tank'] : ['marine', 'marine'];
-  let i = 0;
-  for (const gt of guards) {
-    const u = U.spawnUnit(st, 'enemy', gt, (corner.x + 2 + i) * TILE, (corner.y + 2) * TILE, false);
+  // Э1: оборона аванпоста растёт с тиром (2 турели на тире 1 → 5 на 20).
+  const turrets = Math.min(5, 2 + Math.floor(tier / 5));
+  for (let k = 0; k < turrets; k++) put('turret', k % 2 ? 3 : -3, -3 + k);
+  // Гарнизон: 2 бойца → 8, состав тяжелеет каждые 4 тира.
+  const guardCount = Math.min(8, 2 + Math.floor(tier / 2));
+  const roster = ['marine'];
+  if (tier >= 6) roster.push('tank');
+  if (tier >= 10) roster.push('flamer');
+  if (tier >= 14) roster.push('arty');
+  for (let i = 0; i < guardCount; i++) {
+    const gt = roster[i % roster.length];
+    const u = U.spawnUnit(st, 'enemy', gt, (corner.x + 2 + (i % 4)) * TILE, (corner.y + 2 + Math.floor(i / 4)) * TILE, false);
     if (u) U.orderMove(st, u, ccE.x, ccE.y);
-    i++;
   }
 }
 
@@ -508,12 +507,12 @@ export function populateRaidState(game, st, m) {
     const padTy = Math.max(2, Math.min(st.map.h - 4, pb.y + 2));
     // ВЛАДЕЛЕЦ 25.10: Дом — шаттл экспедиции. Летит с отрядом и сам является
     // точкой эвакуации: кто не заехал — потерян.
-    const homeHouse = (st.buildings || []).find((b) => !b.dead && b.side === 'player' && b.type === 'depot' && b.done && (b.level || 1) >= 2);
+    // Э1: грейд Дома берём из DTO вылазки (домашней карты здесь уже нет).
+    const houseLv = Math.max(2, Math.min(MAX_LEVEL, (exp && exp.houseLevel) || 2));
     const house = new B.Building(st, 'player', 'depot', padTx, padTy, true);
-    if (homeHouse) {
-      house.level = homeHouse.level;
-      house.hp = house.maxHp = homeHouse.maxHp;
-    }
+    house.level = houseLv;
+    house.maxHp = Math.round(BUILDINGS.depot.hp * (GRADES.depot[houseLv] ? GRADES.depot[houseLv].hpMul : 1));
+    house.hp = house.maxHp;
     st.map.markBuilding(house);
     st.bcount.player++;
     st.raidHouse = house;
@@ -526,6 +525,10 @@ export function populateRaidState(game, st, m) {
       hold: 2.0,
     };
     st.raidCargo = 0;
+    // Э1: трюм = грейд Дома-шаттла; бур = тир сектора.
+    const tierCfg = raidTierAt((exp && exp.tier) || m.raidTier || 1);
+    st.raidCargoCap = HOUSE_LEVELS.cargo(houseLv);
+    st.raidTripYield = tierCfg.tripYield;
     st.raidEvacuating = false;
     st.raidBoarded = [];
     st.raidTier = (exp && exp.tier) || m.raidTier || 1;
@@ -543,6 +546,24 @@ export function populateRaidState(game, st, m) {
 export function updateRaidTick(game, st, dt) {
   if (!st || st.raidMode !== 'expedition' || st.gameOver) return;
   const pad = st.raidDrop;
+  // Э1: Дом-Г4+ лечит отряд в радиусе ауры (канон владельца: «лечение в рейде,
+  // аура как у нанита»). Лечим только своих и только до максимума.
+  const houseLv = (st.raidHouse && st.raidHouse.level) || 1;
+  const heal = HOUSE_LEVELS.heal(houseLv);
+  if (heal > 0 && pad) {
+    const rad = HOUSE_LEVELS.healRadius * TILE;
+    for (const u of st.units) {
+      if (u.dead || u.evacuated || u.garrison || u.side !== 'player' || u.kind !== 'unit') continue;
+      if (u.hp >= u.maxHp) continue;
+      if (Math.hypot(u.x - pad.x, u.y - pad.y) > rad) continue;
+      u.hp = Math.min(u.maxHp, u.hp + heal * dt);
+      u.healedT = (u.healedT || 0) + dt;
+      if (u.healedT > 1) {
+        u.healedT = 0;
+        U.addEffect(st, { kind: 'spark', x: u.x + (Math.random() - 0.5) * 10, y: u.y - 6, ang: -Math.PI / 2, t: 0, life: 0.35, faction: 'player' });
+      }
+    }
+  }
   if (st.raidEvacuating && pad) {
     const radPx = pad.r * TILE;
     for (const u of st.units) {
@@ -595,7 +616,7 @@ export function raidObjectiveText(game, st) {
   if (st.raidMode === 'home') {
     const tier = unlockedRaidTier(st);
     const raids = (game.raidSession && game.raidSession.raidSeq) || 0;
-    return t('ui.raid.hudHome', { tier, raids });
+    return t('ui.raid.hudHome', { tier, raids, max: MAX_LEVEL });
   }
   if (st.raidMode === 'expedition') {
     let alive = 0;

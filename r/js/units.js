@@ -7,9 +7,10 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10252058';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10252058';
-import { message } from './i18n.js?v=10252058';
+  HOUSE,
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262510';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262510';
+import { message } from './i18n.js?v=10262510';
 
 let nextId = 1;
 
@@ -43,13 +44,22 @@ export function atkBonus(st, attacker) {
   const t = st.tech[attacker.side];
   if (!t) return 0;
   const veh = attacker.kind === 'unit' && attacker.cfg.vehicle;
-  return (t[veh ? 'vehAtk' : 'infAtk'] || 0) * (veh ? 5 : 3);
+  const lvl = t[veh ? 'vehAtk' : 'infAtk'] || 0;
+  if (!lvl) return 0;
+  // Э1: ранг даёт +4% БАЗОВОГО урона за уровень (на 20 ур. ×1.8).
+  // Турель (здание) считается пехотным оружием, база — её грейдовый урон.
+  const base = attacker.kind === 'building'
+    ? gradeDmg(attacker.type, attacker.level || 1, attacker.cfg.dmg)
+    : attacker.cfg.dmg;
+  return Math.round(base * (attackMul(lvl) - 1) * 10) / 10;
 }
-export function armorVal(st, victim) {
-  if (!st || !st.tech || !victim || victim.kind !== 'unit') return 0;
+// Э1: доля снижения урона от ранга брони (2.5%/ур., потолок 50%).
+export function damageTakenMul(st, victim) {
+  if (!st || !st.tech || !victim || victim.kind !== 'unit') return 1;
   const t = st.tech[victim.side];
-  if (!t) return 0;
-  return (t[victim.cfg.vehicle ? 'vehArm' : 'infArm'] || 0) * (victim.cfg.vehicle ? 3 : 2);
+  if (!t) return 1;
+  const lvl = t[victim.cfg.vehicle ? 'vehArm' : 'infArm'] || 0;
+  return 1 - armorFrac(lvl);
 }
 
 // Тряска экрана (в пикселях и секундах) — вызывается при взрывах.
@@ -1334,7 +1344,8 @@ function updateGather(st, u, dt) {
     if (Math.random() < dt * 3) addEffect(st, { kind: 'spark', x: c.x + (Math.random() - 0.5) * 14, y: c.y + (Math.random() - 0.5) * 14, ang: Math.random() * Math.PI, t: 0, life: 0.2 });
     if (Math.random() < dt * 2) st.game.sound.mine();
     if (u.mineT <= 0) {
-      const take = Math.min(MINERAL_PER_TRIP, c.amount);
+      const perTrip = u.side === 'player' && st.raidTripYield ? st.raidTripYield : MINERAL_PER_TRIP; // Э1: бур тира
+      const take = Math.min(perTrip, c.amount);
       u.carrying = take;
       c.amount -= take;
       if (c.amount <= 0) st.map.removeCrystal(c);
@@ -1356,7 +1367,8 @@ function updateGather(st, u, dt) {
       // Рейдовая вылазка без корабля-КЦ: рабочие сдают эрг в трюм челнока на площадке посадки.
       const pad = st.raidDrop;
       if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 2.2) {
-        st.raidCargo = Math.min(3000, (st.raidCargo || 0) + u.carrying); // кап хранилища Г2
+        const cap = st.raidCargoCap || HOUSE.cargo; // Э1: трюм Дома по его грейду
+        st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
         u.carrying = 0;
@@ -1883,8 +1895,8 @@ export function damageEntity(st, victim, dmg, attacker) {
   // гарнизона (пустой массив истинен!), раньше эта строка делала ВСЕ
   // постройки бессмертными — вражескую базу было невозможно разрушить.
   if (victim.kind === 'unit' && victim.garrison) return;
-  // Исследования брони снижают входящий урон (минимум 1 — кровь всегда течёт).
-  dmg = Math.max(1, dmg - armorVal(st, victim));
+  // Э1: броня — ПРОЦЕНТ от ранга (2.5%/ур., потолок 50%), минимум 1 урона.
+  dmg = Math.max(1, dmg * damageTakenMul(st, victim));
   victim.hp -= dmg;
   victim.flashT = 0.14;
   // Тревога для игрока — не чаще раза в 8 секунд.
