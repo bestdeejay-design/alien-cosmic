@@ -15,7 +15,7 @@
 // ============================================================
 import './harness.mjs';
 
-const V = '?v=10262511';
+import { V } from './stamp.mjs';
 const S = await import('../r/js/skins.js' + V);
 const B = await import('../r/js/buildings.js' + V);
 const U = await import('../r/js/units.js' + V);

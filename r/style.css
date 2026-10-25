@@ -21,6 +21,13 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* Утилита «спрятать»: в S1-копии был только `.overlay.hidden`, а панели
+   капсул (chest-grid / chest-open) и админки (adm-gate / adm-main)
+   переключаются обычным классом `.hidden`. Без этого правила экран награды
+   рендерился ПОД списком капсул и «Забрать и продолжить» уезжал за экран —
+   со стороны выглядело как «кнопка не нажимается» (баг найден 26.10.2026). */
+.hidden { display: none !important; }
+
 html, body {
   width: 100%; height: 100%;
   overflow: hidden;
@@ -1427,7 +1434,13 @@ body.menu-active #zoom-controls { display: none; }
 /* ============================================================
    Э6: КАПСУЛЫ СНАБЖЕНИЯ (chests-ui.js) — карточки входа и вскрытие
    ============================================================ */
-.chest-box { max-width: 780px; }
+.chest-box {
+  max-width: 780px;
+  /* Телефон-first: длинный список + экран награды не должны уезжать за край,
+     иначе кнопка «Забрать и продолжить» оказывается вне области нажатия. */
+  max-height: min(88vh, 760px); overflow-y: auto; scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
 .chest-head h1 { letter-spacing: .08em; }
 .chest-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
@@ -1444,6 +1457,8 @@ body.menu-active #zoom-controls { display: none; }
 .chest-card.is-ready { border-color: var(--rar, #9fe8de); box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 6px 22px -12px var(--rar, #9fe8de); }
 .chest-card.is-ready:hover { transform: translateY(-2px); }
 .chest-card.is-locked { opacity: .55; filter: saturate(.7); }
+/* Отклик на тап: даже на медленном телефоне видно, что нажатие принято. */
+.chest-card.is-opening { transform: scale(.97); border-color: var(--rar, #9fe8de); filter: brightness(1.25); }
 .chest-rar { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--rar, #9fe8de); opacity: .9; }
 .chest-icon { color: var(--rar, #9fe8de); filter: drop-shadow(0 0 6px currentColor); margin: 2px 0; }
 .chest-name { font-size: 13px; font-weight: 700; line-height: 1.2; }
@@ -1451,7 +1466,7 @@ body.menu-active #zoom-controls { display: none; }
 .chest-state { margin-top: auto; font-size: 10.5px; letter-spacing: .04em; opacity: .85; color: var(--rar, #9fe8de); }
 .chest-empty { grid-column: 1 / -1; padding: 22px; text-align: center; opacity: .7; font-size: 13px; }
 .chest-foot { display: flex; justify-content: flex-end; }
-.chest-open { position: relative; text-align: center; padding: 26px 12px 12px; }
+.chest-open { position: relative; text-align: center; padding: 18px 12px 8px; }
 .chest-reward-rar { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--rar, #f3c579); }
 .chest-reward-text { font-size: 26px; font-weight: 800; margin: 8px 0 2px; color: #fff; text-shadow: 0 0 18px var(--rar, #f3c579); }
 .chest-reward-sub { font-size: 12px; opacity: .7; margin-bottom: 18px; }
