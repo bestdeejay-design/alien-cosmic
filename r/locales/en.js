@@ -111,7 +111,7 @@ export default {
         '<b>Ctrl/Alt + 1…9</b> — assign a squad, <b>digit</b> — select, <b>press twice</b> — jump to it · <b>B</b> — build: all 8 structures · while placing, tap <b>✕</b> to cancel or another type to switch · <b>S</b> — stop',
         '<b>.</b> — next idle worker · <b>,</b> — select the whole army · <b>Tab</b> — cycle fighters · <b>H</b> — jump to the last alarm · on a trackpad RMB is a two-finger tap or Ctrl+tap',
         '<b>Laboratory</b> — research: infantry weapons and armor, vehicle guns and plating · a rally point on a crystal puts new workers straight to mining',
-        'Tech drones walk back to mining on their own after a build · without orders fighters engage enemies within sight range · nanites heal the nearest infantry and stop while healing · hover a button for the full briefing',
+        'Tech drones walk back to mining on their own after a build · without orders fighters engage enemies within sight range · a wounded unit near the CC gets a healer sent by that CC · hover a button for the full briefing',
         'Mining: workers spread across the veins by themselves (optimum — 2 per crystal) · finished turret, barracks, factory and bunker can be upgraded: <b>R</b> — tier up, <b>X</b> — cancel',
       ],
     },
@@ -455,7 +455,7 @@ export default {
       line1: 'HP {hp} · damage {d} · range {r}',
       line2: 'Supply {s} · training {t}s',
       splash: 'Fragmentation splash',
-      heal: 'Heals infantry: +{n} HP/s',
+      heal: 'Heals living kin of its own race: +{n} HP/s (drones and vehicles are repaired by tech drones)',
       vehicle: 'Vehicle: repaired by workers',
     },
 

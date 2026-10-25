@@ -8,13 +8,13 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
-} from './config.js?v=10262516';
-import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262516';
+} from './config.js?v=10262517';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262517';
 import {
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262516';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262516';
-import { t, message } from './i18n.js?v=10262516';
-import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262516';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, AUTOHEAL_RADIUS, AUTOHEAL_TICK, AUTOHEAL_HEALERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262517';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262517';
+import { t, message } from './i18n.js?v=10262517';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262517';
 
 let nextId = 1;
 
@@ -304,6 +304,16 @@ export function orderBuild(st, u, building, auto = false) {
 // Ремонт: рабочий «сваривает» здание или технику до полного HP.
 // auto:true — приказ автоматической логики (idle-поиск или диспетчер),
 // не команда игрока; маркер нужен для бюджета, лимита и безопасного снятия.
+export function orderHeal(st, u, target, auto = false) {
+  if (u.garrison || !u.cfg.canHeal) return false;
+  if (!canBeHealed(target) || target.side !== u.side || target.faction !== u.faction) return false;
+  if (target.hp >= target.maxHp) return false;
+  u.order = { kind: 'heal', target, auto };
+  u.path = null; u.pathI = 0;
+  resetStuck(u);
+  return true;
+}
+
 export function orderRepair(st, u, target, auto = false) {
   if (u.garrison) return;
   u.order = { kind: 'repair', target, resume: currentCrystal(u), auto };
@@ -725,6 +735,75 @@ export function updateUnits(st, dt, grid) {
     if (!u.dead && !u.garrison) resolveBuildings(st, u);
   }
   updateAutoRepair(st, dt); // H.1
+  updateAutoHeal(st, dt);   // правка 26.10: КЦ отправляет хилов к раненым
+}
+
+// Есть ли у стороны достроенный КЦ (для правила «хила отправляет КЦ»).
+function hasOwnCC(st, side) {
+  for (const b of st.buildings) {
+    if (!b.dead && b.done && b.side === side && b.type === 'cc') return true;
+  }
+  return false;
+}
+
+// Диспетчер авто-лечения (правка владельца 26.10.2026): «авто лечение — когда
+// хила отправляет КЦ лечить раненого». Работает только у достроенного КЦ и в
+// его радиусе: КЦ находит раненое СУЩЕСТВО своей расы и отправляет к нему
+// ближайшего свободного хила. Приказы игрока неприкосновенны — диспетчер
+// берёт только простаивающих хилов и только когда у цели нет лекаря.
+function healersOn(st, target) {
+  let n = 0;
+  for (const u of st.units) {
+    if (u.dead || u.garrison || !u.cfg.canHeal) continue;
+    if (u.order && u.order.kind === 'heal' && u.order.target === target) n++;
+  }
+  return n;
+}
+
+function autoHealersCount(st, side) {
+  let n = 0;
+  for (const u of st.units) {
+    if (u.dead || u.garrison || u.side !== side || !u.cfg.canHeal) continue;
+    if (u.order && u.order.kind === 'heal' && u.order.auto) n++;
+  }
+  return n;
+}
+
+function updateAutoHeal(st, dt) {
+  st.autoHealT = (st.autoHealT || 0) + dt;
+  if (st.autoHealT < AUTOHEAL_TICK) return;
+  st.autoHealT = 0;
+  for (const side of ['player', 'enemy']) {
+    const ccs = [];
+    for (const b of st.buildings) {
+      if (!b.dead && b.done && b.side === side && b.type === 'cc') ccs.push(b);
+    }
+    if (!ccs.length) continue; // без КЦ авто-лечения нет (хил действует сам, см. idle)
+    const nearCC = (x, y) => ccs.some((cc) => Math.hypot(x - cc.x, y - cc.y) <= AUTOHEAL_RADIUS);
+    const wounded = [];
+    for (const u of st.units) {
+      if (u.dead || u.garrison || u.side !== side) continue;
+      if (!canBeHealed(u) || u.hp >= u.maxHp) continue; // только существа
+      if (!nearCC(u.x, u.y)) continue;
+      wounded.push(u);
+    }
+    if (!wounded.length) continue;
+    // Тяжелее всех — первым; при равной доле HP стабильный порядок по id.
+    wounded.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp) || a.id - b.id);
+    let assigned = autoHealersCount(st, side);
+    const pool = st.units.filter((u) => !u.dead && !u.garrison && u.side === side &&
+      u.cfg.canHeal && u.order.kind === 'idle' && nearCC(u.x, u.y));
+    for (const target of wounded) {
+      if (assigned >= AUTOHEAL_HEALERS_PER_SIDE) break;
+      if (healersOn(st, target) > 0) continue;
+      if (!pool.length) break;
+      pool.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) -
+        Math.hypot(b.x - target.x, b.y - target.y) || a.id - b.id);
+      const healer = pool.shift();
+      orderHeal(st, healer, target, true);
+      assigned++;
+    }
+  }
 }
 
 // H.1: диспетчер авторемонта — тратит только на полностью оплачиваемые
@@ -824,8 +903,12 @@ function updateOrderByKind(st, u, dt, grid) {
   const o = u.order;
   switch (o.kind) {
     case 'idle': {
-      // Медики прежде всего ищут раненых — только потом драку.
-      if (u.cfg.canHeal) {
+      // ВЛАДЕЛЕЦ 26.10.2026: «авто-лечение — когда хила отправляет КЦ лечить
+      // раненого». Пока у стороны есть КЦ, хил НЕ бегает сам: цель ему выдаёт
+      // диспетчер у КЦ (updateAutoHeal ниже) — так отряд не разбредается.
+      // Без КЦ (миссии без базы, десант на вылазке) хил ищет раненого рядом
+      // сам, иначе его способность там просто умерла бы.
+      if (u.cfg.canHeal && !hasOwnCC(st, u.side)) {
         u.scanT -= dt;
         if (u.scanT <= 0) {
           u.scanT = 0.4;
@@ -1003,12 +1086,28 @@ function busyDefence(st, u, dt, grid) {
   if (best) { u.cd = u.cfg.cooldown; shoot(st, u, best); }
 }
 
-// Ближайший раненый «органический» союзник (технику чинят только рабочие).
+// РАЗДЕЛЕНИЕ РОЛЕЙ (правка владельца 26.10.2026, «мы всё напутали»):
+//   • СУЩЕСТВА (живые/люди своей расы) — лечат только хилы (canHeal);
+//   • МАШИНЫ (техника и дрон-техник-сборщик) — чинят только сборщики.
+// Поэтому один и тот же юнит не может попасть в обе категории: дрон-техник
+// (canMine) — машина, ей нужен ремонт; марин/нанит/плазмер — существо, ему
+// нужно лечение. Раса = u.faction: хил не лечит чужую расу даже на своей
+// стороне (зеркальные миссии, смешанные отряды).
+export function canBeHealed(a) {
+  return !!(a && a.kind === 'unit' && a.cfg && !a.cfg.vehicle && !a.cfg.canMine);
+}
+// Совместимость: ремонт — только машины (техника + дрон-техник), см. B3.
+export function canBeRepaired(a) {
+  return !!(a && a.kind === 'unit' && a.cfg && (a.cfg.vehicle || a.cfg.canMine));
+}
+
+// Ближайшее раненое СУЩЕСТВО своей расы (технику и дронов лечить нельзя).
 function findHealTarget(st, u) {
   let best = null, bd = Infinity;
   for (const a of st.units) {
     if (a.dead || a.garrison || a === u || a.side !== u.side) continue;
-    if (a.cfg.vehicle || a.hp >= a.maxHp) continue;
+    if (!canBeHealed(a) || a.faction !== u.faction) continue;
+    if (a.hp >= a.maxHp) continue;
     const d = Math.hypot(a.x - u.x, a.y - u.y);
     if (d < bd && d <= u.cfg.sightTiles * TILE) { bd = d; best = a; }
   }
@@ -1041,14 +1140,6 @@ export function findUnfinishedSite(st, u) {
   return best;
 }
 
-// B3 (аудит владельца 26.10.2026, ответ 2: «да, сами, это их базовая функция»):
-// цели ремонта — не только техника, но и СБОРЩИКИ. Раньше фильтр требовал
-// cfg.vehicle, поэтому покалеченный техник так и стоял битым: своих чинить
-// было некому. Чиним только пострадавших, не себя и не сидящих в укрытии.
-export function canBeRepaired(a) {
-  return !!(a && a.kind === 'unit' && (a.cfg.vehicle || a.cfg.canMine));
-}
-
 function findRepairTarget(st, u) {
   let best = null, bd = Infinity;
   for (const a of st.units) {
@@ -1063,7 +1154,9 @@ function findRepairTarget(st, u) {
 // Лечение: подойти вплотную и восстанавливать ОЗ, пока цель не здорова.
 function updateHeal(st, u, dt) {
   const t = u.order.target;
-  if (!t || t.dead || t.side !== u.side || t.cfg.vehicle || t.hp >= t.maxHp) {
+  // Лечим только существо своей расы (технику/дронов — никогда).
+  if (!t || t.dead || t.side !== u.side || !canBeHealed(t) || t.faction !== u.faction
+      || t.hp >= t.maxHp) {
     orderStop(u);
     return;
   }

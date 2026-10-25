@@ -10,11 +10,11 @@
 // здесь только баланс, ID и стабильные ключи (I18N.md §5.2).
 // ============================================================
 
-import { entityText } from './i18n.js?v=10262516';
+import { entityText } from './i18n.js?v=10262517';
 import {
   GRADE_TABLE, TECH, TECH_KEYS, MAX_LEVEL, HOUSE_LEVELS,
   ECON_SCALE, gradeEntry, ccGate, ccGateProgress,
-} from './economy.js?v=10262516';
+} from './economy.js?v=10262517';
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
 export const GAME_VERSION = 'Y';
@@ -155,6 +155,9 @@ export const REPAIR_SPREAD_PX = 256;   // G.4: радиус сбора целе�
 export const AUTOREPAIR_RADIUS = 480;  // H.1: радиус диспетчера от КЦ (15 тайлов)
 export const AUTOREPAIR_TICK = 0.5;    // H.1: тик диспетчера, сек
 export const AUTOREPAIR_WORKERS_PER_SIDE = 2; // H.1: глобальный лимит авто-ремонтников, чтобы не снимать всех с добычи
+export const AUTOHEAL_RADIUS = 480;    // правка 26.10: КЦ отправляет хила к раненому (15 тайлов)
+export const AUTOHEAL_TICK = 0.5;      // правка 26.10: тик диспетчера авто-лечения, сек
+export const AUTOHEAL_HEALERS_PER_SIDE = 2; // правка 26.10: не снимать с марша всех хилов
 export const ALARM_BASE_RADIUS = 480;  // H.2: базовый тир тревоги (15 тайлов от КЦ)
 export const RECON_TICK = 0.4;         // H.3: тик разведки, сек
 export const RECON_FLEE_TILES = 6;     // H.3: отход от угрозы, тайлов

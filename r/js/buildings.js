@@ -3,14 +3,14 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, HOUSE, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262516';
-import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262516';
-import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262516';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262516';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262516';
-import { icon } from './ui.js?v=10262516'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
-import { distToRectPx } from './pathfinding.js?v=10262516';
-import { message } from './i18n.js?v=10262516';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262517';
+import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262517';
+import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262517';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262517';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262517';
+import { icon } from './ui.js?v=10262517'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
+import { distToRectPx } from './pathfinding.js?v=10262517';
+import { message } from './i18n.js?v=10262517';
 
 let nextBId = 1;
 
@@ -47,37 +47,6 @@ export class Building {
     this.dead = false;
     st.buildings.push(this);
   }
-}
-
-// B2 (аудит владельца 26.10.2026): «аура лечения/ремонта Дома Г4+ — ТОЛЬКО на
-// базовой локации, на вылазке не работает». Раньше аура жила в рейдовом тике и
-// лечила отряд на чужой карте — ровно наоборот канону. Теперь это способность
-// Дома на своей базе: в радиусе Г4+ считается лечение, включая сборщиков
-// (здоровье юнитов — единственное, что аура восстанавливает; технику и здания
-// по-прежнему чинят дроны-техники за минералы).
-export function updateHouseAura(st, dt) {
-  if (!st || st.gameOver) return 0;
-  if (st.raidMode === 'expedition') return 0;   // на вылазке аура выключена
-  let healed = 0;
-  for (const b of st.buildings) {
-    if (b.dead || !b.done || b.side !== 'player' || b.type !== 'depot') continue;
-    const heal = HOUSE.healAt(b.level || 1);
-    if (!(heal > 0)) continue;
-    const rad = HOUSE.healRadius * TILE;
-    for (const u of st.units) {
-      if (u.dead || u.garrison || u.kind !== 'unit' || u.side !== 'player') continue;
-      if (u.hp >= u.maxHp) continue;
-      if (Math.hypot(u.x - b.x, u.y - b.y) > rad) continue;
-      u.hp = Math.min(u.maxHp, u.hp + heal * dt);
-      u.healedT = (u.healedT || 0) + dt;
-      if (u.healedT > 1) {
-        u.healedT = 0;
-        addEffect(st, { kind: 'spark', x: u.x + (Math.random() - 0.5) * 10, y: u.y - 6, ang: -Math.PI / 2, t: 0, life: 0.35, faction: 'player' });
-      }
-      healed++;
-    }
-  }
-  return healed;
 }
 
 // Свободно ли место под здание: границы, рельеф, кристаллы, другие здания.

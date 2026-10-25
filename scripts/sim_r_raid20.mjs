@@ -257,15 +257,21 @@ try {
   paint();
   assert(findCmd('KeyE'), 'у Дома-шаттла нет команды эвакуации в вылазке');
   assert(!findCmd('KeyR'), 'на карте вылазки появилась кнопка грейда');
-  // ВЛАДЕЛЕЦ 26.10.2026 (аудит, T5): аура лечения Дома Г4+ — ТОЛЬКО на базовой
-  // локации. На вылазке её нет: даже Дом-Г4 рядом с бойцом не поднимает HP
-  // (регресс: раньше здесь проверялось обратное — канон сменился).
-  const hurt = ex.units.find((u) => u.type === 'worker' && u.side === 'player' && !u.dead);
+  // ВЛАДЕЛЕЦ 26.10.2026 (правка спеки): аура лечения Дома Г4+ работает ТОЛЬКО
+  // В РЕЙДЕ. Лечит существ своей расы — поэтому проверяем на марине, а не на
+  // дроне-технике (дронов чинят сборщики, аура их не трогает).
+  // Десант тира 1 — только техники, поэтому существо для проверки ауры
+  // добавляем на карту вручную (аура лечит существ, а не дронов).
+  const hurt = U.spawnUnit(ex, 'player', 'marine', ex.raidHouse.x + 16, ex.raidHouse.y + 16, false);
+  assert(hurt, 'не удалось выставить марина для проверки ауры');
   ex.raidHouse.level = 4;
   hurt.hp = 20;
-  hurt.x = ex.raidDrop.x + 16; hurt.y = ex.raidDrop.y + 16;
-  for (let i = 0; i < 60; i++) game.tick();
-  assert(hurt.hp === 20, 'на вылазке Дом-Г4 всё ещё лечит (hp ' + hurt.hp + ') — канон: только на базе');
+  for (let i = 0; i < 60; i++) {
+    hurt.x = ex.raidHouse.x + 16; hurt.y = ex.raidHouse.y + 16;
+    if (game.state !== ex) break;
+    game.tick();
+  }
+  assert(hurt.hp > 20, 'Дом-Г4 не лечит существо в рейде: hp ' + hurt.hp);
   // Трюм растёт с грейдом Дома: Г20 — 83 000.
   ex.raidHouse.level = 20;
   ex.raidCargoCap = E.HOUSE_LEVELS.cargo(ex.raidHouse.level);

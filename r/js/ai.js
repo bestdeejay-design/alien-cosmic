@@ -8,11 +8,11 @@
 // ИИ не симулирует туман войны — видит всю карту (классическое
 // «читерство» простых RTS-ИИ, допустимо для аркады).
 // ============================================================
-import { AI, BUILDINGS, UNITS, UPGRADES, SUPPLY_MAX, TILE } from './config.js?v=10262516';
-import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit, srand } from './units.js?v=10262516';
-import { canPlace, placeBuildingCmd, enqueueUnit, startResearch } from './buildings.js?v=10262516';
-import { pathToRect } from './pathfinding.js?v=10262516';
-import { message } from './i18n.js?v=10262516';
+import { AI, BUILDINGS, UNITS, UPGRADES, SUPPLY_MAX, TILE } from './config.js?v=10262517';
+import { orderGather, orderBuild, orderAttack, orderRepair, spawnUnit, srand } from './units.js?v=10262517';
+import { canPlace, placeBuildingCmd, enqueueUnit, startResearch } from './buildings.js?v=10262517';
+import { pathToRect } from './pathfinding.js?v=10262517';
+import { message } from './i18n.js?v=10262517';
 
 export class AIController {
   constructor(profile = {}) {

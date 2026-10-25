@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262516';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262517';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262516';
-import * as U from './units.js?v=10262516';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262516';
-import * as B from './buildings.js?v=10262516';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262516';
-import { t, message } from './i18n.js?v=10262516';
+} from './economy.js?v=10262517';
+import * as U from './units.js?v=10262517';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262517';
+import * as B from './buildings.js?v=10262517';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262517';
+import { t, message } from './i18n.js?v=10262517';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -604,9 +604,29 @@ export function updateRaidTick(game, st, dt) {
     return;
   }
   const pad = st.raidDrop;
-  // B2 (аудит владельца 26.10.2026): ауры лечения Дома на вылазке НЕТ — она
-  // работает только на базовой локации (см. updateHouseAura в buildings.js).
-  // Здесь оставлен маркер, чтобы блок не вернули по инерции.
+  // ВЛАДЕЛЕЦ 26.10.2026 (правка спеки): аура лечения Дома Г4+ работает ТОЛЬКО
+  // в вылазке — это «полевой госпиталь» шаттла на чужой планете. На своей базе
+  // ауры нет: там лечат медики, а чинят техники (см. units.js: canBeHealed /
+  // canBeRepaired / диспетчер авто-лечения от КЦ). Лечим только существ своей
+  // расы и только до максимума — технику и дронов аура не трогает.
+  const hb = st.raidHouse;
+  const heal = hb && !hb.dead ? HOUSE_LEVELS.heal(hb.level || 1) : 0;
+  if (heal > 0) {
+    const healRad = HOUSE_LEVELS.healRadius * TILE;
+    for (const u of st.units) {
+      if (u.dead || u.evacuated || u.garrison || u.kind !== 'unit' || u.side !== 'player') continue;
+      if (!U.canBeHealed(u)) continue;          // только существа: техника и дроны — ремонт
+      if (u.faction !== hb.faction) continue;   // только своя раса
+      if (u.hp >= u.maxHp) continue;
+      if (Math.hypot(u.x - hb.x, u.y - hb.y) > healRad) continue;
+      u.hp = Math.min(u.maxHp, u.hp + heal * dt);
+      u.healedT = (u.healedT || 0) + dt;
+      if (u.healedT > 1) {
+        u.healedT = 0;
+        U.addEffect(st, { kind: 'spark', x: u.x + (Math.random() - 0.5) * 10, y: u.y - 6, ang: -Math.PI / 2, t: 0, life: 0.35, faction: 'player' });
+      }
+    }
+  }
   if (st.raidEvacuating && pad) {
     const radPx = pad.r * TILE;
     for (const u of st.units) {

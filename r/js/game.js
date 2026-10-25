@@ -6,43 +6,43 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262516';
+import './storage-ns.js?v=10262517';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262516';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262516';
-import { Fog } from './fog.js?v=10262516';
-import { Sound } from './audio.js?v=10262516';
-import * as U from './units.js?v=10262516';
-import * as B from './buildings.js?v=10262516';
-import { AIController } from './ai.js?v=10262516';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262516';
-import * as ui from './ui.js?v=10262516';
-import { drawRankMark } from './skins.js?v=10262516';
-import { openAdmin, isAdminProfile } from './admin.js?v=10262516';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262516';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262516';
-import { openCommander } from './commander-ui.js?v=10262516';
+} from './config.js?v=10262517';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262517';
+import { Fog } from './fog.js?v=10262517';
+import { Sound } from './audio.js?v=10262517';
+import * as U from './units.js?v=10262517';
+import * as B from './buildings.js?v=10262517';
+import { AIController } from './ai.js?v=10262517';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262517';
+import * as ui from './ui.js?v=10262517';
+import { drawRankMark } from './skins.js?v=10262517';
+import { openAdmin, isAdminProfile } from './admin.js?v=10262517';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262517';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262517';
+import { openCommander } from './commander-ui.js?v=10262517';
 import {
   issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
-} from './squad.js?v=10262516';
-import { showChests } from './chests-ui.js?v=10262516';
-import { createProfile } from './profile.js?v=10262516';
-import { attachInput, updateCamera } from './input.js?v=10262516';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262516';
+} from './squad.js?v=10262517';
+import { showChests } from './chests-ui.js?v=10262517';
+import { createProfile } from './profile.js?v=10262517';
+import { attachInput, updateCamera } from './input.js?v=10262517';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262517';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262516';
+} from './economy.js?v=10262517';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10262516';
+} from './raid.js?v=10262517';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -1741,10 +1741,6 @@ export class Game {
       updateRaidTick(this, st, LOGIC_DT);
       if (this.state !== st) return; // вылазка завершилась и вернула игрока на домашнюю базу
     }
-    // B2 (аудит 26.10): аура лечения Дома Г4+ работает ТОЛЬКО на своей базе
-    // (с вылазки снята — так решил владелец). Лечит всех своих в радиусе,
-    // включая сборщиков.
-    if (st.raidMode === 'home' && !st.gameOver) B.updateHouseAura(st, LOGIC_DT);
     // Э7: входящие рейды и автооборона — только на домашней базе.
     if (st.raidMode === 'home' && !st.gameOver) {
       const events = updateHomeRaid(this, st, LOGIC_DT);
