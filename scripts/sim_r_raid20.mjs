@@ -317,6 +317,41 @@ try {
   pass('E9 консоль вылазки: 20 тиров, лимит по Дому-Г2 (10 мест), у кнопок есть уровень');
 } catch (e) { fail('E9 консоль вылазки', e); }
 
+// ---------- E10: «к 20 идти труднее» — элитное условие КЦ ----------
+try {
+  game.startRaidHome('human', { forceNew: true });
+  ticks(3);
+  const s = st();
+  s.minerals.player = 1_000_000_000;
+  const cc = ccOf(s);
+  cc.level = 10; // низкие уровни проверены в E3/E4, здесь только новое условие
+  for (let i = 0; i < 10; i++) { const t = placeDone(s, 'player', 'turret', cc.tx, cc.ty); t.level = 10; }
+  let chk = E.canGradeBuilding(s, 'player', cc); // КЦ→11
+  assert(!chk.ok && chk.code === 'gate', 'КЦ→11 прошёл без элитных зданий: ' + chk.code);
+  assert(chk.gate.eliteNeed === 2, 'элитное условие КЦ→11 не 2: ' + chk.gate.eliteNeed);
+  assert(chk.gate.eliteHave === 0, 'элита посчитана неверно: ' + chk.gate.eliteHave);
+  assert(chk.gate.have === chk.gate.need, 'всего зданий должно хватать: ' + chk.gate.have + '/' + chk.gate.need);
+  // Одна казарма X ур. — 1 из 2, всё ещё нельзя.
+  const bar = placeDone(s, 'player', 'barracks', cc.tx, cc.ty);
+  bar.level = 10;
+  chk = E.canGradeBuilding(s, 'player', cc);
+  assert(!chk.ok && chk.gate.eliteHave === 1, 'элита 1/2 должна блокировать: ' + JSON.stringify(chk.gate));
+  // Завод X ур. — условие выполнено.
+  const fac = placeDone(s, 'player', 'factory', cc.tx, cc.ty);
+  fac.level = 10;
+  chk = E.canGradeBuilding(s, 'player', cc);
+  assert(chk.ok, 'КЦ→11 не открылся при 2 развитых: ' + JSON.stringify(chk));
+  // Правило в панели: причина видна словами.
+  selectOnly(cc);
+  paint();
+  const btn = findCmd('KeyR');
+  assert(btn && btn.level === 11, 'нет кнопки КЦ-XI');
+  // КЦ→20 требует 6 развитых — проверяем формулу, а не игру.
+  const g20 = E.ccGate(20);
+  assert(g20.count === 20 && g20.elite === 6, 'условие КЦ→20 неверно: ' + JSON.stringify(g20));
+  pass(`E10 «труднее к 20»: КЦ→11 требует 11 зданий X ур. + 2 развитых, КЦ→20 — 20 зданий XIX + 6 развитых; турели элиту не дают`);
+} catch (e) { fail('E10 элитное условие КЦ', e); }
+
 // ---------- E8: сводка экономики ----------
 try {
   const plan = E.basePlanCost();

@@ -61,10 +61,11 @@ for (const row of E.ccProgression()) {
   ccRows.push([
     row.level, nf(row.cost), nf(cumulative), row.time + ' с',
     row.gateNeed ? `${row.gateNeed} зд. ${row.gateLevel} ур.+` : '—',
+    row.elite ? `${row.elite} развитых` : '—',
     'тир ' + row.raidTier,
   ]);
 }
-table(['ур.', 'грейд', 'всего', 'время', 'условие КЦ', 'открывает'], ccRows);
+table(['ур.', 'грейд', 'всего', 'время', 'условие КЦ', 'элита', 'открывает'], ccRows);
 
 // ------------------------------------------------------------
 // 2. Грейды зданий
@@ -201,6 +202,18 @@ for (let L = 5; L <= E.MAX_LEVEL; L++) {
   if (cargo < y * 0.4) fail(`Дом Г${L}: трюм ${cargo} меньше 40% добычи тира ${y}`);
 }
 
+// R2b: рекомендуемая база должна проходить элитное условие КЦ-20
+{
+  const gate20 = E.ccGate(E.MAX_LEVEL);
+  const eliteInPlan = ['depot', 'barracks', 'factory', 'lab']
+    .reduce((a, k) => a + (E.BASE_PLAN[k] || 0), 0);
+  if (gate20.elite > eliteInPlan) fail(`КЦ-20: нужно ${gate20.elite} развитых зданий, а в рекомендуемом наборе ${eliteInPlan}`);
+  for (let L = 3; L <= E.MAX_LEVEL; L++) {
+    const g = E.ccGate(L);
+    if (g.elite > g.count) fail(`КЦ→${L}: развитых ${g.elite} больше, чем всего ${g.count}`);
+    if (g.elite > 0 && g.elite < 2) fail(`КЦ→${L}: элитное условие включилось с ${g.elite}`);
+  }
+}
 if (problems.length) {
   console.log('\n❌ ПРОБЛЕМЫ БАЛАНСА:');
   for (const p of problems) console.log('  · ' + p);
