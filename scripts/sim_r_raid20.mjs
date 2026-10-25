@@ -257,13 +257,15 @@ try {
   paint();
   assert(findCmd('KeyE'), 'у Дома-шаттла нет команды эвакуации в вылазке');
   assert(!findCmd('KeyR'), 'на карте вылазки появилась кнопка грейда');
-  // Дом-Г4 лечит отряд в радиусе ауры (канон владельца).
+  // ВЛАДЕЛЕЦ 26.10.2026 (аудит, T5): аура лечения Дома Г4+ — ТОЛЬКО на базовой
+  // локации. На вылазке её нет: даже Дом-Г4 рядом с бойцом не поднимает HP
+  // (регресс: раньше здесь проверялось обратное — канон сменился).
   const hurt = ex.units.find((u) => u.type === 'worker' && u.side === 'player' && !u.dead);
   ex.raidHouse.level = 4;
   hurt.hp = 20;
   hurt.x = ex.raidDrop.x + 16; hurt.y = ex.raidDrop.y + 16;
   for (let i = 0; i < 60; i++) game.tick();
-  assert(hurt.hp > 20, 'Дом-Г4 не лечит в рейде: hp ' + hurt.hp);
+  assert(hurt.hp === 20, 'на вылазке Дом-Г4 всё ещё лечит (hp ' + hurt.hp + ') — канон: только на базе');
   // Трюм растёт с грейдом Дома: Г20 — 83 000.
   ex.raidHouse.level = 20;
   ex.raidCargoCap = E.HOUSE_LEVELS.cargo(ex.raidHouse.level);
