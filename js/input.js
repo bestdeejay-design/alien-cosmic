@@ -347,10 +347,6 @@ export function attachInput(game) {
   window.addEventListener('keydown', (e) => {
     const st = game.state;
     if (!st) return;
-    if (game.ui.isRaidOverlayOpen && game.ui.isRaidOverlayOpen()) {
-      if (e.code === 'Escape') { e.preventDefault(); game.closeRaidLaunch(); }
-      return;
-    }
     // П3 (B.7.5): в режиме стройки стрелки двигают ПРИЗРАК по тайлам.
     if (e.code.startsWith('Arrow')) {
       if (st.placing) {
@@ -443,11 +439,10 @@ export function attachInput(game) {
       return;
     }
     if (e.code === 'Space' && !e.ctrlKey && !e.altKey) {
-      // Пробел — мгновенный прыжок камерой к своей базе (или челноку вылазки).
+      // Пробел — мгновенный прыжок камерой к своей базе.
       e.preventDefault();
       const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc' && !b.dead);
       if (cc) { game.centerCamera(cc.x, cc.y); game.sound.click(); }
-      else if (st.raidDrop) { game.centerCamera(st.raidDrop.x, st.raidDrop.y); game.sound.click(); }
       return;
     }
     // Хоткеи панели команд (Q/W/E — стройка и производство, B, S).

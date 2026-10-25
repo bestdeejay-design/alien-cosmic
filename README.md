@@ -39,7 +39,6 @@ build bases, harvest crystals, research upgrades and fight through a
 | Section | Content |
 |---|---|
 | 🎬 **Campaign 15/3** | 15 missions in 3 acts: tutorial, timed defenses, fort assaults, a stealth raid without a base, a finale against an enemy with a full arsenal. Progress is saved |
-| 🚀 **Local raids (R0-a)** | Permanent Command Ship home base on beginner planet Actan-4, one-time starter squad, loadout tiers 1–5, seeded target sectors, erg delivery to the shuttle pad and boarding evacuation back to base |
 | 🧬 **Three factions** | Helios (humans: machines and concrete), kharid (swarm: hive organics) and the "Red Flag" rebels — mirrored stats, distinct looks, names and buildings |
 | 🏗 **8 buildings** | Command center/hive, House/depot, Barracks/incubator, Turret/mandible, Bunker/cocoon, Wall/chitin, Vehicle plant/brood pit, Lab/evolution node |
 | 🚙 **8 units × 2 skins** | Helios: Tech Drone, Ranger, Nanite (healing), Plasmer (splash), Skiff, Bastion, Nova Mortar (12.5-tile range), Pathfinder (recon). Kharid: Gatherer, Shardjaw, Bloom, Acid Spitter, Skitter, Bruiser, Sporehulk, Listener |
@@ -93,7 +92,6 @@ js/
   buildings.js    — buildings: queues, turrets, garrisons, spawning
   ai.js           — enemy AI (mission profiles)
   missions.js     — 15 missions / 3 acts, progress
-  raid.js         — local raid loop (home Command Ship, tiers 1–5, shuttle pad)
   fog.js          — fog of war
   input.js        — controls and camera
   ui.js           — command panel, tooltips, minimap, menu

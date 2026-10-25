@@ -301,14 +301,6 @@ export function icon(type) {
       g.stroke();
       g.fillStyle = red; g.beginPath(); g.arc(0, 0, 1.8, 0, Math.PI * 2); g.fill();
       break;
-    case 'shuttle': // R0: десантный челнок вылазки / эвакуации.
-      g.fillStyle = steel;
-      g.beginPath();
-      g.moveTo(0, -9); g.lineTo(8, 5); g.lineTo(3, 4); g.lineTo(0, 7); g.lineTo(-3, 4); g.lineTo(-8, 5);
-      g.closePath(); g.fill();
-      g.fillStyle = cyan; g.fillRect(-1.5, -4, 3, 4);
-      g.fillStyle = amber; g.fillRect(-2.5, 6.5, 5, 2.5);
-      break;
     // ===== Кхарид: органика (своя геометрия у каждого) =====
     case 'a_worker':
       // Маленький жук на ножках — самый мелкий силуэт.
@@ -590,341 +582,9 @@ function setLandingPageActive(active, { resetScroll = false } = {}) {
 
 function updateModalChrome() {
   if (!els || !document.body || !document.body.classList) return;
-  const open = [els.missionOverlay, els.briefOverlay, els.codexOverlay, els.endOverlay, els.raidOverlay]
+  const open = [els.missionOverlay, els.briefOverlay, els.codexOverlay, els.endOverlay]
     .some((overlay) => overlay && !overlay.classList.contains('hidden'));
   document.body.classList.toggle('screen-modal-open', open);
-}
-
-// ---------- R0: меню домашней базы и консоль вылазки ----------
-let raidMenuFaction = 'human';
-let raidModalOpen = false;
-let raidDraft = { tier: 1, units: {}, budget: 0, seed: 1, seedStep: 0 };
-
-export function isRaidOverlayOpen() {
-  return !!raidModalOpen;
-}
-
-export function hideRaidLaunch() {
-  raidModalOpen = false;
-  if (els && els.raidOverlay) els.raidOverlay.classList.add('hidden');
-  updateModalChrome();
-}
-
-export function syncRaidMenu(game) {
-  if (!els || !els.raidHomeBtn || !els.raidMenuStatus) return;
-  const g = game || uiGame;
-  const hasHome = !!(g && g.hasRaidHome && g.hasRaidHome());
-  const session = g && g.raidSession;
-  const activeFaction = hasHome && session ? session.faction : raidMenuFaction;
-  if (hasHome) raidMenuFaction = activeFaction;
-
-  for (const faction of ['human', 'alien']) {
-    const btn = $('raid-faction-' + faction);
-    if (!btn) continue;
-    const selected = faction === activeFaction;
-    const side = t(`ui.skirmish.${faction}Card.title`);
-    btn.classList.toggle('is-selected', selected);
-    btn.setAttribute('aria-pressed', String(selected));
-    btn.setAttribute('aria-label', t('ui.menu.quickBattleFactionAria', { side }));
-    btn.disabled = hasHome && !selected;
-    btn.classList.toggle('is-disabled', hasHome && !selected);
-  }
-
-  const sideTitle = facTitle(activeFaction);
-  const homeCaption = t(hasHome ? 'ui.menu.raidResume' : 'ui.menu.raidStartNew', { side: sideTitle });
-  els.raidHomeBtn.textContent = homeCaption;
-  els.raidHomeBtn.setAttribute('aria-label', homeCaption);
-  if (els.raidResetBtn) els.raidResetBtn.hidden = !hasHome;
-
-  if (!hasHome || !session) {
-    els.raidMenuStatus.textContent = t('ui.menu.raidStatusFresh');
-  } else if (session.lastReturn) {
-    const lr = session.lastReturn;
-    els.raidMenuStatus.textContent = lr.outcome === 'evac'
-      ? t('ui.menu.raidStatusLastOk', {
-        raids: session.raidSeq,
-        cargo: (lr.cargo || 0) + (lr.returnedBudget || 0),
-        n: lr.boardedCount || 0,
-        sent: lr.sentCount || 0,
-      })
-      : t('ui.menu.raidStatusLastWiped', { raids: session.raidSeq });
-  } else {
-    const minerals = session.homeDto ? session.homeDto.minerals : 0;
-    els.raidMenuStatus.textContent = t('ui.menu.raidStatusActive', {
-      side: sideTitle,
-      raids: session.raidSeq || 0,
-      minerals: fmtNum(minerals),
-    });
-  }
-}
-
-function initRaidMenu(game) {
-  for (const faction of ['human', 'alien']) {
-    const btn = $('raid-faction-' + faction);
-    if (!btn) continue;
-    btn.addEventListener('click', () => {
-      if (game.hasRaidHome()) return;
-      raidMenuFaction = faction;
-      syncRaidMenu(game);
-    });
-  }
-  if (els.raidHomeBtn) {
-    els.raidHomeBtn.addEventListener('click', () => {
-      game.startRaidHome(raidMenuFaction);
-    });
-  }
-  if (els.raidResetBtn) {
-    els.raidResetBtn.addEventListener('click', () => {
-      if (!confirm(t('ui.menu.raidResetConfirm'))) return;
-      game.resetRaidHome(raidMenuFaction);
-      game.sound.click();
-    });
-  }
-  syncRaidMenu(game);
-}
-
-function clampRaidDraft(model) {
-  const tier = Math.max(1, Math.min(model.unlockedTier, Math.floor(Number(raidDraft.tier) || 1)));
-  raidDraft.tier = tier;
-  const tierCfg = model.tiers[tier - 1] || model.tiers[0];
-  let total = 0;
-  for (const type of model.unitOrder) {
-    const avail = model.roster[type] || 0;
-    let take = Math.max(0, Math.min(avail, Math.floor(Number(raidDraft.units[type]) || 0)));
-    if (total + take > tierCfg.maxUnits) take = Math.max(0, tierCfg.maxUnits - total);
-    raidDraft.units[type] = take;
-    total += take;
-  }
-  const budgetCap = Math.min(tierCfg.maxBudget, model.homeMinerals);
-  raidDraft.budget = Math.max(0, Math.min(budgetCap, Math.floor(Number(raidDraft.budget) || 0)));
-  if (!(Number(raidDraft.seed) > 0)) raidDraft.seed = 1;
-}
-
-function seedDefaultRaidSquad(model) {
-  const tierCfg = model.tiers[raidDraft.tier - 1] || model.tiers[0];
-  raidDraft.units = {};
-  let left = tierCfg.maxUnits;
-  // По умолчанию берём до 2 рабочих на сбор эрга, остальное — из свободных бойцов.
-  const workers = Math.min(2, model.roster.worker || 0, left);
-  if (workers > 0) {
-    raidDraft.units.worker = workers;
-    left -= workers;
-  }
-  for (const type of model.unitOrder) {
-    if (type === 'worker' || left <= 0) continue;
-    const take = Math.min(model.roster[type] || 0, left);
-    if (take > 0) {
-      raidDraft.units[type] = take;
-      left -= take;
-    }
-  }
-  if (left === tierCfg.maxUnits && (model.roster.worker || 0) > 0) {
-    raidDraft.units.worker = Math.min(model.roster.worker, left);
-  }
-}
-
-export function showRaidLaunch(game) {
-  if (!els || !els.raidOverlay || !game) return;
-  const baseModel = game.getRaidConsoleModel(null);
-  raidDraft.tier = baseModel.unlockedTier;
-  raidDraft.budget = 0;
-  raidDraft.seedStep = 0;
-  raidDraft.seed = game.nextRaidSeed(raidDraft.tier);
-  seedDefaultRaidSquad(baseModel);
-  raidModalOpen = true;
-  els.raidOverlay.classList.remove('hidden');
-  renderRaidLaunch(game);
-  updateModalChrome();
-  if (els.raidLaunchBtn && els.raidLaunchBtn.focus) els.raidLaunchBtn.focus({ preventScroll: true });
-}
-
-export function renderRaidLaunch(game) {
-  if (!els || !els.raidOverlay || !game || !game.state) return;
-  const fac = game.state.factions.player;
-  const baseModel = game.getRaidConsoleModel(null);
-  clampRaidDraft(baseModel);
-  const model = game.getRaidConsoleModel(raidDraft);
-  const tierCfg = model.tiers[raidDraft.tier - 1] || model.tiers[0];
-
-  if (els.raidModalSub) {
-    els.raidModalSub.textContent = t('ui.raid.modalSub', {
-      minerals: fmtNum(model.homeMinerals),
-      raids: model.raidSeq,
-    });
-  }
-
-  // 1) Уровни вылазки 1–5.
-  els.raidTierGrid.innerHTML = '';
-  for (const tc of model.tiers) {
-    const locked = tc.tier > model.unlockedTier;
-    const selected = tc.tier === raidDraft.tier;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'raid-tier-' + tc.tier;
-    btn.className = 'raid-tier-btn' + (selected ? ' is-selected' : '') + (locked ? ' is-locked' : '');
-    btn.disabled = locked;
-    btn.setAttribute('aria-pressed', String(selected));
-    const head = document.createElement('span');
-    head.className = 'rt-head';
-    head.textContent = t('ui.raid.tierBtn', { tier: tc.tier }) + (locked ? t('ui.cmds.lockMark') : '');
-    const sub = document.createElement('span');
-    sub.className = 'rt-sub';
-    sub.textContent = locked
-      ? t('ui.raid.tierUnlock.' + tc.tier)
-      : t('ui.raid.tierCaps', { units: tc.maxUnits, budget: tc.maxBudget });
-    btn.appendChild(head);
-    btn.appendChild(sub);
-    btn.addEventListener('click', () => {
-      if (locked) return;
-      raidDraft.tier = tc.tier;
-      raidDraft.seed = (game.nextRaidSeed(tc.tier) + raidDraft.seedStep) >>> 0 || 1;
-      renderRaidLaunch(game);
-      game.sound.click();
-    });
-    els.raidTierGrid.appendChild(btn);
-  }
-
-  // 2) Состав челнока из живых войск домашней базы.
-  els.raidSquadList.innerHTML = '';
-  let totalSelected = 0;
-  for (const type of model.unitOrder) totalSelected += raidDraft.units[type] || 0;
-  if (els.raidSquadSummary) {
-    els.raidSquadSummary.textContent = t('ui.raid.squadSummary', {
-      n: totalSelected,
-      max: tierCfg.maxUnits,
-    });
-  }
-
-  let anyAvail = false;
-  for (const type of model.unitOrder) {
-    const have = model.roster[type] || 0;
-    const cur = raidDraft.units[type] || 0;
-    if (have <= 0 && cur <= 0) continue;
-    anyAvail = true;
-    const row = document.createElement('div');
-    row.className = 'raid-unit-row';
-
-    const left = document.createElement('div');
-    left.className = 'raid-unit-info';
-    left.appendChild(iconEl(fac === 'alien' ? 'a_' + type : type));
-    const copy = document.createElement('div');
-    copy.className = 'raid-unit-copy';
-    const uName = document.createElement('span');
-    uName.className = 'raid-unit-name';
-    uName.textContent = fname(UNITS[type], fac);
-    const uAvail = document.createElement('span');
-    uAvail.className = 'raid-unit-avail';
-    uAvail.textContent = t('ui.raid.squadAvail', { have });
-    copy.appendChild(uName);
-    copy.appendChild(uAvail);
-    left.appendChild(copy);
-
-    const ctrls = document.createElement('div');
-    ctrls.className = 'raid-unit-ctrls';
-    const minus = document.createElement('button');
-    minus.type = 'button';
-    minus.id = 'raid-unit-minus-' + type;
-    minus.className = 'mini-btn';
-    minus.textContent = '−';
-    minus.disabled = cur <= 0;
-    minus.addEventListener('click', () => {
-      raidDraft.units[type] = Math.max(0, (raidDraft.units[type] || 0) - 1);
-      renderRaidLaunch(game);
-      game.sound.click();
-    });
-
-    const val = document.createElement('span');
-    val.className = 'raid-unit-val';
-    val.textContent = String(cur);
-
-    const plus = document.createElement('button');
-    plus.type = 'button';
-    plus.id = 'raid-unit-plus-' + type;
-    plus.className = 'mini-btn';
-    plus.textContent = '+';
-    plus.disabled = cur >= have || totalSelected >= tierCfg.maxUnits;
-    plus.addEventListener('click', () => {
-      if ((raidDraft.units[type] || 0) < have && totalSelected < tierCfg.maxUnits) {
-        raidDraft.units[type] = (raidDraft.units[type] || 0) + 1;
-        renderRaidLaunch(game);
-        game.sound.click();
-      }
-    });
-
-    ctrls.appendChild(minus);
-    ctrls.appendChild(val);
-    ctrls.appendChild(plus);
-    row.appendChild(left);
-    row.appendChild(ctrls);
-    els.raidSquadList.appendChild(row);
-  }
-  if (!anyAvail) {
-    const empty = document.createElement('div');
-    empty.className = 'raid-empty';
-    empty.textContent = t('ui.raid.squadNone');
-    els.raidSquadList.appendChild(empty);
-  }
-
-  // 3) Полевой стройбюджет и seed цели.
-  if (els.raidBudgetSummary) {
-    els.raidBudgetSummary.textContent = t('ui.raid.budgetSummary', {
-      budget: raidDraft.budget,
-      max: tierCfg.maxBudget,
-      left: Math.max(0, model.homeMinerals - raidDraft.budget),
-    });
-  }
-  if (els.raidSeedInput) {
-    els.raidSeedInput.value = String(raidDraft.seed >>> 0);
-  }
-
-  // 4) Валидация и статус запуска.
-  const v = model.validation;
-  const ok = !!(v && v.ok);
-  if (els.raidLaunchStatus) {
-    els.raidLaunchStatus.textContent = ok
-      ? t('ui.raid.statusReady', {
-        tier: v.tier,
-        n: v.totalUnits,
-        max: tierCfg.maxUnits,
-        budget: v.budget,
-      })
-      : t((v && v.reasonKey) || 'ui.raid.errEmptySquad', (v && v.reasonParams) || {});
-    els.raidLaunchStatus.classList.toggle('is-error', !ok);
-  }
-  if (els.raidLaunchBtn) {
-    els.raidLaunchBtn.disabled = !ok;
-    els.raidLaunchBtn.classList.toggle('is-disabled', !ok);
-    els.raidLaunchBtn.setAttribute('aria-disabled', String(!ok));
-  }
-}
-
-function updateRaidTopbar(game) {
-  if (!els || !els.raidAction) return;
-  const st = game && game.state;
-  if (!st || !st.raidMode) {
-    els.raidAction.hidden = true;
-    els.raidAction.classList.remove('is-evac');
-    return;
-  }
-  els.raidAction.hidden = false;
-  if (st.raidMode === 'home') {
-    const label = t('ui.raid.topLaunch');
-    const title = t('ui.raid.topLaunchTitle');
-    els.raidAction.textContent = label;
-    els.raidAction.title = title;
-    els.raidAction.setAttribute('aria-label', title);
-    els.raidAction.classList.remove('is-evac');
-    return;
-  }
-  const boarded = st.raidBoarded ? st.raidBoarded.length : 0;
-  const label = !st.raidEvacuating
-    ? t('ui.raid.topEvac')
-    : (boarded > 0 ? t('ui.raid.topLiftoff', { n: boarded }) : t('ui.raid.topEvacCancel'));
-  const title = t('ui.raid.topEvacTitle');
-  els.raidAction.textContent = label;
-  els.raidAction.title = title;
-  els.raidAction.setAttribute('aria-label', label);
-  els.raidAction.classList.toggle('is-evac', !!st.raidEvacuating);
 }
 
 function updateCampaignStartLabel() {
@@ -1029,32 +689,14 @@ export function initUI(game) {
     codexOverlay: $('codex-overlay'),
     codexTabs: $('codex-tabs'),
     codexBody: $('codex-body'),
-    raidAction: $('btn-raid-action'),
-    raidOverlay: $('raid-overlay'),
-    raidModalSub: $('raid-modal-sub'),
-    raidTierGrid: $('raid-tier-grid'),
-    raidSquadList: $('raid-squad-list'),
-    raidSquadSummary: $('raid-squad-summary'),
-    raidBudgetSummary: $('raid-budget-summary'),
-    raidSeedInput: $('raid-seed-input'),
-    raidLaunchStatus: $('raid-launch-status'),
-    raidLaunchBtn: $('btn-raid-launch'),
-    raidCancelBtn: $('btn-raid-cancel'),
-    raidHomeBtn: $('btn-raid-home'),
-    raidResetBtn: $('btn-raid-reset'),
-    raidMenuStatus: $('raid-menu-status'),
     pauseOverlay: $('pause-overlay'),
     startBtn: $('btn-start'),
     againBtn: $('btn-again'),
     versionBadge: $('ver-badge'),
   };
 
-  if (els.raidOverlay) els.raidOverlay.classList.add('hidden');
-  if (els.raidAction) els.raidAction.hidden = true;
-
-  // Main menu: quick battle is the primary path; campaign and raids stay separate.
+  // Main menu: quick battle is the primary path; campaign remains separate.
   initQuickBattleMenu(game);
-  initRaidMenu(game);
   $('btn-season1').addEventListener('click', () => showMissions(game));
   $('btn-season2').addEventListener('click', () => toast(t('ui.menu.season2Toast')));
   $('btn-missions-back').addEventListener('click', () => {
@@ -1138,67 +780,10 @@ export function initUI(game) {
   // Пакет S (баг 5 проверки Q, развилка Р2а): подтверждение на оба профиля —
   // ошибочный тап по «Заново» стоит миссии так же, как «Перезагрузить экран».
   els.restart.addEventListener('click', () => {
-    const msg = (game.state && game.state.raidMode === 'expedition')
-      ? t('ui.raid.abortConfirm')
-      : t('ui.topbar.restartConfirm');
-    if (!confirm(msg)) return;
+    if (!confirm(t('ui.topbar.restartConfirm'))) return;
     game.restart();
   });
-  els.exit.addEventListener('click', () => {
-    if (game.state && game.state.raidMode === 'expedition' && !game.state.gameOver) {
-      if (!confirm(t('ui.raid.abortConfirm'))) return;
-    }
-    game.toMenu();
-  });
-  if (els.raidAction) {
-    els.raidAction.addEventListener('click', () => {
-      if (!game.state || game.state.gameOver) return;
-      if (game.state.raidMode === 'home') game.openRaidLaunch();
-      else if (game.state.raidMode === 'expedition') game.triggerRaidEvac();
-    });
-  }
-  if (els.raidCancelBtn) {
-    els.raidCancelBtn.addEventListener('click', () => game.closeRaidLaunch());
-  }
-  if (els.raidLaunchBtn) {
-    els.raidLaunchBtn.addEventListener('click', () => {
-      game.launchRaidExpedition(raidDraft);
-    });
-  }
-  const adjustBudget = (fn) => {
-    const m = game.getRaidConsoleModel(null);
-    const tc = m.tiers[raidDraft.tier - 1] || m.tiers[0];
-    const cap = Math.min(tc.maxBudget, m.homeMinerals);
-    raidDraft.budget = Math.max(0, Math.min(cap, fn(raidDraft.budget, cap)));
-    renderRaidLaunch(game);
-    game.sound.click();
-  };
-  const bZero = $('btn-raid-budget-zero');
-  const bMinus = $('btn-raid-budget-minus');
-  const bPlus = $('btn-raid-budget-plus');
-  const bMax = $('btn-raid-budget-max');
-  if (bZero) bZero.addEventListener('click', () => adjustBudget(() => 0));
-  if (bMinus) bMinus.addEventListener('click', () => adjustBudget((cur) => cur - 25));
-  if (bPlus) bPlus.addEventListener('click', () => adjustBudget((cur) => cur + 25));
-  if (bMax) bMax.addEventListener('click', () => adjustBudget((_, cap) => cap));
-  if (els.raidSeedInput) {
-    const syncSeed = () => {
-      const n = Math.floor(Number(els.raidSeedInput.value));
-      raidDraft.seed = Number.isFinite(n) && n > 0 ? (n >>> 0) : 0;
-      renderRaidLaunch(game);
-    };
-    els.raidSeedInput.addEventListener('input', syncSeed);
-    els.raidSeedInput.addEventListener('change', syncSeed);
-  }
-  const bSeedNext = $('btn-raid-seed-next');
-  if (bSeedNext) {
-    bSeedNext.addEventListener('click', () => {
-      raidDraft.seedStep = ((raidDraft.seedStep || 0) + 1) >>> 0;
-      raidDraft.seed = (game.nextRaidSeed(raidDraft.tier) + Math.imul(raidDraft.seedStep, 0x45D9F3B)) >>> 0 || 1;
-      renderRaidLaunch(game);
-      game.sound.click();
-    });
-  }
+  els.exit.addEventListener('click', () => game.toMenu());
   els.panelPosBtn.addEventListener('click', () => { cyclePanelPos(); game.resize(); game.sound.click(); });
   els.panelHideBtn.addEventListener('click', () => { setPanelHidden(true); game.resize(); game.sound.click(); });
   els.panelShow.addEventListener('click', () => { setPanelHidden(false); game.resize(); game.sound.click(); });
@@ -1432,7 +1017,6 @@ export function showStart() {
   if (!els) return;
   updateCampaignStartLabel();
   renderQuickBattleMenu();
-  syncRaidMenu(uiGame);
   setLandingPageActive(true, { resetScroll: true });
 }
 
@@ -1751,7 +1335,6 @@ export function update(game) {
   updateZoomControls(game);
   updatePauseOverlay(game);
   updateToastPosition(game);
-  updateRaidTopbar(game);
 
   // Верхняя панель.
   els.minerals.textContent = Math.floor(st.minerals.player);
@@ -1771,7 +1354,6 @@ export function update(game) {
   const newSig = sel.map((e) => e.id + (e.done === false ? 'c' : '')).join(',') +
     '|' + (st.buildMenu ? 'B' : '') + (st.placing ? 'P' + st.placing.type : '') +
     (st.attackMoveMode ? 'A' : '') +
-    '|' + (st.raidMode ? 'M' + st.raidMode + (st.raidEvacuating ? 'E' + (st.raidBoarded ? st.raidBoarded.length : 0) : '') : '') +
     '|' + (game.profile ? game.profile.effective() : '') +
     '|' + (firstB ? 'Q' + firstB.queue.map((item) => item.type).join(',') +
       (firstB.res ? 'R' + firstB.res.key : '') +
@@ -2678,7 +2260,6 @@ export function refreshLocale() {
   applyStaticDOM(); // Маркеры index.html (меню, экраны, кнопки).
   updateCampaignStartLabel();
   renderQuickBattleMenu();
-  syncRaidMenu(uiGame);
   syncEndActions();
   syncPanelCompactButton();
   if (els.minimap) els.minimap.setAttribute('aria-label', t('ui.minimap.label'));
@@ -2688,10 +2269,7 @@ export function refreshLocale() {
     if (uiGame.sound) setSoundUI(!!uiGame.sound.muted);
     applyPanelClass();
     refreshLayout(uiGame);
-    updateRaidTopbar(uiGame);
-    setObjective(uiGame.objectiveText());
     resetPanel(); // панель команд пересоберётся на следующем кадре
-    if (raidModalOpen) renderRaidLaunch(uiGame);
     if (!els.missionOverlay.classList.contains('hidden')) showMissions(uiGame);
     if (!els.briefOverlay.classList.contains('hidden') && pendingMission) showBrief(uiGame, pendingMission);
     if (!els.codexOverlay.classList.contains('hidden')) showCodex();
@@ -2784,14 +2362,6 @@ export function drawMinimap(game) {
     g.lineWidth = 1.5;
     g.beginPath();
     g.arc(ox + (w.x + 0.5) * TILE * k, oy + (w.y + 0.5) * TILE * k, Math.max(3, w.r * TILE * k), 0, Math.PI * 2);
-    g.stroke();
-  }
-  if (st.raidMode === 'expedition' && st.raidDrop) {
-    const pad = st.raidDrop;
-    g.strokeStyle = st.raidEvacuating ? '#f3c579' : '#8ff5e2';
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.arc(ox + pad.x * k, oy + pad.y * k, Math.max(3, pad.r * TILE * k), 0, Math.PI * 2);
     g.stroke();
   }
   // Пинги тревоги.
