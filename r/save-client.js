@@ -46,7 +46,23 @@ function showIdentityForm() {
   box.querySelector('#sv-skip').addEventListener('click', () => box.remove());
 }
 
+// Мини-чип профиля в углу: кто вошёл + «сменить» (сброс ника/пина → форма заново).
+// Решение владельца 25.10: он ввёл ник/пин неверно и застрял в чужом профиле.
+function showIdentityChip(nick) {
+  const chip = document.createElement('div');
+  chip.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9998;background:#101c22;' +
+    'border:1px solid #2a3a42;border-radius:8px;padding:4px 8px;font:12px system-ui;color:#8fa6ae';
+  chip.innerHTML = `сейв: <b style="color:#dfe8ea">${nick || 'аноним'}</b>` +
+    ` · <span id="sv-logout" style="color:#7fd4ff;cursor:pointer;text-decoration:underline">сменить</span>`;
+  document.body.append(chip);
+  chip.querySelector('#sv-logout').addEventListener('click', () => {
+    try { localStorage.removeItem(NICK_KEY); localStorage.removeItem(PIN_KEY); } catch { /* */ }
+    location.reload();
+  });
+}
+
 const identity = askIdentity();
+window.__saveIdentity = identity; // raid-boot читает для серверного восстановления
 const player = identity ? identity.nick
   : (() => {
       let id = null;
@@ -106,5 +122,7 @@ setInterval(() => { for (const k of SYNC_KEYS) push(k); }, 20000);
 addEventListener('beforeunload', () => { for (const k of SYNC_KEYS) push(k); });
 if (!identity && document.body) showIdentityForm();
 else if (!identity) addEventListener('DOMContentLoaded', () => showIdentityForm());
+if (document.body) showIdentityChip(identity && identity.nick);
+else addEventListener('DOMContentLoaded', () => showIdentityChip(identity && identity.nick));
 console.log('[save] полигон: клиент сейва активен, сервер', API,
   identity ? `ник «${player}»` : `анонимно (${player})`);

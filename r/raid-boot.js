@@ -37,8 +37,23 @@ if (!game) {
       }, true);
     }
 
-    // 3) Восстановление: сессия корабля из localStorage (сервер подтягивает сейв-клиент).
-    const saved = (() => { try { return localStorage.getItem(RAID_SAVE_KEY); } catch { return null; } })();
+    // 3) Восстановление: сначала localStorage, при отсутствии — сервер (профиль ник+пин).
+    //    Так база ходит за игроком между машинами и браузерами.
+    let saved = (() => { try { return localStorage.getItem(RAID_SAVE_KEY); } catch { return null; } })();
+    if (!saved && window.__saveIdentity) {
+      try {
+        const r = await fetch(`http://${location.hostname}:8790/api/load`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player: window.__saveIdentity.nick, pin: window.__saveIdentity.pin, key: RAID_SAVE_KEY }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          saved = j.value;
+          try { localStorage.setItem(RAID_SAVE_KEY, saved); } catch { /* */ }
+          console.log('[r] сессия рейда восстановлена с сервера');
+        }
+      } catch (e) { /* сервер недоступен */ }
+    }
     if (saved && !game.started) {
       try {
         game.raidSession = JSON.parse(saved);

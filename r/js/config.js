@@ -175,7 +175,12 @@ export const GRADES = {
   cc: [null, null, // H.0: грейды-ключи без статов (только разблокировки)
     { cost: 240, time: 30 },
     { cost: 400, time: 45 }],
+  depot: [null, null, // ВЛАДЕЛЕЦ 25.10: Дом — карман рейдов (design/HOUSE_GRADES_RAID.md)
+    { cost: 1200, time: 30, hpMul: 1.15 }, // Г2: полёт в рейд (10 мест, хранилище 3000)
+    { cost: 2600, time: 45, hpMul: 1.3 }], // Г3: передвижная база
 };
+// ВЛАДЕЛЕЦ 25.10: параметры Дома как носителя рейдов
+export const HOUSE = Object.freeze({ slots: 10, cargo: 3000, moveSpeed: 96 });
 export const GRADE_ROMAN = ['', 'I', 'II', 'III'];
 export function glevel(type, level) { const g = GRADES[type]; return g ? g[level] || null : null; }
 export function gradeDmg(type, level, base) { const e = glevel(type, level); return e && e.dmg ? e.dmg : base; }

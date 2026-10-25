@@ -11,7 +11,7 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES } from './config.js';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js';
 import * as U from './units.js';
 import * as B from './buildings.js';
 import { nearestFreeTileAround } from './pathfinding.js';
@@ -94,6 +94,11 @@ export function countHomeRoster(st) {
 }
 
 export function validateRaidLoadout(st, draft = {}) {
+  // ВЛАДЕЛЕЦ 25.10: рейд открывает ДОМ Г2+ (карман рейдов), не КЦ.
+  const house = (st.buildings || []).find((b) => !b.dead && b.side === 'player' && b.type === 'depot');
+  if (!house || (house.level || 1) < 2 || !house.done) {
+    return { ok: false, reasonKey: 'ui.raid.errNoHouse', reasonParams: {} };
+  }
   if (!st || st.raidMode !== 'home' || st.gameOver) {
     return { ok: false, reasonKey: 'ui.raid.errNotHome', reasonParams: {} };
   }
@@ -127,6 +132,10 @@ export function validateRaidLoadout(st, draft = {}) {
   }
   if (totalUnits <= 0) {
     return { ok: false, reasonKey: 'ui.raid.errEmptySquad', reasonParams: {} };
+  }
+  // ВЛАДЕЛЕЦ 25.10: Дом вмещает HOUSE.slots юнитов (тиры тоже ограничивают).
+  if (totalUnits > HOUSE.slots) {
+    return { ok: false, reasonKey: 'ui.raid.errSlots', reasonParams: { n: HOUSE.slots } };
   }
   if (totalUnits > tierCfg.maxUnits) {
     return {
@@ -420,6 +429,43 @@ function hydrateHomeBaseIntoState(st, dto, pendingReturn) {
   }
 }
 
+// ВЛАДЕЛЕЦ 25.10: карта вылазки — рандом «есть соперник / нет соперника»,
+// детерминированный по seed вылазки: один и тот же сектор всегда одинаков.
+function spawnRandomOutpost(game, st, m) {
+  const seed = (m.raidTargetSeed || 1) >>> 0;
+  let h = seed ^ 0x9e3779b9;
+  h = (h ^ (h >>> 13)) >>> 0; h = (h * 2246822519) >>> 0; h = (h ^ (h >>> 16)) >>> 0;
+  if ((h % 100) >= 50) return; // 50%: пустая карта
+  const w = st.map.w, h2 = st.map.h;
+  const pb = st.map.bases.player.cc;
+  const corner = {
+    x: pb.x < w / 2 ? w - 7 : 6,
+    y: pb.y < h2 / 2 ? h2 - 7 : 6,
+  };
+  const put = (type, dx, dy) => {
+    const tx = Math.max(1, Math.min(w - 3, corner.x + dx));
+    const ty = Math.max(1, Math.min(h2 - 3, corner.y + dy));
+    if (!st.map.inBounds(tx, ty) || st.map.blockedAt(tx, ty)) return null;
+    const b = new B.Building(st, 'enemy', type, tx, ty, true);
+    st.map.markBuilding(b);
+    st.bcount.enemy++;
+    return b;
+  };
+  const ccE = put('cc', 0, 0);
+  if (!ccE) return;
+  put('barracks', -4, 0);
+  put('turret', 0, -3);
+  put('turret', 0, 3);
+  const tier = m.raidTier || 1;
+  const guards = tier >= 3 ? ['marine', 'marine', 'tank'] : ['marine', 'marine'];
+  let i = 0;
+  for (const gt of guards) {
+    const u = U.spawnUnit(st, 'enemy', gt, (corner.x + 2 + i) * TILE, (corner.y + 2) * TILE, false);
+    if (u) U.orderMove(st, u, ccE.x, ccE.y);
+    i++;
+  }
+}
+
 export function populateRaidState(game, st, m) {
   const session = game.raidSession;
   st.raidMode = m.raidMode;
@@ -456,6 +502,7 @@ export function populateRaidState(game, st, m) {
 
   if (m.raidMode === 'expedition') {
     const exp = session.activeExpedition;
+    spawnRandomOutpost(game, st, m);
     const pb = st.map.bases.player.cc;
     const padTx = Math.max(2, Math.min(st.map.w - 3, pb.x + 2));
     const padTy = Math.max(2, Math.min(st.map.h - 3, pb.y + 2));
@@ -493,7 +540,7 @@ export function updateRaidTick(game, st, dt) {
         u.evacT = (u.evacT || 0) + dt;
         if (u.evacT >= pad.hold) {
           if (u.carrying > 0) {
-            st.raidCargo = (st.raidCargo || 0) + u.carrying;
+            st.raidCargo = Math.min(HOUSE.cargo, (st.raidCargo || 0) + u.carrying);
             st.stats.mined += u.carrying;
             u.carrying = 0;
           }

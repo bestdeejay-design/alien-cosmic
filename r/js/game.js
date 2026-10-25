@@ -5,7 +5,7 @@
 // (Гелиос-люди / кхарид-аборигены), миссия-оборона с волнами,
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
-import {
+import { HOUSE,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
@@ -817,7 +817,11 @@ export class Game {
       }
       // F.2: грейд своего достроенного (Г1→Г2→Г3). Чужие/недострой/Г3 — мимо.
       const gTo = (b.level || 1) + 1;
-      if (b.done && GRADES[b.type] && gTo <= 3 && !b.gradeUp) {
+      // ВЛАДЕЛЕЦ 25.10: грейд зданий не выше уровня КЦ.
+      const ccLv = Math.max(1, ...st.buildings
+        .filter((x) => !x.dead && x.side === 'player' && x.type === 'cc' && x.done)
+        .map((x) => x.level || 1));
+      if (b.done && GRADES[b.type] && gTo <= 3 && gTo <= ccLv && !b.gradeUp) {
         const g = GRADES[b.type][gTo];
         cmds.push({
           code: 'KeyR', icon: 'grade',
@@ -840,11 +844,20 @@ export class Game {
           on: () => this.hooks.orderMassRally(b),
         });
       }
-      if (b.done && b.type === 'cc' && st.raidMode === 'home') {
+      // ВЛАДЕЛЕЦ 25.10: рейд запускается из ДОМА (Г2+), не из КЦ.
+      if (b.done && b.type === 'depot' && (b.level || 1) >= 2 && st.raidMode === 'home') {
         cmds.push({
           code: 'KeyE', icon: 'shuttle', label: t('ui.raid.cmdLaunch'),
           tip: { title: t('ui.raid.cmdLaunch'), lines: t('ui.raid.cmdLaunchTip') },
           on: () => this.openRaidLaunch(),
+        });
+      }
+      // ВЛАДЕЛЕЦ 25.10: Г3 — Дом перемещается как юнит (приказ точкой ПКМ).
+      if (b.done && b.type === 'depot' && (b.level || 1) >= 3 && !b.flight) {
+        cmds.push({
+          code: 'KeyM', icon: 'rally', label: t('ui.cmds.houseMove'),
+          tip: { title: t('ui.cmds.houseMove'), lines: t('ui.cmds.houseMoveTip') },
+          on: () => { st.houseMove = b; },
         });
       }
       if (b.done && b.gradeUp) {
@@ -965,6 +978,7 @@ export class Game {
         const r = B.startGrade(st(), b);
         const fac = st().factions.player;
         if (r === 'money') { ui.toast(message('noMinerals', fac), 'error'); this.sound.error(); }
+        else if (r === 'cclow') { ui.toast(t('ui.raid.errCcLevel'), 'warn'); this.sound.error(); }
         else if (r === 'busy' || r === 'max' || r === 'wrong') { this.sound.error(); }
         else this.sound.click();
       },
@@ -1098,9 +1112,42 @@ export class Game {
 
   // ПКМ: атака врага / добыча кристалла / ремонт / гарнизон /
   // помочь достроить / движение.
+  // ВЛАДЕЛЕЦ 25.10: перемещение Дома-Г3 «как юнита» — мгновенная перегрузка
+  // на сетке + визуальный полёт по прямой (коллизии пересчитываются сразу).
+  moveHouse(b, wx, wy) {
+    const st = this.state;
+    const tx = Math.max(0, Math.min(st.map.w - b.w, Math.floor(wx / TILE)));
+    const ty = Math.max(0, Math.min(st.map.h - b.h, Math.floor(wy / TILE)));
+    if (tx === b.tx && ty === b.ty) return;
+    st.map.unmarkBuilding(b);
+    if (!B.canPlace(st.map, tx, ty, b.w, b.h) ||
+        Math.hypot(tx - st.map.bases.player.center.x, ty - st.map.bases.player.center.y) < 4) {
+      st.map.markBuilding(b);
+      ui.toast(t('ui.cmds.houseMoveBlocked'), 'warn');
+      this.sound.click();
+      return;
+    }
+    const fromX = (b.tx + b.w / 2) * TILE, fromY = (b.ty + b.h / 2) * TILE;
+    b.tx = tx; b.ty = ty;
+    st.map.markBuilding(b);
+    const toX = (b.tx + b.w / 2) * TILE, toY = (b.ty + b.h / 2) * TILE;
+    const dist = Math.hypot(toX - fromX, toY - fromY);
+    b.flight = { t: 0, dur: Math.max(0.6, dist / (96 * TILE / 32)), dx0: fromX - toX, dy0: fromY - toY };
+    b.visX = b.flight.dx0; b.visY = b.flight.dy0;
+    U.addFloat(st, toX, toY, t('ui.cmds.houseMove'), '#9be29e');
+    this.sound.ack();
+  }
+
   issueRMB(wx, wy) {
     const st = this.state;
     if (!st || st.gameOver) return;
+    // ВЛАДЕЛЕЦ 25.10: режим перемещения Дома (Г3) — ПКМ задаёт точку.
+    if (st.houseMove) {
+      const b = st.houseMove;
+      st.houseMove = null;
+      this.moveHouse(b, wx, wy);
+      return;
+    }
     const sel = st.selection.filter((e) => !e.dead);
 
     // Выделено своё здание — ставим точку сбора. Точка на кристалле
@@ -1334,6 +1381,16 @@ export class Game {
 
     U.updateUnits(st, LOGIC_DT, this.grid);
     B.updateBuildings(st, LOGIC_DT, this.grid);
+    // ВЛАДЕЛЕЦ 25.10: визуальный полёт перемещаемого Дома-Г3.
+    for (const b of st.buildings) {
+      if (!b.flight) continue;
+      b.flight.t += LOGIC_DT;
+      const p = Math.min(1, b.flight.t / b.flight.dur);
+      const e = p * p * (3 - 2 * p); // smoothstep
+      b.visX = b.flight.dx0 * (1 - e);
+      b.visY = b.flight.dy0 * (1 - e);
+      if (p >= 1) { b.flight = null; b.visX = 0; b.visY = 0; }
+    }
     st.units = st.units.filter((u) => !u.dead);
     st.buildings = st.buildings.filter((b) => !b.dead);
     U.syncSelectionFlags(st); // кольца выделения видимы каждый тик
@@ -2210,6 +2267,8 @@ function fmtTime(sec) {
 await initI18n();
 const game = new Game();
 window.game = game; // отладочная ручка: window.game.state в консоли
+window.__marker = 'gamejs-v6';
+window.__cfg = { GRADES, TILE, HOUSE: (typeof HOUSE !== 'undefined' ? HOUSE : null) };
 
 // I: бейдж версии (правило V) — буква пакета + дата поставки;
 // смена языка переотрисовывает статические экраны и открытые оверлеи.

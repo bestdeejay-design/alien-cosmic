@@ -161,6 +161,14 @@ export function startGrade(st, b) {
   const to = (b.level || 1) + 1;
   const g = glevel(b.type, to);
   if (!g || to > 3) return b.level >= 3 ? 'max' : 'wrong';
+  // ВЛАДЕЛЕЦ 25.10: ни одно здание не грейдится выше уровня КЦ.
+  // Дом-Г2 открывается внутри Г3 КЦ.
+  if (b.type !== 'cc') {
+    const ccLv = Math.max(1, ...st.buildings
+      .filter((x) => !x.dead && x.side === b.side && x.type === 'cc' && x.done)
+      .map((x) => x.level || 1));
+    if (to > ccLv) return 'cclow';
+  }
   if (b.gradeUp) return 'busy';
   if (st.minerals[b.side] < g.cost) return 'money';
   st.minerals[b.side] -= g.cost;
@@ -777,7 +785,7 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
 
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = null) {
   const TILE_W = TILE;
-  const px = b.tx * TILE_W - camX, py = b.ty * TILE_W - camY;
+  const px = b.tx * TILE_W - camX + (b.visX || 0), py = b.ty * TILE_W - camY + (b.visY || 0);
   const w = b.w * TILE_W, h = b.h * TILE_W;
   const cx = px + w / 2, cy = py + h / 2;
   const bid = b.id || 0;
