@@ -19,6 +19,31 @@
   старте, толкает при изменении (раз в 20 секунд и при закрытии вкладки,
   dirty-guard против перетирания чужих записей).
 
+## Обновление 25.10.2026 (Э6): капсулы и рейтинг
+
+- **`GET /api/top?metric=raids|loot&n=100`** — рейтинг по серверному ключу
+  `ac_stats` (его пишет `r/save-client.js` раз в 15 секунд). Отдаёт
+  `{ok, metric, total, top:[{player, raids, loot, ccLevel, houseLevel, ts, rank}]}`.
+- **`POST /api/grant {player, grant}`** — ручной подарок игроку (админка →
+  «Игроки»). Кладёт запись в ключ `ac_grant` этого игрока; при входе полигон
+  превращает её в legend-капсулу «раз в жизни». Если задан `ADMIN_PIN`,
+  эндпоинт требует `Authorization: Bearer <ADMIN_PIN>`, иначе отвечает 401.
+  **На публичном адресе `ADMIN_PIN` обязателен** — без него выдать подарок
+  может любой.
+- Конфиг капсул публикуется отдельным ключом `ac_chest_cfg` (админка →
+  «Опубликовать на сервер»), локальная копия — в localStorage `ac_chest_cfg_v1`.
+- Ключи полигона отделены от S1: `r.progress`, `r.quickBattle` (клиент читает
+  старые имена для миграции), `ac_raid_session_v1`, `ac_stats`, `ac_grant`,
+  `ac_chest_cfg`.
+
+```bash
+ADMIN_PIN=секрет PORT=8790 node server/save-server.mjs
+curl 'http://127.0.0.1:8790/api/top?metric=raids&n=5'
+curl -X POST http://127.0.0.1:8790/api/grant \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer секрет' \
+  -d '{"player":"BEST","grant":{"name":"Подарок администрации","rewards":[{"kind":"erg","params":{"amount":5000},"weight":1}]}}'
+```
+
 ## Обновление 25.10.2026 (Э2): что починено после живой игры
 
 - **Ник без регистра** — `BEST` / `best` / `BESt` теперь ОДИН профиль (было три, из-за

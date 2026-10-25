@@ -153,6 +153,59 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { ok: true, records: rows, player: row.nick, pin: pin ? undefined : 'hidden' });
   }
 
+  // Э6: рейтинг игроков. Клиент пишет статистику в ключ ac_stats
+  // ({raids, loot, ccLevel, houseLevel, nick, ts}); сервер собирает топ.
+  if (req.method === 'GET' && url.pathname === '/api/top') {
+    const metric = url.searchParams.get('metric') === 'loot' ? 'loot' : 'raids';
+    const n = Math.max(1, Math.min(500, Number(url.searchParams.get('n')) || 100));
+    const rows = db.prepare("SELECT player, value, ts FROM saves WHERE key = 'ac_stats'").all();
+    const list = [];
+    for (const r of rows) {
+      try {
+        const v = JSON.parse(r.value);
+        list.push({
+          player: r.player,
+          raids: Number(v.raids) || 0,
+          loot: Number(v.loot) || 0,
+          ccLevel: Number(v.ccLevel) || 1,
+          houseLevel: Number(v.houseLevel) || 0,
+          ts: Number(r.ts) || 0,
+        });
+      } catch { /* битые данные пропускаем */ }
+    }
+    list.sort((a, b) => (b[metric] - a[metric]) || (b.loot - a.loot) || a.player.localeCompare(b.player));
+    const top = list.slice(0, n).map((x, i) => ({ ...x, rank: i + 1 }));
+    return json(res, 200, { ok: true, metric, total: list.length, top });
+  }
+
+  // Э6: «подарок администрации» — админка кладёт запись под ником игрока.
+  // Без ADMIN_PIN (dev-режим) разрешено всё; с ним — обязателен заголовок Bearer.
+  if (req.method === 'POST' && url.pathname === '/api/grant') {
+    const adminPin = process.env.ADMIN_PIN || '';
+    if (adminPin && (req.headers.authorization || '') !== `Bearer ${adminPin}`) {
+      return json(res, 401, { ok: false, error: 'admin pin required' });
+    }
+    try {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const nick = String(body.player || '').trim();
+      if (!NICK_RE.test(nick)) return json(res, 400, { ok: false, error: 'bad nick' });
+      const row = db.prepare('SELECT nick FROM players WHERE lower(nick) = lower(?)').get(nick);
+      if (!row) return json(res, 404, { ok: false, error: 'player not found' });
+      const cur = db.prepare('SELECT value FROM saves WHERE player = ? AND key = ?').get(row.nick, 'ac_grant');
+      let list = [];
+      if (cur) { try { list = JSON.parse(cur.value) || []; } catch { list = []; } }
+      const grant = body.grant || {};
+      list.push({ id: 'g' + Date.now(), ts: Date.now(), ...grant });
+      db.prepare(`
+        INSERT INTO saves (player, key, value, ts) VALUES (?, ?, ?, ?)
+        ON CONFLICT(player, key) DO UPDATE SET value = excluded.value, ts = excluded.ts
+      `).run(row.nick, 'ac_grant', JSON.stringify(list), Date.now());
+      return json(res, 200, { ok: true, player: row.nick, grants: list.length });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: String(e.message) });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/delete') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
