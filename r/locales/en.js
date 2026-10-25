@@ -322,6 +322,8 @@ export default {
       rankN: 'rank {n}',
       rankArrow: ' · {a}→{b}',
       needCc: 'Requires CC level {n} — grade the CC first',
+      needGateElite: 'developed (barracks/factory/lab/House): {have}/{need}',
+      gateToastElite: 'Developed among them (barracks/factory/lab/House): {have}/{need}',
       needGate: 'CC: {have}/{need} buildings of level {lvl}+',
       gateToast: 'CC grade needs {need} buildings of level {lvl}+ (now {have})',
       maxLevel: 'Maximum level — {n}',

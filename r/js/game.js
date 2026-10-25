@@ -868,8 +868,13 @@ export class Game {
           lines.push(lock);
         }
         if (chk.code === 'gate') {
-          lock = t('ui.cmds.needGate', { have: chk.gate.have, need: chk.gate.need, lvl: GRADE_ROMAN[chk.gate.minLevel] });
-          lines.push(lock);
+          const gateLines = [t('ui.cmds.needGate', { have: chk.gate.have, need: chk.gate.need, lvl: GRADE_ROMAN[chk.gate.minLevel] })];
+          // R2b: с КЦ→11 в наборе нужны «развитые» здания (казарма/завод/лаба/Дом).
+          if (chk.gate.eliteNeed > 0) {
+            gateLines.push(t('ui.cmds.needGateElite', { have: chk.gate.eliteHave, need: chk.gate.eliteNeed }));
+          }
+          lock = gateLines.join(' · ');
+          lines.push(...gateLines);
         }
         const tip = gradeTip(b.type, to, st.factions.player, g);
         if (lines.length) tip.lines.push(...lines);
@@ -1050,10 +1055,14 @@ export class Game {
         else if (code === 'cclow') {
           ui.toast(t('ui.raid.errCcLevel'), 'warn'); this.sound.error();
         } else if (code === 'gate') {
-          const g = (r && r.gate) || { have: 0, need: 2, minLevel: 1 };
-          ui.toast(t('ui.cmds.gateToast', {
+          const g = (r && r.gate) || { have: 0, need: 2, minLevel: 1, eliteHave: 0, eliteNeed: 0 };
+          const base = t('ui.cmds.gateToast', {
             have: g.have, need: g.need, lvl: GRADE_ROMAN[g.minLevel],
-          }), 'warn');
+          });
+          const elite = g.eliteNeed > 0
+            ? ' ' + t('ui.cmds.gateToastElite', { have: g.eliteHave, need: g.eliteNeed })
+            : '';
+          ui.toast(base + elite, 'warn');
           this.sound.error();
         } else if (code === 'max') {
           ui.toast(t('ui.cmds.maxLevel', { n: MAX_BUILDING_LEVEL }), 'warn'); this.sound.error();

@@ -318,6 +318,8 @@ export default {
       rankN: 'ранг {n}',
       rankArrow: ' · {a}→{b}',
       needCc: 'Нужен КЦ уровня {n} — сначала грейд КЦ',
+      needGateElite: 'развитых (казарма/завод/лаба/Дом): {have}/{need}',
+      gateToastElite: 'Из них развитых (казарма/завод/лаба/Дом): {have}/{need}',
       needGate: 'КЦ: {have}/{need} зданий уровня {lvl}+',
       gateToast: 'Для грейда КЦ нужно {need} зданий уровня {lvl}+ (сейчас {have})',
       maxLevel: 'Максимальный уровень — {n}',

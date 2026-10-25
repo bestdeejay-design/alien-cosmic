@@ -67,6 +67,17 @@ const GRADE_DEF = {
   wall:     { cost2: 25, growth: 1.50, time2: 12, tGrowth: 1.08 },
 };
 
+// ── ПОЗДНЯЯ КРИВАЯ (решение владельца 25.10.2026: «усилить условия, чтобы до
+// 20 уровня было идти труднее»). До 10 уровня игра «разгоняется» на прежней
+// кривой, с 11-го цена за уровень резко круче — потому что с этого момента
+// доход дают рейды, а не домашнее месторождение.
+export const LATE_FROM = 11;
+const LATE_GROWTH = {
+  cc: 1.60, depot: 1.44, barracks: 1.46, factory: 1.46,
+  turret: 1.46, bunker: 1.46, lab: 1.44, wall: 1.52,
+};
+const growthFor = (type, to) => (to > LATE_FROM ? (LATE_GROWTH[type] || GRADE_DEF[type].growth) : GRADE_DEF[type].growth);
+
 // Статы, которые грейд даёт ЦЕЛЕВОМУ уровню (их читают функции grade*).
 function gradeStats(type, level) {
   const l = level - 1; // сколько грейдов пройдено
@@ -96,23 +107,12 @@ export function buildGradeTable(type) {
   const def = GRADE_DEF[type];
   const table = [null, null];
   if (!def) return table;
+  let cost = def.cost2;
+  let time = def.time2;
   for (let to = 2; to <= MAX_LEVEL; to++) {
-    let cost;
-    if (def.cost2 && to === 2) cost = def.cost2;
-    else if (def.cost3 && to === 3) cost = def.cost3;
-    else {
-      const anchor = def.cost3 ? def.cost3 : def.cost2;
-      const anchorLevel = def.cost3 ? 3 : 2;
-      cost = anchor * Math.pow(def.growth, to - anchorLevel);
-    }
-    let time;
-    if (to === 2) time = def.time2;
-    else if (def.time3 && to === 3) time = def.time3;
-    else {
-      const anchorT = def.time3 ? def.time3 : def.time2;
-      const anchorLevel = def.time3 ? 3 : 2;
-      time = anchorT * Math.pow(def.tGrowth, to - anchorLevel);
-    }
+    if (to === 2) { cost = def.cost2; time = def.time2; }
+    else if (to === 3) { cost = def.cost3 || cost * growthFor(type, 3); time = def.time3 || time * def.tGrowth; }
+    else { cost = cost * growthFor(type, to); time = time * def.tGrowth; }
     table[to] = {
       cost: niceCost(scaleCost(cost)),
       time: Math.max(10, Math.round(time / 5) * 5),
@@ -133,16 +133,24 @@ export function gradeEntry(type, to) {
 }
 
 // ------------------------------------------------------------
-// 2. ПРАВИЛО КЦ: сколько зданий и какого уровня нужно для перехода.
-//    КЦ→L требует L зданий уровня (L−1)+; сам КЦ тоже считается зданием
-//    (он на уровне L−1), поэтому «КЦ→3» = КЦ-II + 2 здания II ур.
+// 2. ПРАВИЛО КЦ (канон владельца).
+//    R2a: КЦ→L требует L зданий уровня (L−1)+; сам КЦ считается зданием
+//         (он на уровне L−1), поэтому «КЦ→3» = КЦ-II + 2 здания II ур.
+//    R2b (решение владельца 25.10: «к 20 идти труднее»): с КЦ→11 в этом
+//         наборе должны быть «РАЗВИТЫЕ» здания — казарма, завод, лаборатория
+//         или Дом (турели/бункеры/стены не считаются). Так нельзя вытянуть
+//         КЦ-20 двадцатью дешёвыми турелями: база должна быть промышленной.
 // ------------------------------------------------------------
 export const CC_GATE_COUNTS_CC = true;
+export const ELITE_TYPES = Object.freeze(['barracks', 'factory', 'lab', 'depot']);
+export const ELITE_FROM = 11;
 
 export function ccGate(targetLevel) {
   const L = Math.max(1, Math.min(MAX_LEVEL, Math.floor(targetLevel)));
-  if (L <= 2) return { count: 0, minLevel: 1 };
-  return { count: L, minLevel: L - 1 };
+  if (L <= 2) return { count: 0, minLevel: 1, elite: 0 };
+  // 11 → 2, 13 → 3, 15 → 4, 17 → 5, 19–20 → 6
+  const elite = L >= ELITE_FROM ? Math.max(2, Math.floor((L - 7) / 2)) : 0;
+  return { count: L, minLevel: L - 1, elite: Math.min(elite, L) };
 }
 
 // Уровень КЦ стороны.
@@ -168,11 +176,30 @@ export function countBuildingsAtLeast(st, side, minLevel) {
   return n;
 }
 
+export function countEliteAtLeast(st, side, minLevel) {
+  let n = 0;
+  if (!st || !Array.isArray(st.buildings)) return n;
+  for (const b of st.buildings) {
+    if (!b || b.dead || b.side !== side || !b.done) continue;
+    if (!b.type || !ELITE_TYPES.includes(b.type)) continue;
+    if ((b.level || 1) >= minLevel) n++;
+  }
+  return n;
+}
+
 export function ccGateProgress(st, side, targetLevel) {
   const gate = ccGate(targetLevel);
   const need = CC_GATE_COUNTS_CC ? gate.count : Math.max(0, gate.count - 1);
   const have = countBuildingsAtLeast(st, side, gate.minLevel);
-  return { ...gate, need, have: Math.min(have, need), ok: have >= need };
+  const eliteHave = countEliteAtLeast(st, side, gate.minLevel);
+  return {
+    ...gate,
+    need,
+    have: Math.min(have, need),
+    eliteNeed: gate.elite,
+    eliteHave: Math.min(eliteHave, gate.elite),
+    ok: have >= need && eliteHave >= gate.elite,
+  };
 }
 
 // ------------------------------------------------------------
@@ -315,10 +342,14 @@ export function buildTech(key) {
   const max = Math.max(def.cost.length, def.growth > 1 ? MAX_LEVEL : def.cost.length);
   const costs = [];
   const times = [];
+  let prev = 0;
   for (let lvl = 1; lvl <= max; lvl++) {
-    const c = lvl <= def.cost.length
-      ? def.cost[lvl - 1]
-      : def.cost[def.cost.length - 1] * Math.pow(def.growth, lvl - def.cost.length);
+    // Поздние ранги дороже: после 10-го уровня кривая 1.40 вместо 1.34.
+    const growth = lvl > LATE_FROM ? 1.40 : def.growth;
+    let c;
+    if (lvl <= def.cost.length) c = def.cost[lvl - 1];
+    else c = prev * growth;
+    prev = c;
     const t = lvl <= def.time.length
       ? def.time[lvl - 1]
       : def.time[def.time.length - 1] * Math.pow(def.tGrowth, lvl - def.time.length);
@@ -447,6 +478,7 @@ export function ccProgression() {
       time: g ? g.time : 0,
       gateNeed: gate.count,
       gateLevel: gate.minLevel,
+      elite: gate.elite,
       raidTier: to,
       houseNeeded: 2,
     });
