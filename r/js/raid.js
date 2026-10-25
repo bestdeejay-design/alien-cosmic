@@ -11,11 +11,11 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js';
-import * as U from './units.js';
-import * as B from './buildings.js';
-import { nearestFreeTileAround } from './pathfinding.js';
-import { t, message } from './i18n.js';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10252058';
+import * as U from './units.js?v=10252058';
+import * as B from './buildings.js?v=10252058';
+import { nearestFreeTileAround } from './pathfinding.js?v=10252058';
+import { t, message } from './i18n.js?v=10252058';
 
 export const RAID_SCHEMA_VERSION = 1;
 

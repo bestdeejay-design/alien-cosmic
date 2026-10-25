@@ -7,9 +7,9 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js';
-import { message } from './i18n.js';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10252058';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10252058';
+import { message } from './i18n.js?v=10252058';
 
 let nextId = 1;
 

@@ -3,12 +3,12 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js';
-import { nearestFreeTileAround } from './pathfinding.js';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js';
-import { icon } from './ui.js'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
-import { distToRectPx } from './pathfinding.js';
-import { message } from './i18n.js';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10252058';
+import { nearestFreeTileAround } from './pathfinding.js?v=10252058';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10252058';
+import { icon } from './ui.js?v=10252058'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
+import { distToRectPx } from './pathfinding.js?v=10252058';
+import { message } from './i18n.js?v=10252058';
 
 let nextBId = 1;
 

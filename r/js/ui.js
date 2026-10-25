@@ -7,11 +7,11 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js';
-import { crystalAt } from './units.js'; // F.1: тултип кристалла
+} from './config.js?v=10252058';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10252058';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10252058';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10252058';
+import { crystalAt } from './units.js?v=10252058'; // F.1: тултип кристалла
 
 const $ = (id) => document.getElementById(id);
 
@@ -74,6 +74,7 @@ export function icon(type) {
   const dark = '#16262b', white = '#d9fff0';
   const purple = '#a78bdb', flesh = '#2a2140', slime = '#9ff5b8', bone = '#eafff0';
   const red = '#ff6e5f';
+  const cyan = '#57d3c3'; // R0-a: иконка челнока звала cyan без определения — панель команд Дома падала
   // Правило силуэтов: у каждого юнита своя геометрия тела + один яркий
   // признак; у зданий — своя крыша/проём. Путаться не должны даже мельком.
   switch (type) {

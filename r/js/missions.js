@@ -7,7 +7,7 @@
 // (I18N.md §5.2); здесь только игровые данные и стабильные ID.
 // ============================================================
 
-import { t, has } from './i18n.js';
+import { t, has } from './i18n.js?v=10252058';
 
 const PROGRESS_KEY = 'terranrts.progress';
 

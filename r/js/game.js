@@ -10,24 +10,24 @@ import { HOUSE,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js';
-import { GameMap, CC_WORKER_OFFS } from './map.js';
-import { Fog } from './fog.js';
-import { Sound } from './audio.js';
-import * as U from './units.js';
-import * as B from './buildings.js';
-import { AIController } from './ai.js';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js';
-import * as ui from './ui.js';
-import { createProfile } from './profile.js';
-import { attachInput, updateCamera } from './input.js';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
+} from './config.js?v=10252058';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10252058';
+import { Fog } from './fog.js?v=10252058';
+import { Sound } from './audio.js?v=10252058';
+import * as U from './units.js?v=10252058';
+import * as B from './buildings.js?v=10252058';
+import { AIController } from './ai.js?v=10252058';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10252058';
+import * as ui from './ui.js?v=10252058';
+import { createProfile } from './profile.js?v=10252058';
+import { attachInput, updateCamera } from './input.js?v=10252058';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10252058';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js';
+} from './raid.js?v=10252058';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
