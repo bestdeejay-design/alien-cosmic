@@ -14,7 +14,7 @@
 import './harness.mjs';
 
 await import('../r/js/game.js');
-const V = '?v=10262511'; // тот же стемп, что внутри движка — иначе двойные модули
+import { V } from './stamp.mjs';
 const CUI = await import('../r/js/chests-ui.js' + V);
 const C = await import('../r/js/chests.js' + V);
 const A = await import('../r/js/admin.js' + V);
