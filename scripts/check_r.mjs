@@ -21,6 +21,7 @@
 //  [12] Утилита .hidden: класс, которым UI-модули прячут блоки, реально прячет.
 //  [13] Стемп версии: один на весь r/ и симов (иначе node делает двойные модули).
 //  [14] Экран вылазки: Дом-шаттл как КЦ (сдача эрга) и хедер без сырых «{…}».
+//  [15] Профиль и вход: клавиатура в полях, тихая сеть без профиля, админка best.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -267,5 +268,16 @@ try {
   bad('sim_raid_field:\n' + String(e.stdout || e.stderr || e.message));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка зелёные');
+// ---------- [15] профиль и вход: поля ввода, тихая сеть, админка владельца ----------
+console.log('\n[15] Профиль и вход (аудит владельца 26.10):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_profile.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+  if (!lines.length) bad('sim_profile: ни одного PASS');
+} catch (e) {
+  bad('sim_profile:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль зелёные');
 process.exit(failed ? 1 : 0);
