@@ -42,7 +42,6 @@
       <div class="res res-time"><span id="res-time">00:00</span></div>
       <div class="res objective" id="res-objective"></div>
       <div class="spacer"></div>
-      <button id="btn-raid-action" class="tb-btn raid-tb-btn" type="button" hidden></button>
       <button id="btn-sound" class="tb-btn" type="button"></button>
       <button id="btn-pause" class="tb-btn" type="button" data-i18n="ui.topbar.pause"></button>
       <button id="btn-restart" class="tb-btn" type="button" data-i18n="ui.topbar.restart" data-i18n-title="ui.topbar.restart"></button>
@@ -115,60 +114,6 @@
           <button id="btn-end-home" class="big-btn ghost-btn" type="button" data-i18n="ui.end.home"></button>
           <button id="btn-again" class="big-btn" type="button" data-i18n="ui.end.again"></button>
           <button id="btn-next" class="big-btn" type="button" data-i18n="ui.end.next" hidden></button>
-        </div>
-      </div>
-    </div>
-
-    <div id="raid-overlay" class="overlay hidden">
-      <div class="overlay-box wide raid-box">
-        <h1 data-i18n="ui.raid.modalTitle"></h1>
-        <p class="sub" id="raid-modal-sub"></p>
-
-        <div class="raid-section">
-          <div class="raid-section-head">
-            <h3 data-i18n="ui.raid.tierLabel"></h3>
-          </div>
-          <div id="raid-tier-grid" class="raid-tier-grid" role="group"></div>
-        </div>
-
-        <div class="raid-section">
-          <div class="raid-section-head">
-            <h3 data-i18n="ui.raid.squadLabel"></h3>
-            <span id="raid-squad-summary" class="raid-meta"></span>
-          </div>
-          <div id="raid-squad-list" class="raid-squad-list"></div>
-        </div>
-
-        <div class="raid-section raid-split-row">
-          <div class="raid-col">
-            <div class="raid-section-head">
-              <h3 data-i18n="ui.raid.budgetLabel"></h3>
-              <span id="raid-budget-summary" class="raid-meta"></span>
-            </div>
-            <div class="raid-budget-controls">
-              <button id="btn-raid-budget-zero" class="mini-btn" type="button" data-i18n="ui.raid.budgetZero"></button>
-              <button id="btn-raid-budget-minus" class="mini-btn" type="button" data-i18n="ui.raid.budgetMinus"></button>
-              <button id="btn-raid-budget-plus" class="mini-btn" type="button" data-i18n="ui.raid.budgetPlus"></button>
-              <button id="btn-raid-budget-max" class="mini-btn" type="button" data-i18n="ui.raid.budgetMax"></button>
-            </div>
-          </div>
-
-          <div class="raid-col">
-            <div class="raid-section-head">
-              <h3 data-i18n="ui.raid.seedLabel"></h3>
-            </div>
-            <div class="raid-seed-controls">
-              <input id="raid-seed-input" class="raid-seed-input" type="number" min="1" step="1" aria-label="Target seed"/>
-              <button id="btn-raid-seed-next" class="mini-btn" type="button" data-i18n="ui.raid.seedNext"></button>
-            </div>
-          </div>
-        </div>
-
-        <p id="raid-launch-status" class="raid-launch-status" role="status" aria-live="polite"></p>
-
-        <div class="menu-buttons">
-          <button id="btn-raid-launch" class="big-btn" type="button" data-i18n="ui.raid.launchBtn"></button>
-          <button id="btn-raid-cancel" class="big-btn ghost-btn" type="button" data-i18n="ui.raid.cancelBtn"></button>
         </div>
       </div>
     </div>
@@ -313,40 +258,6 @@
           <div class="campaign-actions">
             <button id="btn-start" class="big-btn campaign-start" type="button"></button>
             <button id="btn-season1" class="big-btn ghost-btn campaign-browse" type="button" data-i18n="ui.menu.campaignBrowse"></button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="raids" class="page-section raids-section" aria-labelledby="raids-section-title">
-      <div class="page-shell">
-        <header class="section-heading">
-          <div>
-            <p class="menu-eyebrow" data-i18n="ui.menu.raidEyebrow"></p>
-            <h2 id="raids-section-title" data-i18n="ui.menu.raidTitle"></h2>
-          </div>
-          <p class="section-summary" data-i18n="ui.menu.raidIntro"></p>
-        </header>
-        <div class="raid-menu-card">
-          <div class="quick-section">
-            <h3 id="raid-faction-label" data-i18n="ui.menu.raidFactionLabel"></h3>
-            <div id="raid-faction-grid" class="fac-cards" role="group" aria-labelledby="raid-faction-label">
-              <button id="raid-faction-human" class="fac-card fac-human is-selected" type="button" aria-pressed="true">
-                <span class="fc-title" data-i18n="ui.skirmish.humanCard.title"></span>
-                <span class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></span>
-              </button>
-              <button id="raid-faction-alien" class="fac-card fac-alien" type="button" aria-pressed="false">
-                <span class="fc-title" data-i18n="ui.skirmish.alienCard.title"></span>
-                <span class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></span>
-              </button>
-            </div>
-          </div>
-          <div class="raid-menu-footer">
-            <p id="raid-menu-status" class="quick-battle-status" role="status" aria-live="polite"></p>
-            <div class="raid-menu-actions">
-              <button id="btn-raid-home" class="big-btn raid-home-btn" type="button"></button>
-              <button id="btn-raid-reset" class="big-btn ghost-btn" type="button" data-i18n="ui.menu.raidReset" hidden></button>
-            </div>
           </div>
         </div>
       </div>
