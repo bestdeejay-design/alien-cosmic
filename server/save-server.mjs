@@ -28,7 +28,31 @@ db.exec(`
     ts     INTEGER NOT NULL,
     PRIMARY KEY (player, key)
   );
+  CREATE TABLE IF NOT EXISTS players (
+    nick     TEXT PRIMARY KEY,
+    pin_hash TEXT NOT NULL,
+    created  INTEGER NOT NULL
+  );
 `);
+
+// Пин храним как SHA-256(nick + ':' + pin) — примитив, но не plaintext.
+import { createHash } from 'node:crypto';
+const pinHash = (nick, pin) => createHash('sha256').update(`${nick}:${pin}`).digest('hex');
+
+// Авторизация примитива: ник + пин. Первый save под незанятым ником регистрирует
+// его с этим пином; дальше все операции под ником требуют тот же пин. 403 — чужой.
+function authPlayer(db, nick, pin) {
+  if (!nick || !pin) return { ok: false, code: 400, error: 'need nick & pin' };
+  if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick)) return { ok: false, code: 400, error: 'bad nick' };
+  const row = db.prepare('SELECT pin_hash FROM players WHERE nick = ?').get(nick);
+  if (!row) {
+    db.prepare('INSERT INTO players (nick, pin_hash, created) VALUES (?, ?, ?)')
+      .run(nick, pinHash(nick, pin), Date.now());
+    return { ok: true, registered: true };
+  }
+  if (row.pin_hash !== pinHash(nick, pin)) return { ok: false, code: 403, error: 'nick taken, wrong pin' };
+  return { ok: true };
+}
 
 function json(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -68,28 +92,35 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api/save') {
     try {
-      const { player, key, value, ts } = JSON.parse(await readBody(req));
-      if (!player || !key || typeof value !== 'string') {
-        return json(res, 400, { ok: false, error: 'need player, key, value(string)' });
+      const { player, key, value, ts, pin } = JSON.parse(await readBody(req));
+      const auth = authPlayer(db, player, pin);
+      if (!auth.ok) return json(res, auth.code, auth);
+      if (!key || typeof value !== 'string') {
+        return json(res, 400, { ok: false, error: 'need key, value(string)' });
       }
       const now = Date.now();
       db.prepare(`
         INSERT INTO saves (player, key, value, ts) VALUES (?, ?, ?, ?)
         ON CONFLICT(player, key) DO UPDATE SET value = excluded.value, ts = excluded.ts
       `).run(String(player).slice(0, 64), String(key).slice(0, 128), value, Number(ts) || now);
-      return json(res, 200, { ok: true, ts: now });
+      return json(res, 200, { ok: true, ts: now, registered: !!auth.registered });
     } catch (e) {
       return json(res, 400, { ok: false, error: String(e.message) });
     }
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/load') {
-    const player = url.searchParams.get('player');
-    const key = url.searchParams.get('key');
-    if (!player || !key) return json(res, 400, { ok: false, error: 'need player & key' });
-    const row = db.prepare('SELECT value, ts FROM saves WHERE player = ? AND key = ?').get(player, key);
-    return row ? json(res, 200, { ok: true, value: row.value, ts: row.ts })
-               : json(res, 200, { ok: false, error: 'not found' });
+  if (req.method === 'POST' && url.pathname === '/api/load') {
+    try {
+      const { player, key, pin } = JSON.parse(await readBody(req));
+      const auth = authPlayer(db, player, pin);
+      if (!auth.ok) return json(res, auth.code, auth);
+      if (!key) return json(res, 400, { ok: false, error: 'need key' });
+      const row = db.prepare('SELECT value, ts FROM saves WHERE player = ? AND key = ?').get(player, key);
+      return row ? json(res, 200, { ok: true, value: row.value, ts: row.ts })
+                 : json(res, 200, { ok: false, error: 'not found' });
+    } catch (e) {
+      return json(res, 400, { ok: false, error: String(e.message) });
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/list') {
