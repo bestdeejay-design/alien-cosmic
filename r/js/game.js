@@ -845,6 +845,14 @@ export class Game {
         });
       }
       // ВЛАДЕЛЕЦ 25.10: Дом в экспедиции — команда «Эвакуация» внутри Дома.
+      // ВЛАДЕЛЕЦ 25.10: профиль/сохранения — команда КЦ (внутри КЦ, не в хедере).
+      if (b.done && b.type === 'cc' && window.showProfilePanel) {
+        cmds.push({
+          code: 'KeyP', icon: 'recon', label: t('ui.cmds.profile'),
+          tip: { title: t('ui.cmds.profile'), lines: t('ui.cmds.profileTip') },
+          on: () => window.showProfilePanel(),
+        });
+      }
       if (b.done && b.type === 'depot' && st.raidMode === 'expedition' && b === st.raidHouse) {
         cmds.push({
           code: 'KeyE', icon: 'shuttle',

@@ -134,6 +134,8 @@ export default {
       errNoHouse: 'House level II required — it unlocks raids',
       errSlots: 'The House holds only {n} units',
       errCcLevel: 'Upgrade the Command Center first',
+      profile: 'Profile',
+      profileTip: { title: 'Profile', lines: 'Nick, pin and server saves. Same nick+pin restores your base' },
       topEvac: 'Evacuate',
       topEvacTitle: 'Gather the squad at the shuttle pad and return to base',
       topLiftoff: 'Liftoff ({n})',

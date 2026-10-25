@@ -22,44 +22,9 @@ function askIdentity() {
 
 // Мини-форма «ник + пин» поверх страницы (примитив; Арена заменит на нормальную).
 // Пока игрок не заполнил — работает анонимный режим. Заполнение → перезагрузка.
-function showIdentityForm() {
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;background:#101c22;' +
-    'border:1px solid #2a3a42;border-radius:10px;padding:10px 12px;font:13px system-ui;color:#dfe8ea;box-shadow:0 4px 16px rgba(0,0,0,.5)';
-  box.innerHTML = `
-    <div style="margin-bottom:6px;opacity:.8">Сохранение прогресса: ник и пин</div>
-    <input id="sv-nick" placeholder="ник" style="width:140px;margin-right:6px;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:4px 8px">
-    <input id="sv-pin" placeholder="пин" style="width:80px;margin-right:6px;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:4px 8px">
-    <button id="sv-ok" style="background:#2fa89b;border:0;color:#04262a;border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer">OK</button>
-    <button id="sv-skip" style="background:none;border:0;color:#8fa6ae;cursor:pointer;margin-left:4px">позже</button>`;
-  document.body.append(box);
-  box.querySelector('#sv-ok').addEventListener('click', () => {
-    const nick = box.querySelector('#sv-nick').value.trim();
-    const pin = box.querySelector('#sv-pin').value.trim();
-    if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick) || !pin) {
-      box.querySelector('#sv-nick').style.borderColor = '#ff8d7a';
-      return;
-    }
-    try { localStorage.setItem(NICK_KEY, nick); localStorage.setItem(PIN_KEY, pin); } catch { /* */ }
-    location.reload();
-  });
-  box.querySelector('#sv-skip').addEventListener('click', () => box.remove());
-}
 
 // Мини-чип профиля в углу: кто вошёл + «сменить» (сброс ника/пина → форма заново).
 // Решение владельца 25.10: он ввёл ник/пин неверно и застрял в чужом профиле.
-function showIdentityChip(nick) {
-  const chip = document.createElement('div');
-  chip.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9998;background:#101c22;' +
-    'border:1px solid #2a3a42;border-radius:8px;padding:4px 8px;font:12px system-ui;color:#8fa6ae';
-  chip.innerHTML = `сейв: <b style="color:#dfe8ea">${nick || 'аноним'}</b>` +
-    ` · <span id="sv-logout" style="color:#7fd4ff;cursor:pointer;text-decoration:underline">сменить</span>`;
-  document.body.append(chip);
-  chip.querySelector('#sv-logout').addEventListener('click', () => {
-    try { localStorage.removeItem(NICK_KEY); localStorage.removeItem(PIN_KEY); } catch { /* */ }
-    location.reload();
-  });
-}
 
 const identity = askIdentity();
 window.__saveIdentity = identity; // raid-boot читает для серверного восстановления
@@ -115,14 +80,71 @@ async function pull() {
   }
 }
 
+// Панель профиля — открывается командой КЦ «Профиль».
+window.showProfilePanel = function () {
+  const old = document.getElementById('sv-panel');
+  if (old) { old.remove(); return; }
+  const panel = document.createElement('div');
+  panel.id = 'sv-panel';
+  panel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;' +
+    'background:#101c22;border:1px solid #2a3a42;border-radius:12px;padding:14px 16px;font:13px system-ui;color:#dfe8ea;' +
+    'box-shadow:0 8px 32px rgba(0,0,0,.6);width:280px';
+  const savesNote = identity
+    ? `Профиль: <b style="color:#dfe8ea">${identity.nick}</b>`
+    : 'Профиль не выбран (аноним — прогресс не ходит между машинами)';
+  panel.innerHTML = `
+    <div style="font-weight:600;margin-bottom:8px">Профиль и сохранения</div>
+    <div style="opacity:.75;margin-bottom:10px">${savesNote}</div>
+    <input id="sv-nick" placeholder="ник" style="width:120px;margin-right:6px;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:4px 8px">
+    <input id="sv-pin" placeholder="пин" style="width:70px;margin-right:6px;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:4px 8px">
+    <button id="sv-ok" style="background:#2fa89b;border:0;color:#04262a;border-radius:6px;padding:4px 10px;font-weight:600;cursor:pointer">Войти</button>
+    <div id="sv-list" style="margin-top:10px;font-size:12px;opacity:.8">сохранения: …</div>
+    <div id="sv-msg" style="margin-top:6px;font-size:12px;color:#ff8d7a;min-height:14px"></div>
+    <button id="sv-close" style="margin-top:8px;background:none;border:0;color:#8fa6ae;cursor:pointer">закрыть</button>`;
+  document.body.append(panel);
+  panel.querySelector('#sv-close').addEventListener('click', () => panel.remove());
+  if (identity) {
+    panel.querySelector('#sv-nick').value = identity.nick;
+    try {
+      fetch(`${API}/api/list?player=${encodeURIComponent(identity.nick)}`)
+        .then((r) => r.json())
+        .then((j) => {
+          const el = panel.querySelector('#sv-list');
+          if (j.ok && j.records.length) {
+            el.textContent = 'на сервере: ' + j.records.map((x) => x.key.replace('ac_', '').replace('terranrts.', '') + ' (' + new Date(x.ts).toLocaleTimeString() + ')').join(', ');
+          } else el.textContent = 'на сервере пусто — база сохранится при игре';
+        });
+    } catch { /* */ }
+  }
+  panel.querySelector('#sv-ok').addEventListener('click', () => {
+    const nick = panel.querySelector('#sv-nick').value.trim();
+    const pin = panel.querySelector('#sv-pin').value.trim();
+    if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick) || !pin) {
+      panel.querySelector('#sv-msg').textContent = 'ник 2–24 буквы/цифры, пин не пустой';
+      return;
+    }
+    // проверка входа: если ник занят другим пином — сервер откажет при первом же сейве,
+    // поэтому пробуем load: пусто = новый профиль, ок = верный пин, 403 = чужой пин
+    fetch(`${API}/api/load`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: nick, pin, key: '__check__' }),
+    }).then(async (r) => {
+      if (r.status === 403) {
+        panel.querySelector('#sv-msg').textContent = 'ник занят, пин не подошёл';
+        return;
+      }
+      try { localStorage.setItem(NICK_KEY, nick); localStorage.setItem(PIN_KEY, pin); } catch { /* */ }
+      location.reload();
+    });
+  });
+};
+
 // Примитивная стратегия: при старте тянем, затем толкаем; дальше — раз в 20 секунд и при уходе.
 await pull();
 for (const k of SYNC_KEYS) push(k);
 setInterval(() => { for (const k of SYNC_KEYS) push(k); }, 20000);
 addEventListener('beforeunload', () => { for (const k of SYNC_KEYS) push(k); });
-if (!identity && document.body) showIdentityForm();
-else if (!identity) addEventListener('DOMContentLoaded', () => showIdentityForm());
-if (document.body) showIdentityChip(identity && identity.nick);
-else addEventListener('DOMContentLoaded', () => showIdentityChip(identity && identity.nick));
+// ВЛАДЕЛЕЦ 25.10: вход/профиль/сохранения — ТОЛЬКО внутри КЦ (команда строения),
+// в хедере ничего нет. КЦ зовёт window.showProfilePanel().
 console.log('[save] полигон: клиент сейва активен, сервер', API,
   identity ? `ник «${player}»` : `анонимно (${player})`);
