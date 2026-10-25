@@ -199,7 +199,7 @@ export default {
         'Повторное нажатие при погружённых бойцах поднимает челнок сразу',
       ],
       hudHome: 'База-КЦ · Актан-4 · допуск ур. {tier}/{max} · вылетов: {raids}',
-      hudExpedition: 'Вылазка ур. {tier}/{max} · трюм: {cargo}/{cap} эрга · в строю: {alive}',
+      hudExpedition: 'Вылазка ур. {tier}/{max} · в строю: {alive} · трюм: {cargo}/{cap}',
       hudEvac: 'Эвакуация к челноку: на борту {boarded}/{total} · трюм: {cargo} эрга',
       modalTitle: 'КОНСОЛЬ ВЫЛАЗКИ',
       modalSub: 'Планета: Актан-4 · на базе {minerals} эрга · вылетов завершено: {raids}',
@@ -248,6 +248,7 @@ export default {
       toastLeft: 'Осталось на карте: {n} эрга',
       toastReturnOk: 'Челнок вернулся на базу-КЦ: +{cargo} эрга · на борту {n}/{sent}.',
       toastReturnWiped: 'Связь с челноком потеряна: отряд и трюм не вернулись на базу-КЦ.',
+      toastShuttleLost: 'Дом-шаттл уничтожен: сдавать эрг некуда, отряд остался на планете',
     },
 
     panel: {

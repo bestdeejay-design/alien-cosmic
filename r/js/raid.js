@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262512';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262514';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262512';
-import * as U from './units.js?v=10262512';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262512';
-import * as B from './buildings.js?v=10262512';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262512';
-import { t, message } from './i18n.js?v=10262512';
+} from './economy.js?v=10262514';
+import * as U from './units.js?v=10262514';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262514';
+import * as B from './buildings.js?v=10262514';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262514';
+import { t, message } from './i18n.js?v=10262514';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -66,13 +66,24 @@ export function unlockedRaidTier(st) {
   return unlockedRaidTierByCC(st);
 }
 
-// Живой свободный состав домашней базы (вне бункеров), доступный для посадки в челнок.
+// Живой состав домашней базы, доступный для посадки в челнок.
+//
+// ВАЖНО (баг 26.10.2026): бойцы в ОТСЕКЕ ДОМА — это и есть десант вылазки
+// («Собрать всех» → «Вылазка»). Раньше гарнизон отсека исключался целиком, и
+// после «собрать всех» консоль показывала пустой список, а запуск отвечал
+// «не хватает юнитов» — вылететь было невозможно. Теперь отсек Дома считается,
+// а вот бункер (и любое другое укрытие) — по-прежнему нет: оттуда не летают.
+export function isHouseGarrison(u) {
+  return !!(u && u.garrison && u.garrison.type === 'depot');
+}
+
 export function countHomeRoster(st) {
   const counts = {};
   for (const key of RAID_UNIT_ORDER) counts[key] = 0;
   if (!st || !Array.isArray(st.units)) return counts;
   for (const u of st.units) {
-    if (!u || u.dead || u.garrison || u.side !== 'player' || u.kind !== 'unit') continue;
+    if (!u || u.dead || u.side !== 'player' || u.kind !== 'unit') continue;
+    if (u.garrison && !isHouseGarrison(u)) continue; // бункер — не десант
     if (counts[u.type] !== undefined) counts[u.type]++;
   }
   return counts;
@@ -198,8 +209,11 @@ export function captureHomeBaseDTO(st, session, dispatchedIds = new Set()) {
         hold: !!q.hold,
       }))
       : [];
+    // Гарнизон: только те, кто реально сидит в ЭТОМ здании (после вылета бойцы
+    // отсека остаются в массиве с garrison=null) и не улетел в рейд.
     const garrison = Array.isArray(b.garrison)
-      ? b.garrison.filter((u) => u && !u.dead && UNITS[u.type]).map((u) => ({
+      ? b.garrison.filter((u) => u && !u.dead && UNITS[u.type] && u.garrison === b
+        && !(dispatchedIds && dispatchedIds.has(u.id))).map((u) => ({
         type: u.type,
         hp: Math.max(1, Math.min(u.maxHp, Number(u.hp) || UNITS[u.type].hp)),
       }))
@@ -394,7 +408,10 @@ function hydrateHomeBaseIntoState(st, dto, pendingReturn) {
     }
     st.map.markBuilding(b);
     st.bcount.player++;
-    if (Array.isArray(bd.garrison) && bd.garrison.length && b.cfg.garrisonCap) {
+    // Бункер восстанавливается по garrisonCap, Дом — как «отсек» (Э4): раньше
+    // отсек Дома при возврате из вылазки ПУСТЕЛ вместе с бойцами — армия,
+    // оставленная дома, молча пропадала (баг 26.10.2026).
+    if (Array.isArray(bd.garrison) && bd.garrison.length && (b.cfg.garrisonCap || bd.type === 'depot')) {
       for (const gu of bd.garrison) {
         if (!UNITS[gu.type]) continue;
         const u = U.spawnUnit(st, 'player', gu.type, b.x, b.y, false);
@@ -464,10 +481,16 @@ function spawnRandomOutpost(game, st, m) {
   if (tier >= 6) roster.push('tank');
   if (tier >= 10) roster.push('flamer');
   if (tier >= 14) roster.push('arty');
+  // Гарнизон аванпоста стоит у своего КЦ и ДЕРЖИТ оборону.
+  // Баг 26.10.2026: охранникам давали приказ идти в ЦЕНТР своего КЦ — тайл
+  // занят зданием, путь недостижим, юнит навсегда застревал в order 'move' и
+  // никогда не сканировал врагов (охрана была декорацией). Теперь цель —
+  // свободный тайл рядом с КЦ.
+  const rally = nearestFreeTileAround(st.map, ccE.tx, ccE.ty, ccE.w, ccE.h) || { x: ccE.tx, y: ccE.ty + ccE.h };
   for (let i = 0; i < guardCount; i++) {
     const gt = roster[i % roster.length];
     const u = U.spawnUnit(st, 'enemy', gt, (corner.x + 2 + (i % 4)) * TILE, (corner.y + 2 + Math.floor(i / 4)) * TILE, false);
-    if (u) U.orderMove(st, u, ccE.x, ccE.y);
+    if (u) U.orderMove(st, u, (rally.x + 0.5) * TILE, (rally.y + 0.5) * TILE);
   }
 }
 
@@ -565,6 +588,21 @@ export function populateRaidState(game, st, m) {
 
 export function updateRaidTick(game, st, dt) {
   if (!st || st.raidMode !== 'expedition' || st.gameOver) return;
+  // Дом-шаттл — единственный КЦ карты: точка сдачи эрга, трюм и эвакуация.
+  // Если его снесли, вылазка кончилась (баг 26.10.2026: без Дома продолжали
+  // сдавать эрг «в воздух» и спокойно улетали с добычей).
+  if (st.raidHouse && st.raidHouse.dead && !st.raidShuttleLost) {
+    st.raidShuttleLost = true;
+    st.raidEvacuating = false;
+    const boarded = st.raidBoarded ? st.raidBoarded.length : 0;
+    if (boarded > 0) {
+      game.finishRaidExpedition('evac');
+    } else {
+      game.ui.toast(t('ui.raid.toastShuttleLost'), 'error', 4200);
+      game.finishRaidExpedition('wiped');
+    }
+    return;
+  }
   const pad = st.raidDrop;
   // Э1: Дом-Г4+ лечит отряд в радиусе ауры (канон владельца: «лечение в рейде,
   // аура как у нанита»). Лечим только своих и только до максимума.
@@ -592,7 +630,11 @@ export function updateRaidTick(game, st, dt) {
         u.evacT = (u.evacT || 0) + dt;
         if (u.evacT >= pad.hold) {
           if (u.carrying > 0) {
-            st.raidCargo = Math.min(HOUSE.cargo, (st.raidCargo || 0) + u.carrying);
+            // Э1: ёмкость трюма = грейд Дома-шаттла, а не базовая константа
+            // (иначе Г20 на вылазке обрезался до 3 000).
+            const cap = st.raidCargoCap || HOUSE.cargo;
+            st.raidCargoLost = (st.raidCargoLost || 0) + Math.max(0, (st.raidCargo || 0) + u.carrying - cap);
+            st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
             st.stats.mined += u.carrying;
             u.carrying = 0;
           }
@@ -648,7 +690,10 @@ export function raidObjectiveText(game, st) {
       const boarded = st.raidBoarded ? st.raidBoarded.length : 0;
       return t('ui.raid.hudEvac', { boarded, total: boarded + alive, cargo });
     }
-    return t('ui.raid.hudExpedition', { tier: st.raidTier || 1, cargo, alive });
+    // В хедере были сырые `{max}` и `{cap}`: строка ждёт четыре параметра,
+    // а передавали два (баг 26.10.2026 — «ошибки в хедере»).
+    const cap = Math.floor(st.raidCargoCap || HOUSE.cargo);
+    return t('ui.raid.hudExpedition', { tier: st.raidTier || 1, max: MAX_LEVEL, cargo, cap, alive });
   }
   return '';
 }

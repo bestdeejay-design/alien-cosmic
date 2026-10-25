@@ -8,13 +8,13 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
-} from './config.js?v=10262512';
-import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262512';
+} from './config.js?v=10262514';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262514';
 import {
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262512';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262512';
-import { t, message } from './i18n.js?v=10262512';
-import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262512';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262514';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262514';
+import { t, message } from './i18n.js?v=10262514';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262514';
 
 let nextId = 1;
 
@@ -1382,10 +1382,14 @@ function updateGather(st, u, dt) {
       const d = Math.hypot(b.x - u.x, b.y - u.y);
       if (d < bd) { bd = d; drop = b; }
     }
-    if (!drop && u.side === 'player' && st.raidDrop) {
-      // Рейдовая вылазка без корабля-КЦ: рабочие сдают эрг в трюм челнока на площадке посадки.
+    if (!drop && u.side === 'player' && st.raidDrop
+      && !(st.raidHouse && st.raidHouse.dead)) {
+      // Рейдовая вылазка без корабля-КЦ: Дом-шаттл И ЕСТЬ КЦ на этой карте —
+      // рабочие сдают эрг в его трюм. Радиус приёма = радиус кольца, которое
+      // игрок видит на карте (pad.r тайлов), иначе «в зоне, а не сдаёт».
       const pad = st.raidDrop;
-      if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 2.2) {
+      const padR = Math.max(TILE * 2.2, (pad.r || 2.2) * TILE);
+      if (Math.hypot(u.x - pad.x, u.y - pad.y) <= padR) {
         const cap = st.raidCargoCap || HOUSE.cargo; // Э1: трюм Дома по его грейду
         const before = st.raidCargo || 0;
         const next = Math.min(cap, before + u.carrying);
@@ -1405,17 +1409,21 @@ function updateGather(st, u, dt) {
         st.game.sound.deposit();
         return;
       }
-      if (!u.path) {
-        // ВЛАДЕЛЕЦ 25.10: сдаём эрг в ДОМ-шаттл; тайл Дома занят зданием —
-        // путь ведём к ближайшему свободному соседнему тайлу.
+      // ВЛАДЕЛЕЦ 25.10: сдаём эрг в ДОМ-шаттл; его тайлы заняты зданием —
+      // идём к ближайшему свободному соседнему тайлу.
+      // ВАЖНО: pathToPoint принимает МИРОВЫЕ ПИКСЕЛИ, а не индексы тайлов
+      // (баг 26.10.2026: сюда передавали near.x/near.y в тайлах → путь вёл в
+      // угол карты (0,0), сборщики «искали КЦ» и никогда не сдавали эрг).
+      const dropGoal = () => {
         const near = walkableNear(st.map, pad.tx, pad.ty);
-        u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, near.x, near.y, { clearance: clearanceOf(u) });
+        return pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0,
+          (near.x + 0.5) * TILE, (near.y + 0.5) * TILE, { clearance: clearanceOf(u) });
+      };
+      if (!u.path) {
+        u.path = dropGoal();
         u.pathI = 0;
       }
-      repathIfBlocked(st, u, () => {
-        const near = walkableNear(st.map, pad.tx, pad.ty);
-        return pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, near.x, near.y, { clearance: clearanceOf(u) });
-      });
+      repathIfBlocked(st, u, dropGoal);
       if (followPath(st, u)) u.path = null;
       return;
     }
@@ -1957,6 +1965,14 @@ export function damageEntity(st, victim, dmg, attacker) {
     // H.2: базовый тир — сирена (свой КЦ Г2+ и урон в R15 от КЦ), иначе мягкий пинг.
     if (nearBaseCC(st, victim.x, victim.y)) st.game.sound.alarm();
     else st.game.sound.ping();
+  }
+  // Ответка: юнит БЕЗ приказа отвечает тому, кто его бьёт (баг 26.10.2026 —
+  // охрану аванпоста можно было расстреливать по одному, она не реагировала).
+  // Приказы игрока не трогаем: реагируем только из 'idle'.
+  if (victim.kind === 'unit' && !victim.dead && attacker && !attacker.dead
+      && attacker.side !== victim.side && victim.cfg && victim.cfg.dmg > 0
+      && victim.order && victim.order.kind === 'idle') {
+    orderAttack(st, victim, attacker);
   }
   if (victim.hp <= 0) killEntity(st, victim, attacker);
 }

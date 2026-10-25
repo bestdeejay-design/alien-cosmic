@@ -5,7 +5,7 @@
 // (позиции баз, озёра, число скал, богатство минералов) и всегда
 // симметрична относительно центра — честно для обеих сторон.
 // ============================================================
-import { TILE, MAP_W, MAP_H, BIOMES } from './config.js?v=10262512';
+import { TILE, MAP_W, MAP_H, BIOMES } from './config.js?v=10262514';
 
 export const T_GROUND = 0;
 export const T_WATER = 1;

@@ -203,7 +203,7 @@ export default {
         'Press again once troops have boarded for immediate liftoff',
       ],
       hudHome: 'Home Ship-CC · Actan-4 · tier {tier}/{max} · sorties: {raids}',
-      hudExpedition: 'Expedition T{tier}/{max} · hold: {cargo}/{cap} erg · active: {alive}',
+      hudExpedition: 'Expedition T{tier}/{max} · active: {alive} · hold: {cargo}/{cap}',
       hudEvac: 'Shuttle boarding: {boarded}/{total} aboard · hold: {cargo} erg',
       modalTitle: 'EXPEDITION CONSOLE',
       modalSub: 'Planet: Actan-4 · home reserve: {minerals} erg · sorties completed: {raids}',
@@ -252,6 +252,7 @@ export default {
       toastLeft: 'Left on the map: {n} erg',
       toastReturnOk: 'Shuttle returned to Ship-CC: +{cargo} erg · {n}/{sent} aboard.',
       toastReturnWiped: 'Shuttle contact lost: squad and hold did not return to Ship-CC.',
+      toastShuttleLost: 'The House-shuttle was destroyed: nowhere to unload, the squad is stranded',
     },
 
     panel: {

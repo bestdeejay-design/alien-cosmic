@@ -24,8 +24,8 @@ const LS_KEY = 'terranrts.language';
 // Реестр локалей: только записям реестра разрешён import() и показ
 // в переключателе. Новая локаль = файл locales/<code>.js + запись здесь.
 export const SUPPORTED_LOCALES = {
-  ru: { code: 'ru', label: 'Русский', htmlLang: 'ru', import: () => import('../locales/ru.js?v=10262512') },
-  en: { code: 'en', label: 'English', htmlLang: 'en', import: () => import('../locales/en.js?v=10262512') },
+  ru: { code: 'ru', label: 'Русский', htmlLang: 'ru', import: () => import('../locales/ru.js?v=10262514') },
+  en: { code: 'en', label: 'English', htmlLang: 'en', import: () => import('../locales/en.js?v=10262514') },
 };
 
 let dict = null;      // словарь выбранной локали
@@ -122,11 +122,27 @@ export function interpolate(str, params) {
     params[name] !== undefined ? String(params[name]) : m);
 }
 
+// Незаполненные подстановки: если в шаблоне есть {name}, а в params его нет,
+// игрок видит сырое «{cap}» в интерфейсе (так сломался хедер вылазки
+// 26.10.2026: строка ждала {max}/{cap}, а передавали два параметра).
+// Пишем это в один список, чтобы симы/гейт могли проверить «дыр нет».
+export const missingParams = new Set();
+function noteMissing(key, str, params) {
+  const re = /\{(\w+)\}/g;
+  let m;
+  while ((m = re.exec(str))) {
+    if (!params || params[m[1]] === undefined) missingParams.add(key + ' → {' + m[1] + '}');
+  }
+}
+
 export function t(key, params) {
   let v = lookup(dict, key);
   if (v === undefined) v = lookup(ruDict, key);
   if (v === undefined) return '[missing:' + key + ']';
-  if (typeof v === 'string') return interpolate(v, params);
+  if (typeof v === 'string') {
+    if (String(v).includes('{')) noteMissing(key, v, params);
+    return interpolate(v, params);
+  }
   if (v && typeof v === 'object' && params) return v; // объекты (формы множественного) — наружу
   return v;
 }
