@@ -1735,17 +1735,29 @@ export class Game {
     const ty = Math.max(0, Math.min(st.map.h - cfg.h, pl.ty));
     let ok = st.minerals.player >= cfg.cost;
     if (ok && !B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) ok = false;
-    for (let y = ty; y < ty + cfg.h && ok; y++)
-      for (let x = tx; x < tx + cfg.w && ok; x++)
-        if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) ok = false;
+    // V-5 (вопрос владельца «непонятно, можно строить тут или нет»): раньше
+    // фон футпринта был едва заметным (alpha 0.28) и не говорило, КАКОЙ
+    // именно тайл мешает. Теперь каждый недоступный тайл футпринта помечен
+    // крест-накрест — преграда видна точно, а не «где-то в области».
+    const bad = [];
+    for (let y = ty; y < ty + cfg.h; y++)
+      for (let x = tx; x < tx + cfg.w; x++)
+        if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) bad.push([x, y]);
+    if (bad.length) ok = false;
 
-    ctx.globalAlpha = 0.28;
+    const gx = tx * TILE - cam.x, gy = ty * TILE - cam.y;
+    ctx.globalAlpha = 0.24;
     ctx.fillStyle = ok ? 'rgba(118,227,215,0.55)' : 'rgba(255,96,87,0.5)';
-    ctx.fillRect(tx * TILE - cam.x, ty * TILE - cam.y, cfg.w * TILE, cfg.h * TILE);
-    ctx.globalAlpha = 0.9;
-    ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(tx * TILE - cam.x + 1, ty * TILE - cam.y + 1, cfg.w * TILE - 2, cfg.h * TILE - 2);
+    ctx.fillRect(gx, gy, cfg.w * TILE, cfg.h * TILE);
+    // Недоступные тайлы — плотная красная заливка: читается и сама по себе,
+    // и как подложка под полупрозрачным спрайтом.
+    if (bad.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#ff5a4e';
+      for (const [bx, by] of bad) ctx.fillRect(bx * TILE - cam.x, by * TILE - cam.y, TILE, TILE);
+      ctx.restore();
+    }
     ctx.globalAlpha = 0.55;
     B.drawBuilding(ctx, {
       tx, ty, w: cfg.w, h: cfg.h, side: 'player', type: pl.type, cfg,
@@ -1753,6 +1765,25 @@ export class Game {
       angle: -Math.PI / 4, garrison: [],
       done: true, progress: 1, hp: 1, maxHp: 1, flashT: 0, selected: false,
     }, false, cam.x, cam.y);
+    // Кресты — ПОВЕРХ спрайта: иначе метка тонет под призраком здания и
+    // «непонятно, какой именно тайл мешает» (изначальный вопрос владельца).
+    if (bad.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = '#ffb3ab'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+      for (const [bx, by] of bad) {
+        const px = bx * TILE - cam.x + 3.5, py = by * TILE - cam.y + 3.5, s = TILE - 7;
+        ctx.beginPath();
+        ctx.moveTo(px, py); ctx.lineTo(px + s, py + s);
+        ctx.moveTo(px + s, py); ctx.lineTo(px, py + s);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(gx + 1, gy + 1, cfg.w * TILE - 2, cfg.h * TILE - 2);
     ctx.globalAlpha = 1;
   }
 
@@ -1763,9 +1794,22 @@ export class Game {
     for (const t of tiles) {
       const ok = st.fog.tileExplored(t.x, t.y) && B.canPlace(st.map, t.x, t.y, 1, 1) &&
         B.zoneAllows(st, t.x, t.y, 1, 1);
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = ok ? 'rgba(118,227,215,0.6)' : 'rgba(255,96,87,0.55)';
+      // V-5: как и у призрака здания, недоступный тайл помечен крестом —
+      // преграда видна точно, а не «красноватая подсветка где-то там».
+      ctx.globalAlpha = ok ? 0.3 : 0.5;
+      ctx.fillStyle = ok ? 'rgba(118,227,215,0.6)' : 'rgba(255,90,78,0.85)';
       ctx.fillRect(t.x * TILE - cam.x, t.y * TILE - cam.y, TILE, TILE);
+      if (!ok) {
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#ffb3ab'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        const px = t.x * TILE - cam.x + 4, py = t.y * TILE - cam.y + 4, s = TILE - 8;
+        ctx.beginPath();
+        ctx.moveTo(px, py); ctx.lineTo(px + s, py + s);
+        ctx.moveTo(px + s, py); ctx.lineTo(px, py + s);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.globalAlpha = 0.9;
       ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
       ctx.lineWidth = 1.5;
