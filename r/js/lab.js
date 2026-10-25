@@ -9,9 +9,9 @@
 // никакой сети и никаких сохранений — гейт check_r.mjs это разрешает,
 // потому что lab.html не подключён в r/index.html.
 // ============================================================
-import { BUILDINGS, UNITS, TILE } from './config.js?v=10262513';
-import { drawBuilding } from './buildings.js?v=10262513';
-import { drawUnit } from './units.js?v=10262513';
+import { BUILDINGS, UNITS, TILE } from './config.js?v=10262514';
+import { drawBuilding } from './buildings.js?v=10262514';
+import { drawUnit } from './units.js?v=10262514';
 
 const BUILD_ORDER = ['cc', 'depot', 'barracks', 'factory', 'lab', 'turret', 'bunker', 'wall'];
 const UNIT_ORDER = ['worker', 'marine', 'buggy', 'tank', 'medic', 'flamer', 'arty', 'scout'];

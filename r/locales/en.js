@@ -252,6 +252,7 @@ export default {
       toastLeft: 'Left on the map: {n} erg',
       toastReturnOk: 'Shuttle returned to Ship-CC: +{cargo} erg · {n}/{sent} aboard.',
       toastReturnWiped: 'Shuttle contact lost: squad and hold did not return to Ship-CC.',
+      toastShuttleLost: 'The House-shuttle was destroyed: nowhere to unload, the squad is stranded',
     },
 
     panel: {
