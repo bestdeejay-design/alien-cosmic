@@ -41,9 +41,12 @@
 ## Запуск стенда
 
 ```bash
-node server/save-server.mjs &        # БД сохранений (:8790)
-PORT=8805 node server/static.mjs     # игра (:8805) + прокси /api → :8790
-# http://localhost:8805/r/
+node server/save-server.mjs &              # БД сохранений (:8790)
+PORT=8805 node server/static.mjs           # вся игра + прокси /api → :8790
+#   http://localhost:8805/r/               — полигон рейдов
+
+POLYGON=1 PORT=8806 node server/static.mjs # стенд, который сразу открывает полигон
+#   http://localhost:8806/  → 302 → /r/    (удобно с телефона: путь набирать не нужно)
 ```
 
 Быстрый прогон контента: `?econ=0.1` — все цены ÷10, `?econ=0.02` — ÷50 (для проверки 20 уровней за вечер).

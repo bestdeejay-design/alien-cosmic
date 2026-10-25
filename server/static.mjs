@@ -18,6 +18,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PORT = Number(process.env.PORT || 8805);
+// POLYGON=1 — стенд сразу открывает полигон рейдов: «/» уводит на «/r/».
+// Нужно для предпросмотра с телефона (в адресной строке путь не набрать),
+// при этом относительные пути r/index.html («./js/game.js») остаются верными —
+// поэтому именно 302, а не отдача r/index.html по корню.
+const POLYGON = process.env.POLYGON === '1';
 const API_PORT = Number(process.env.API_PORT || 8790);
 const API_HOST = process.env.API_HOST || '127.0.0.1';
 const MIME = {
@@ -46,6 +51,10 @@ function proxy(req, res) {
 createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://x').pathname;
   if (pathname.startsWith('/api/') || pathname === '/health') return proxy(req, res);
+  if (POLYGON && (pathname === '/' || pathname === '/index.html')) {
+    res.writeHead(302, { Location: '/r/', 'Cache-Control': 'no-store' });
+    return res.end();
+  }
   try {
     let p = decodeURIComponent(pathname);
     if (p.endsWith('/')) p += 'index.html';
@@ -54,4 +63,5 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': MIME[extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(data);
   } catch { res.writeHead(404); res.end('not found'); }
-}).listen(PORT, '0.0.0.0', () => console.log(`[static] :${PORT} ← ${ROOT} (+/api → :${API_PORT})`));
+}).listen(PORT, '0.0.0.0', () => console.log(
+  `[static] :${PORT} ← ${ROOT} (+/api → :${API_PORT})${POLYGON ? ' · режим ПОЛИГОН: / → /r/' : ''}`));
