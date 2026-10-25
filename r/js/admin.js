@@ -17,13 +17,13 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { t } from './i18n.js?v=10262511';
-import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262511';
+import { t } from './i18n.js?v=10262512';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262512';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10262511';
+} from './chests.js?v=10262512';
 
 const PIN_KEY = 'ac_admin_pin';
 const ECON_KEY = 'ac_econ_scale';

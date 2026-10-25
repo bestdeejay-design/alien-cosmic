@@ -12,12 +12,12 @@
 //
 // Никаких новых кнопок в топбаре: точка входа — карточки при заходе и команда КЦ.
 // ============================================================
-import { t } from './i18n.js?v=10262511';
+import { t } from './i18n.js?v=10262512';
 import {
   availableChests, buildContext, claimChest, loadConfig, RARITY,
   loadState, isClaimed, getBirthday, setBirthday, pullGrants, fetchTop,
   applyReward, pickReward,
-} from './chests.js?v=10262511';
+} from './chests.js?v=10262512';
 
 let overlay = null;
 let shownThisSession = false;
@@ -112,8 +112,9 @@ export function showChests(game) {
       <span class="chest-desc">${esc(item.chest.desc || '')}</span>
       <span class="chest-state">${item.claimed ? 'забрана' : item.eligible ? 'готова к вскрытию' : esc(item.why)}</span>`;
     card.addEventListener('click', () => {
-      if (item.claimed) return;
+      if (item.claimed) { flashCard(card); return; }
       if (!item.eligible) { flashCard(card); return; }
+      card.classList.add('is-opening');
       openChest(game, item.chest, ctx, ov);
     });
     grid.appendChild(card);
@@ -140,11 +141,20 @@ function flashCard(card) {
 }
 
 function openChest(game, chest, ctx, ov) {
-  const res = claimChest(game, chest.id, ctx);
   const grid = ov.querySelector('#chest-grid');
   const box = ov.querySelector('#chest-open');
-  if (!res.ok) {
-    grid.innerHTML = `<div class="chest-empty">${esc(res.error || 'не удалось')}</div>`;
+  // Любая ошибка награды должна быть ВИДНА: молчаливый throw в обработчике
+  // клика выглядел для игрока как «кнопка не нажимается» (аудит 26.10.2026).
+  let res;
+  try {
+    res = claimChest(game, chest.id, ctx);
+  } catch (err) {
+    console.error('[capsules] claimChest упал', err);
+    res = { ok: false, error: 'сбой выдачи награды: ' + String((err && err.message) || err) };
+  }
+  if (!res || !res.ok) {
+    grid.innerHTML = `<div class="chest-empty">Не удалось вскрыть: ${esc((res && res.error) || 'неизвестная ошибка')}</div>`;
+    if (game.ui && game.ui.toast) game.ui.toast('Капсула не вскрылась: ' + ((res && res.error) || 'ошибка'), 'error', 4000);
     return;
   }
   grid.classList.add('hidden');
@@ -160,11 +170,13 @@ function openChest(game, chest, ctx, ov) {
     </div>
     <button id="chest-more" class="big-btn" type="button">Забрать и продолжить</button>`;
   box.querySelector('#chest-more').addEventListener('click', () => {
-    game.ui.toast(`${chest.name}: ${res.text}`, 'info');
+    try {
+      if (game.ui && game.ui.toast) game.ui.toast(`${chest.name}: ${res.text}`, 'info');
+    } catch { /* тост не критичен — список обязан вернуться */ }
     // Перерисовываем список: забранная капсула станет «забрана».
-    showChests(game);
+    try { showChests(game); } catch (err) { console.error('[capsules] showChests', err); hide(); }
   });
-  if (game.sound) game.sound.win ? game.sound.win() : null;
+  if (game.sound && game.sound.win) game.sound.win();
 }
 
 // ------------------------------------------------------------
@@ -218,7 +230,7 @@ export async function hydrateFromServer(game) {
       }
       if (changed) {
         // сохраняем локально, чтобы подарок не выдавался повторно
-        const { saveConfig } = await import('./chests.js?v=10262511');
+        const { saveConfig } = await import('./chests.js?v=10262512');
         saveConfig(cfg);
       }
     }
