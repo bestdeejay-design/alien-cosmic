@@ -17,7 +17,7 @@
 import './harness.mjs';
 
 await import('../r/js/game.js');
-const V = '?v=10262511';
+import { V } from './stamp.mjs';
 const C = await import('../r/js/commander.js' + V);
 const HR = await import('../r/js/home-raid.js' + V);
 const CUI = await import('../r/js/commander-ui.js' + V);

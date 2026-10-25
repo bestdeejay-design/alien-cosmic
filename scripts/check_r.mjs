@@ -18,6 +18,8 @@
 //   [9] Командир КЦ и оборона базы (Э7): sim_commander.mjs.
 //  [10] Локали: каждый литеральный ключ t('…') есть в RU и EN.
 //  [11] Приказы отрядам (Э7 ч.2): посты, отход к КЦ, трофеи, настройки рейдов.
+//  [12] Утилита .hidden: класс, которым UI-модули прячут блоки, реально прячет.
+//  [13] Стемп версии: один на весь r/ и симов (иначе node делает двойные модули).
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -181,6 +183,65 @@ try {
   ok(out.trim().replace(/^✓\s*/, ''));
 } catch (e) {
   bad('check_i18n_keys:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+// ---------- [12] утилита .hidden в style.css ----------
+// Регресс 26.10.2026: chests-ui/admin переключали блоки классом `hidden`, а в
+// style.css было только `.overlay.hidden` — экран награды рисовался ПОД списком
+// капсул, кнопка «Забрать и продолжить» уезжала за экран, и вскрытие выглядело
+// как «кнопка не нажимается». Гейт ловит этот класс ошибок статически.
+console.log('\n[12] Утилита .hidden (панели прячутся, а не рисуются друг под другом):');
+{
+  const css = readFileSync(path.join(R, 'style.css'), 'utf8');
+  const users = allRel
+    .filter((f) => f.endsWith('.js'))
+    .filter((f) => /classList\.(?:add|remove|toggle)\('hidden'\)/.test(readFileSync(path.join(R, f), 'utf8')));
+  const rule = /(?:^|\n)\.hidden\s*\{[^}]*display\s*:\s*none/.test(css);
+  if (!users.length) {
+    ok('класс hidden в JS не используется — правило не требуется');
+  } else if (rule) {
+    ok(`.hidden { display:none } задан; переключают: ${users.join(', ')}`);
+  } else {
+    bad(`класс hidden используют (${users.join(', ')}), но в r/style.css нет правила .hidden { display:none } — блоки не прячутся`);
+  }
+  // Экран награды и список капсул обязаны переключаться именно этим классом.
+  const chest = readFileSync(path.join(R, 'js', 'chests-ui.js'), 'utf8');
+  if (/grid\.classList\.add\('hidden'\)/.test(chest) && /box\.classList\.remove\('hidden'\)/.test(chest)) {
+    ok('капсулы: список и экран награды переключаются взаимоисключающе');
+  } else {
+    bad('капсулы: список/экран награды не переключаются через hidden');
+  }
+}
+
+// ---------- [13] единый стемп ?v= ----------
+console.log('\n[13] Стемп версии модулей (?v=):');
+{
+  const stamps = new Map();
+  const scan = (rel) => {
+    const txt = readFileSync(path.join(R, rel), 'utf8');
+    for (const m of txt.matchAll(/\?v=([0-9A-Za-z._-]+)/g)) {
+      if (!stamps.has(m[1])) stamps.set(m[1], []);
+      stamps.get(m[1]).push(rel);
+    }
+  };
+  for (const f of allRel) if (f.endsWith('.js') || f.endsWith('.html')) scan(f);
+  if (stamps.size === 1) {
+    const [val] = [...stamps.keys()];
+    ok(`во всём r/ один стемп: ?v=${val}`);
+    // CSS без стемпа = игрок останется на старом оформлении после фикса.
+    const html = readFileSync(path.join(R, 'index.html'), 'utf8');
+    if (new RegExp('style\\.css\\?v=' + val).test(html)) ok('style.css тоже со стемпом (оформление не залипает)');
+    else bad('у <link rel=stylesheet> нет ?v= — правки CSS могут не доехать до игрока');
+  } else {
+    bad('разные стемпы в r/: ' + [...stamps.entries()].map(([v, f]) => `${v} (${[...new Set(f)].slice(0, 3).join(', ')})`).join('; '));
+  }
+  // Симы обязаны брать стемп из stamp.mjs: захардкоженный номер = двойные модули.
+  const scriptsDir = path.join(ROOT, 'scripts');
+  const badStamps = readdirSync(scriptsDir)
+    .filter((f) => f.endsWith('.mjs') && f !== 'stamp.mjs')
+    .filter((f) => /['"]\?v=\d+['"]/.test(readFileSync(path.join(scriptsDir, f), 'utf8')));
+  if (badStamps.length) bad(`симы хардкодят стемп (нужен scripts/stamp.mjs): ${badStamps.join(', ')}`);
+  else ok('симы берут стемп из scripts/stamp.mjs (двойных инстансов нет)');
 }
 
 // ---------- [11] приказы отрядам, трофеи, настройки рейдов ----------
