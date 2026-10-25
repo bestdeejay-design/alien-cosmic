@@ -177,6 +177,8 @@ export const HOUSE = Object.freeze({
   cargo: HOUSE_LEVELS.cargo(2),    // 3000 на Г2
   moveSpeed: HOUSE_LEVELS.moveSpeed,
   slotsAt: (level) => HOUSE_LEVELS.slots(level),
+  speedAt: (level) => HOUSE_LEVELS.speed(level),
+  abilitiesAt: (level) => HOUSE_LEVELS.abilities(level),
   cargoAt: (level) => HOUSE_LEVELS.cargo(level),
   healAt: (level) => HOUSE_LEVELS.heal(level),
   moveFrom: HOUSE_LEVELS.moveFrom,

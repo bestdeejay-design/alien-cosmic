@@ -5,6 +5,8 @@
 // (Гелиос-люди / кхарид-аборигены), миссия-оборона с волнами,
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
+// ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
+import './storage-ns.js?v=10262510';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
@@ -19,6 +21,7 @@ import * as B from './buildings.js?v=10262510';
 import { AIController } from './ai.js?v=10262510';
 import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262510';
 import * as ui from './ui.js?v=10262510';
+import { drawRankMark } from './skins.js?v=10262510';
 import { createProfile } from './profile.js?v=10262510';
 import { attachInput, updateCamera } from './input.js?v=10262510';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262510';
@@ -421,6 +424,30 @@ export class Game {
     };
   }
 
+  // Э4: «Собрать всех» — все свободные юниты базы идут в отсек Дома.
+  // Берём ближайших к Дому, чтобы отряд собирался быстро и предсказуемо.
+  loadAllIntoHouse(house) {
+    const st = this.state;
+    if (!st || !house || house.dead) return 0;
+    const cap = U.unitCapOf(house);
+    const inside = house.garrison ? house.garrison.length : 0;
+    let free = Math.max(0, cap - inside);
+    if (!free) { ui.toast(t('ui.cmds.bayFull', { n: cap }), 'warn'); return 0; }
+    if (st.raidMode === 'expedition') { ui.toast(t('ui.cmds.bayHomeOnly'), 'warn'); return 0; }
+    const pool = st.units
+      .filter((u) => !u.dead && !u.garrison && !u.evacuated && u.side === 'player' && u.kind === 'unit')
+      .sort((a, b2) => Math.hypot(a.x - house.x, a.y - house.y) - Math.hypot(b2.x - house.x, b2.y - house.y));
+    let n = 0;
+    for (const u of pool) {
+      if (free <= 0) break;
+      U.orderGarrison(st, u, house);
+      free--; n++;
+    }
+    if (n) { this.sound.ack(); ui.toast(t('ui.cmds.bayLoading', { n }), 'info'); }
+    else ui.toast(t('ui.cmds.bayEmpty'), 'warn');
+    return n;
+  }
+
   openRaidLaunch() {
     if (!this.started || !this.state || this.state.raidMode !== 'home' || this.state.gameOver) return;
     if (ui.isRaidOverlayOpen()) return;
@@ -445,14 +472,23 @@ export class Game {
 
     const dispatchedIds = new Set();
     const dispatchedList = [];
+    // Э4: приоритет — отряд, уже погружённый в отсек Дома (игрок сам решил,
+    // кого взять). Остаток добираем со свободных юнитов базы.
+    const homeBay = (st.buildings || []).find((b) => !b.dead && b.done && b.side === 'player'
+      && b.type === 'depot' && (b.level || 1) >= 2 && b.garrison && b.garrison.length);
     for (const [type, need] of Object.entries(v.units)) {
       if (!need) continue;
-      const pool = st.units
+      const fromBay = homeBay
+        ? homeBay.garrison.filter((u) => !u.dead && u.type === type).sort((a, b) => b.hp - a.hp || a.id - b.id)
+        : [];
+      const fromBase = st.units
         .filter((u) => !u.dead && !u.garrison && u.side === 'player' && u.kind === 'unit' && u.type === type)
         .sort((a, b) => b.hp - a.hp || a.id - b.id);
-      for (let i = 0; i < need && i < pool.length; i++) {
-        dispatchedIds.add(pool[i].id);
-        dispatchedList.push({ type: pool[i].type, hp: Math.max(1, Math.ceil(pool[i].hp)) });
+      const pool2 = fromBay.concat(fromBase);
+      for (let i = 0; i < need && i < pool2.length; i++) {
+        dispatchedIds.add(pool2[i].id);
+        dispatchedList.push({ type: pool2[i].type, hp: Math.max(1, Math.ceil(pool2[i].hp)) });
+        if (pool2[i].garrison) pool2[i].garrison = null; // уходит в челнок
       }
     }
 
@@ -518,6 +554,9 @@ export class Game {
     const ok = outcome === 'evac';
     const cargo = ok ? Math.max(0, Math.floor(st.raidCargo || 0)) : 0;
     const returnedBudget = ok ? Math.max(0, Math.floor(st.minerals.player || 0)) : 0;
+    // Э4: что не влезло в трюм и что осталось на карте — честно в отчёте.
+    const overflow = ok ? Math.max(0, Math.floor(st.raidCargoLost || 0)) : 0;
+    const leftOnMap = Math.max(0, Math.floor(st.raidLootLeft || 0));
     const boarded = ok && Array.isArray(st.raidBoarded) ? st.raidBoarded.slice() : [];
     const sentCount = st.raidInitialCount || 0;
 
@@ -529,6 +568,8 @@ export class Game {
       sentCount,
       tier: st.raidTier || 1,
       seed: st.raidTargetSeed || st.seed,
+      overflow,
+      leftOnMap,
     };
     this.raidSession.pendingReturn = { cargo, returnedBudget, boarded };
     this.raidSession.activeExpedition = null;
@@ -541,11 +582,14 @@ export class Game {
     this.sleepMouse();
     ui.syncRaidMenu(this);
     if (ok) {
+      let extra = '';
+      if (overflow > 0) extra += ' ' + t('ui.raid.toastOverflow', { n: overflow });
+      if (leftOnMap > 0) extra += ' ' + t('ui.raid.toastLeft', { n: leftOnMap });
       ui.toast(t('ui.raid.toastReturnOk', {
         cargo: cargo + returnedBudget,
         n: boarded.length,
         sent: sentCount,
-      }), 'info');
+      }) + extra, overflow > 0 ? 'warn' : 'info');
       this.sound.win();
     } else {
       ui.toast(t('ui.raid.toastReturnWiped'), 'error');
@@ -925,6 +969,28 @@ export class Game {
           on: () => this.openRaidLaunch(),
         });
       }
+      // Э4: «Собрать всех» — отряд в отсек (вместимость = грейд Дома),
+      // «Выгрузить» — обратно на базу. Одно число = одно действие.
+      if (b.done && b.type === 'depot' && (b.level || 1) >= 1) {
+        const cap = U.unitCapOf(b);
+        const inside = b.garrison ? b.garrison.length : 0;
+        if (inside > 0) {
+          cmds.push({
+            code: 'KeyF', icon: 'exit',
+            label: t('ui.cmds.bayOut', { n: inside, cap }),
+            tip: { title: t('ui.cmds.bayOut', { n: inside, cap }), lines: t('ui.cmds.bayOutTip') },
+            on: () => { U.releaseGarrison(st, b); this.sound.click(); },
+          });
+        } else {
+          const free = Math.max(0, cap);
+          cmds.push({
+            code: 'KeyF', icon: 'rally', label: t('ui.cmds.bayIn', { n: cap }),
+            tip: { title: t('ui.cmds.bayIn', { n: cap }), lines: t('ui.cmds.bayInTip') },
+            enabled: () => free > 0,
+            on: () => { this.loadAllIntoHouse(b); },
+          });
+        }
+      }
       // ВЛАДЕЛЕЦ 25.10: Г3 — Дом перемещается как юнит (приказ точкой ПКМ).
       if (b.done && b.type === 'depot' && (b.level || 1) >= HOUSE.moveFrom && !b.flight) {
         cmds.push({
@@ -1071,6 +1137,8 @@ export class Game {
       },
 
       cancelGrade: (b) => { B.cancelGrade(st(), b); this.sound.click(); },
+
+      loadAllIntoHouse: (b) => this.loadAllIntoHouse(b),
 
       startResearch: (b, key) => {
         const r = B.startResearch(st(), b, key);
@@ -1219,7 +1287,7 @@ export class Game {
     st.map.markBuilding(b);
     const toX = (b.tx + b.w / 2) * TILE, toY = (b.ty + b.h / 2) * TILE;
     const dist = Math.hypot(toX - fromX, toY - fromY);
-    b.flight = { t: 0, dur: Math.max(0.6, dist / (96 * TILE / 32)), dx0: fromX - toX, dy0: fromY - toY };
+    b.flight = { t: 0, dur: Math.max(0.6, dist / (Math.max(60, HOUSE.speedAt(b.level || 3)) * TILE / 32)), dx0: fromX - toX, dy0: fromY - toY };
     b.visX = b.flight.dx0; b.visY = b.flight.dy0;
     U.addFloat(st, toX, toY, t('ui.cmds.houseMove'), '#9be29e');
     this.sound.ack();
@@ -1276,6 +1344,19 @@ export class Game {
     // 3) Своя постройка: гарнизон → достройка → ремонт.
     const own = bld && bld.side === 'player' ? bld : null;
     if (own) {
+      // Э4: Дом — отсек для отряда. Приказ ПКМ по Дому грузит ЛЮБЫЕ юниты
+      // (рабочих тоже) — влезает ровно столько, сколько позволяет грейд.
+      if (own.done && own.type === 'depot' && (own.level || 1) >= 2) {
+        const cap = U.unitCapOf(own);
+        const free = Math.max(0, cap - (own.garrison ? own.garrison.length : 0));
+        const candidates = units.filter((u) => !u.garrison && free > 0);
+        for (const u of candidates.slice(0, free)) U.orderGarrison(st, u, own);
+        if (candidates.length) {
+          if (candidates.length > free) ui.toast(t('ui.cmds.bayFull', { n: cap }), 'warn');
+          this.sound.ack();
+          return;
+        }
+      }
       const infantry = units.filter((u) => !u.cfg.canMine && !u.cfg.vehicle && !u.garrison);
       if (own.done && own.cfg.garrisonCap && infantry.length &&
           own.garrison.length < gradeGar(own.type, own.level || 1, own.cfg.garrisonCap)) { // F.2
@@ -1855,8 +1936,14 @@ export class Game {
       const wx = u.prevX + (u.x - u.prevX) * alpha;
       const wy = u.prevY + (u.y - u.prevY) * alpha;
       if (!inView(wx, wy, 30)) continue;
-      try { U.drawUnit(ctx, u, wx - cam.x, wy - cam.y); }
-      catch (e) { this.drawWarnOnce('unit:' + u.type, e); }
+      try {
+        U.drawUnit(ctx, u, wx - cam.x, wy - cam.y);
+        // Э5: шевроны ранга над своим юнитом (ранг = технологии лаборатории).
+        if (u.side === 'player' && u.kind === 'unit') {
+          const rk = unitRank(st, 'player', u.cfg);
+          if (rk > 0) drawRankMark(ctx, wx - cam.x, wy - cam.y - (u.r || 10) - 8, rk, '#f3c579');
+        }
+      } catch (e) { this.drawWarnOnce('unit:' + u.type, e); }
     }
 
     // Маршруты выделенных: пунктирная линия пути + флажок цели.

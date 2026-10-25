@@ -8,9 +8,12 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
+} from './config.js?v=10262510';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262510';
+import {
   REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262510';
 import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262510';
-import { message } from './i18n.js?v=10262510';
+import { t, message } from './i18n.js?v=10262510';
 
 let nextId = 1;
 
@@ -142,6 +145,14 @@ export class SpatialGrid {
         if (arr) for (let i = 0; i < arr.length; i++) cb(arr[i]);
       }
   }
+}
+
+// Вместимость «отсека»: бункер — гарнизон по грейду, Дом — его вместимость
+// (решение владельца 25.10: у Дома одно число на отряд и на рейд).
+export function unitCapOf(b) {
+  if (!b) return 0;
+  if (b.type === 'depot') return HOUSE_LEVELS.slots(b.level || 1);
+  return gradeGar(b.type, b.level || 1, b.cfg && b.cfg.garrisonCap);
 }
 
 // ------------------------------------------------------------
@@ -1368,7 +1379,15 @@ function updateGather(st, u, dt) {
       const pad = st.raidDrop;
       if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 2.2) {
         const cap = st.raidCargoCap || HOUSE.cargo; // Э1: трюм Дома по его грейду
-        st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
+        const before = st.raidCargo || 0;
+        const next = Math.min(cap, before + u.carrying);
+        // Э4: «не вся добыча поместится» — считаем излишек, он теряется.
+        st.raidCargoLost = (st.raidCargoLost || 0) + (before + u.carrying - next);
+        if (before + u.carrying > cap && !st.raidCargoFullToasted) {
+          st.raidCargoFullToasted = true;
+          st.game.ui.toast(t('ui.raid.toastCargoFull', { cap }), 'warn');
+        }
+        st.raidCargo = next;
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
         u.carrying = 0;
@@ -1522,7 +1541,7 @@ function updateGarrison(st, u) {
   if (!b || b.dead || !b.done) { orderStop(u); return; }
   const rx = b.tx * TILE, ry = b.ty * TILE, rw = b.w * TILE, rh = b.h * TILE;
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.0) {
-    if (b.garrison.length >= gradeGar(b.type, b.level || 1, b.cfg.garrisonCap)) { orderStop(u); return; } // F.2
+    if (b.garrison.length >= unitCapOf(b)) { orderStop(u); return; } // F.2 / Э4: у Дома — его вместимость
     // Заход внутрь: юнит исчезает с карты, живёт внутри бункера.
     u.garrison = b;
     b.garrison.push(u);
@@ -1889,6 +1908,26 @@ function nearBaseCC(st, x, y) {
   return false;
 }
 
+// Э4: в вылазке разрушенное вражеское здание отдаёт эрг. Это и есть «рейд на
+// чужой КЦ»: после сноса КЦ на карте остаётся куча обломков, и в трюм Дома
+// влезает НЕ ВСЁ — излишек теряется при эвакуации (канон владельца).
+export function dropLoot(st, b) {
+  if (!st || !b || b.side !== 'enemy') return 0;
+  if (st.raidMode !== 'expedition') return 0;
+  const pool = st.raidLootPool || 0;
+  if (pool <= 0) return 0;
+  const weight = (b.cfg && b.cfg.cost) || 50;
+  const share = weight / Math.max(1, st.raidLootWeight || 1);
+  const amount = Math.max(1, Math.round(pool * share));
+  st.raidLootLeft = Math.max(0, (st.raidLootLeft || pool) - amount);
+  const tx = Math.max(1, Math.min(st.map.w - 2, b.tx + ((b.w / 2) | 0)));
+  const ty = Math.max(1, Math.min(st.map.h - 2, b.ty + ((b.h / 2) | 0)));
+  if (!st.map.inBounds(tx, ty)) return 0;
+  st.map.addCrystal(tx, ty, amount, -1);
+  addFloat(st, b.x, b.y - 20, '+' + amount, COLORS.mineral);
+  return amount;
+}
+
 export function damageEntity(st, victim, dmg, attacker) {
   if (!victim || victim.dead) return;
   // Неуязвима в бункере только пехота. У зданий garrison — это массив
@@ -1932,6 +1971,7 @@ function killEntity(st, v, attacker) {
     if (v.cfg.vehicle) addShake(st, 3, 0.16);
     st.game.sound.boom(!!v.cfg.vehicle);
   } else {
+    if (v.kind === 'building') dropLoot(st, v); // Э4: лут с вражеского здания
     if (v.garrison && v.garrison.length) releaseGarrison(st, v); // выжившие выпрыгивают
     st.map.unmarkBuilding(v);
     st.bcount[v.side]--;

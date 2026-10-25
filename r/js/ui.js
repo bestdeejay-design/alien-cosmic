@@ -5,14 +5,15 @@
 // Весь UI — DOM поверх canvas; иконки команд рисуются кодом.
 // ============================================================
 import {
-  TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
+  TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
 } from './config.js?v=10262510';
 import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262510';
 import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262510';
 import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262510';
-import { crystalAt } from './units.js?v=10262510'; // F.1: тултип кристалла
+import { crystalAt, unitCapOf } from './units.js?v=10262510'; // F.1: тултип кристалла + вместимость отсека
 import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262510';
+import { levelColor, levelStyle } from './skins.js?v=10262510';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1978,6 +1979,19 @@ function rebuildPanel(game, sel) {
       box.appendChild(queuePanel);
     }
 
+    // Э4: Дом показывает главные числа одним взглядом: отсек · трюм · ход.
+    if (b.done && b.type === 'depot' && b.side === 'player') {
+      const cap = unitCapOf(b);
+      const inside = b.garrison ? b.garrison.length : 0;
+      const hint = document.createElement('div');
+      hint.className = 'small';
+      hint.textContent = t('ui.cmds.bayCard', {
+        n: inside, cap,
+        cargo: fmtNum(HOUSE.cargoAt(b.level || 1)),
+        speed: HOUSE.speedAt(b.level || 1) || '—',
+      });
+      box.appendChild(hint);
+    }
     if (b.done && b.cfg.garrisonCap) {
       const hint = document.createElement('div');
       hint.className = 'small';
@@ -2052,7 +2066,15 @@ function rebuildPanel(game, sel) {
     if (Number(c.level) > 1) {
       const lvl = document.createElement('span');
       lvl.className = 'cmd-lvl';
+      // Э5: цвет уровня — фаза (сталь/золото/графит/неон/призма), чтобы шкала
+      // прокачки читалась прямо в панели команд.
+      const btype = selectedBuilding ? selectedBuilding.type : (c.icon || '').replace(/^a_/, '');
+      const col = levelColor(btype, c.level);
       lvl.textContent = t('ui.cmds.levelN', { n: GRADE_ROMAN[c.level] || c.level });
+      lvl.style.color = col;
+      lvl.style.borderColor = col;
+      const ph = levelStyle(btype, c.level);
+      lvl.title = ph.phaseName;
       btn.appendChild(lvl);
     }
     const refund = refundForCommand(c, selectedBuilding);

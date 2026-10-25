@@ -525,6 +525,8 @@ export function populateRaidState(game, st, m) {
       hold: 2.0,
     };
     st.raidCargo = 0;
+    st.raidCargoLost = 0;
+    st.raidCargoFullToasted = false;
     // Э1: трюм = грейд Дома-шаттла; бур = тир сектора.
     const tierCfg = raidTierAt((exp && exp.tier) || m.raidTier || 1);
     st.raidCargoCap = HOUSE_LEVELS.cargo(houseLv);
@@ -532,6 +534,18 @@ export function populateRaidState(game, st, m) {
     st.raidEvacuating = false;
     st.raidBoarded = [];
     st.raidTier = (exp && exp.tier) || m.raidTier || 1;
+    // Э4: лут с обороны сектора. Пул = 120% добычи тира (канон: после сноса
+    // чужого КЦ добыча ЧАСТО не влезает в трюм — излишек теряется).
+    const tcfg = raidTierAt(st.raidTier);
+    let enemyWeight = 0;
+    for (const eb of st.buildings) {
+      if (!eb || eb.dead || eb.side !== 'enemy' || !eb.cfg) continue;
+      enemyWeight += Number(eb.cfg.cost) || 50;
+    }
+    // Пул лута есть только если в секторе действительно есть что грабить.
+    st.raidLootPool = enemyWeight > 0 ? Math.round(tcfg.yieldTotal * 1.2) : 0;
+    st.raidLootLeft = st.raidLootPool;
+    st.raidLootWeight = Math.max(1, enemyWeight);
     st.raidTargetSeed = (exp && exp.seed) || m.raidTargetSeed || st.seed;
     const list = (exp && Array.isArray(exp.units)) ? exp.units : [];
     st.raidInitialCount = list.length;

@@ -16,7 +16,18 @@
 // Идентификация: НИК + ПИН. Первый save под ником регистрирует его с пином;
 // дальше тот же пин обязателен (403 на чужой). Без входа — анонимный id
 // (прогресс живёт только в этом браузере).
+// Э4: ключи полигона на сервере отделены от ключей S1 (см. r/js/storage-ns.js):
+// localStorage внутри r/ уже переименован в acr.*, а на сервере прогресс рейдов
+// лежит под r.progress / r.quickBattle, чтобы не перетирать сейвы основной игры.
+// База рейда исторически лежит под ac_raid_session_v1 — этот ключ НЕ меняем,
+// иначе у владельца «пропадёт» уже накопленная база.
 const SYNC_KEYS = ['terranrts.progress', 'terranrts.quickBattle', 'ac_raid_session_v1'];
+const SRV_KEY = {
+  'terranrts.progress': 'r.progress',
+  'terranrts.quickBattle': 'r.quickBattle',
+  'ac_raid_session_v1': 'ac_raid_session_v1',
+};
+const srvOf = (key) => SRV_KEY[key] || key;
 const NICK_KEY = 'ac_save_nick';
 const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
@@ -83,7 +94,8 @@ async function reconcile() {
   for (const key of SYNC_KEYS) {
     const local = readLS(key);
     const localTs = Number(readLS(TS_PREFIX + key) || 0);
-    const rec = list && list.ok && Array.isArray(list.records) ? list.records.find((x) => x.key === key) : null;
+    const rec = list && list.ok && Array.isArray(list.records)
+      ? list.records.find((x) => x.key === srvOf(key) || x.key === key) : null;
     const serverTs = rec ? Number(rec.ts) || 0 : 0;
     if (rec && serverTs > localTs) {
       await pull(key);
@@ -101,7 +113,7 @@ async function push(key, { force = false } = {}) {
   try {
     const { j, status: code } = await call('/api/save', {
       player: identity ? identity.nick : player,
-      key, value, pin: identity ? identity.pin : undefined,
+      key: srvOf(key), value, pin: identity ? identity.pin : undefined,
     });
     if (j.ok) {
       lastSynced[key] = value;
@@ -128,9 +140,16 @@ async function push(key, { force = false } = {}) {
 async function pull(key) {
   if (!identity) return null;
   try {
-    const { j } = await call('/api/load', {
-      player: identity.nick, key, pin: identity.pin,
+    let { j } = await call('/api/load', {
+      player: identity.nick, key: srvOf(key), pin: identity.pin,
     });
+    // Совместимость: раньше ключи назывались как localStorage (terranrts.*).
+    if (!j.ok && srvOf(key) !== key) {
+      ({ j } = await call('/api/load', { player: identity.nick, key, pin: identity.pin }));
+      if (j.ok) await call('/api/save', {
+        player: identity.nick, key: srvOf(key), value: j.value, pin: identity.pin,
+      });
+    }
     if (j.ok && typeof j.value === 'string') {
       writeLS(key, j.value);
       lastSynced[key] = j.value;
@@ -297,7 +316,7 @@ function beaconFlush() {
       if (value == null || lastSynced[key] === value) continue;
       const payload = JSON.stringify({
         player: identity ? identity.nick : player,
-        key, value, pin: identity ? identity.pin : undefined,
+        key: srvOf(key), value, pin: identity ? identity.pin : undefined,
       });
       navigator.sendBeacon?.(`${base}/api/save`, new Blob([payload], { type: 'text/plain' }));
     }

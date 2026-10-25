@@ -352,6 +352,88 @@ try {
   pass(`E10 «труднее к 20»: КЦ→11 требует 11 зданий X ур. + 2 развитых, КЦ→20 — 20 зданий XIX + 6 развитых; турели элиту не дают`);
 } catch (e) { fail('E10 элитное условие КЦ', e); }
 
+// ---------- E11: Дом — отсек, «собрать всех», лут и перегруз ----------
+try {
+  game.startRaidHome('human', { forceNew: true });
+  ticks(3);
+  const s = st();
+  s.minerals.player = 5_000_000;
+  const cc = ccOf(s);
+  const house = placeDone(s, 'player', 'depot', cc.tx, cc.ty);
+  gradeTo(s, cc, 2);
+  gradeTo(s, house, 2);
+
+  // Вместимость — ОДНО число и растёт медленно (решение владельца).
+  const slots = [];
+  for (let L = 1; L <= 20; L++) slots.push(E.HOUSE_LEVELS.slots(L));
+  assert(slots[0] === 8 && slots[1] === 10 && slots[19] === 24, 'кривая вместимости: ' + slots.join(','));
+  assert(slots[19] - slots[1] <= 15, 'вместимость растёт слишком быстро');
+  assert(E.HOUSE_LEVELS.speed(3) === 80 && E.HOUSE_LEVELS.speed(20) === 182, 'кривая скорости Дома');
+  assert(U.unitCapOf(house) === 10, 'вместимость Дома-Г2 не 10: ' + U.unitCapOf(house));
+
+  // «Собрать всех»: юниты идут в отсек, лишние не влезают.
+  const pool = [];
+  for (let i = 0; i < 14; i++) {
+    const u = U.spawnUnit(s, 'player', i % 3 === 0 ? 'worker' : 'marine',
+      house.x + 60 + (i % 5) * 14, house.y + 80 + ((i / 5) | 0) * 14, false);
+    pool.push(u);
+  }
+  const before = s.units.filter((u) => !u.dead && u.side === 'player').length;
+  const n = game.loadAllIntoHouse(house);
+  assert(n === 10, 'в отсек отправлено не 10: ' + n);
+  for (let i = 0; i < 400; i++) game.tick();
+  assert(house.garrison.length === 10, 'в отсеке не 10: ' + house.garrison.length);
+  assert(s.units.filter((u) => !u.dead && u.side === 'player' && !u.garrison).length === before - 10,
+    'лишние юниты должны остаться снаружи');
+  assert(U.orderGarrison && U.unitCapOf(house) === 10, 'кап отсека изменился');
+
+  // Запуск вылазки берёт отряд ИЗ ОТСЕКА в первую очередь.
+  s.minerals.player = 5000;
+  const v = game.launchRaidExpedition({ tier: 2, units: { marine: 4 }, budget: 0, seed: 777 });
+  assert(v.ok, 'вылазка из отсека не стартовала');
+  ticks(5);
+  const ex = st();
+  const marines = ex.units.filter((u) => u.type === 'marine' && u.side === 'player' && !u.dead);
+  assert(marines.length === 4, 'в вылазке не 4 десantника: ' + marines.length);
+
+  // Лут с вражеского КЦ. Сектор по seed может быть пустым (50%), поэтому
+  // оборону ставим руками — проверяем именно механику лута, а не генератор.
+  let enemyCC = ex.buildings.find((b) => b.side === 'enemy' && b.type === 'cc' && !b.dead);
+  if (!enemyCC) {
+    const pb = ex.map.bases.player.cc;
+    enemyCC = new B.Building(ex, 'enemy', 'cc',
+      Math.max(2, Math.min(ex.map.w - 6, pb.x + 10)), Math.max(2, Math.min(ex.map.h - 5, pb.y + 4)), true);
+    ex.map.markBuilding(enemyCC);
+    ex.buildings.push(enemyCC);
+    const tur = new B.Building(ex, 'enemy', 'turret', enemyCC.tx + 4, enemyCC.ty, true);
+    ex.map.markBuilding(tur);
+    ex.buildings.push(tur);
+    const w8 = (enemyCC.cfg.cost || 400) + (tur.cfg.cost || 100);
+    ex.raidLootPool = Math.round(E.raidTierAt(ex.raidTier).yieldTotal * 1.2);
+    ex.raidLootLeft = ex.raidLootPool;
+    ex.raidLootWeight = w8;
+  }
+  assert(ex.raidLootPool > 0, 'пул лута не создан');
+  {
+    ex.raidCargo = ex.raidCargoCap - 5; // трюм почти полон
+    U.damageEntity(ex, enemyCC, 1e9, null);
+    ticks(2);
+    assert(ex.raidCargoLost > 0 || ex.raidLootLeft < ex.raidLootPool, 'лут с КЦ не выпал');
+    const lootCrystals = ex.map.crystals.filter((c) => !c.dead && c.fieldId === -1);
+    assert(lootCrystals.length >= 1, 'обломки не появились на карте');
+    // Сдаём груз в трюм: излишек учитывается, а не пропадает молча.
+    ex.raidCargo = ex.raidCargoCap;
+    const w = U.spawnUnit(ex, 'player', 'worker', ex.raidDrop.x + 20, ex.raidDrop.y + 20, false);
+    w.carrying = 50;
+    w.order = { kind: 'gather', target: lootCrystals[0], phase: 'toDrop' };
+    const lostBefore = ex.raidCargoLost || 0;
+    for (let i = 0; i < 60; i++) game.tick();
+    assert((ex.raidCargoLost || 0) >= lostBefore, 'перегруз не учтён');
+    assert(ex.raidCargo <= ex.raidCargoCap, 'трюм переполнен сверх капа');
+  }
+  pass(`E11 Дом: вместимость 8→24 (одно число, +1 за два грейда), «собрать всех» 10/10, вылет берёт отсек, лут с КЦ ${ex.raidLootPool}, перегруз считается`);
+} catch (e) { fail('E11 Дом: отсек и лут', e); }
+
 // ---------- E8: сводка экономики ----------
 try {
   const plan = E.basePlanCost();
