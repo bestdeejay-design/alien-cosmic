@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262514';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262515';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262514';
-import * as U from './units.js?v=10262514';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262514';
-import * as B from './buildings.js?v=10262514';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262514';
-import { t, message } from './i18n.js?v=10262514';
+} from './economy.js?v=10262515';
+import * as U from './units.js?v=10262515';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262515';
+import * as B from './buildings.js?v=10262515';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262515';
+import { t, message } from './i18n.js?v=10262515';
 
 export const RAID_SCHEMA_VERSION = 1;
 

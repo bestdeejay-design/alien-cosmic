@@ -3,14 +3,14 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262514';
-import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262514';
-import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262514';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262514';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262514';
-import { icon } from './ui.js?v=10262514'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
-import { distToRectPx } from './pathfinding.js?v=10262514';
-import { message } from './i18n.js?v=10262514';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262515';
+import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262515';
+import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262515';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262515';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262515';
+import { icon } from './ui.js?v=10262515'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
+import { distToRectPx } from './pathfinding.js?v=10262515';
+import { message } from './i18n.js?v=10262515';
 
 let nextBId = 1;
 

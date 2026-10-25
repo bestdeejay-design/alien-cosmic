@@ -5,10 +5,24 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262514';
-import { unitAt } from './units.js?v=10262514';
-import { buildingAt } from './buildings.js?v=10262514';
-import { message } from './i18n.js?v=10262514';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262515';
+import { unitAt } from './units.js?v=10262515';
+import { buildingAt } from './buildings.js?v=10262515';
+import { message } from './i18n.js?v=10262515';
+
+// A1 (аудит владельца 26.10.2026): «не вводятся пин/ник — всю клавиатуру
+// перепробовал». Причина: этот же глобальный keydown жрал цифры и буквы, пока
+// курсор стоял в поле ввода (#sv-nick, #sv-pin, #adm-pin) — игра забирала
+// нажатие себе: цифра уходила в группы, `p` ставила паузу, буквы — в команды.
+// Теперь любой ввод в поле неприкосновенен: хоткеи/паузы/стрелки молчат.
+export function isTypingTarget(target) {
+  if (!target || typeof target !== 'object') return false;
+  if (target === globalThis || target === document) return false;
+  const tag = String(target.tagName || target.nodeName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if (target.isContentEditable === true) return true;
+  return false;
+}
 
 export function attachInput(game) {
   const cv = game.canvas;
@@ -353,6 +367,8 @@ export function attachInput(game) {
   cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
   window.addEventListener('keydown', (e) => {
+    // A1: фокус в поле — клавиатура принадлежит полю, а не игре.
+    if (isTypingTarget(e.target)) return;
     const st = game.state;
     if (!st) return;
     if (game.ui.isRaidOverlayOpen && game.ui.isRaidOverlayOpen()) {

@@ -6,43 +6,43 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262514';
+import './storage-ns.js?v=10262515';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262514';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262514';
-import { Fog } from './fog.js?v=10262514';
-import { Sound } from './audio.js?v=10262514';
-import * as U from './units.js?v=10262514';
-import * as B from './buildings.js?v=10262514';
-import { AIController } from './ai.js?v=10262514';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262514';
-import * as ui from './ui.js?v=10262514';
-import { drawRankMark } from './skins.js?v=10262514';
-import { openAdmin } from './admin.js?v=10262514';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262514';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262514';
-import { openCommander } from './commander-ui.js?v=10262514';
+} from './config.js?v=10262515';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262515';
+import { Fog } from './fog.js?v=10262515';
+import { Sound } from './audio.js?v=10262515';
+import * as U from './units.js?v=10262515';
+import * as B from './buildings.js?v=10262515';
+import { AIController } from './ai.js?v=10262515';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262515';
+import * as ui from './ui.js?v=10262515';
+import { drawRankMark } from './skins.js?v=10262515';
+import { openAdmin, isAdminProfile } from './admin.js?v=10262515';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262515';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262515';
+import { openCommander } from './commander-ui.js?v=10262515';
 import {
   issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
-} from './squad.js?v=10262514';
-import { showChests } from './chests-ui.js?v=10262514';
-import { createProfile } from './profile.js?v=10262514';
-import { attachInput, updateCamera } from './input.js?v=10262514';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262514';
+} from './squad.js?v=10262515';
+import { showChests } from './chests-ui.js?v=10262515';
+import { createProfile } from './profile.js?v=10262515';
+import { attachInput, updateCamera } from './input.js?v=10262515';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262515';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262514';
+} from './economy.js?v=10262515';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10262514';
+} from './raid.js?v=10262515';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -1026,11 +1026,15 @@ export class Game {
           tip: { title: t('ui.cmds.capsules'), lines: t('ui.cmds.capsulesTip') },
           on: () => showChests(this),
         });
-        cmds.push({
-          code: 'KeyO', icon: 'recon', label: t('ui.cmds.admin'),
-          tip: { title: t('ui.cmds.admin'), lines: t('ui.cmds.adminTip') },
-          on: () => openAdmin(this),
-        });
+        // A3 (аудит 26.10): команда «Админ» существует только для профиля
+        // владельца (best, без учёта регистра) — остальным её просто нет.
+        if (isAdminProfile()) {
+          cmds.push({
+            code: 'KeyO', icon: 'recon', label: t('ui.cmds.admin'),
+            tip: { title: t('ui.cmds.admin'), lines: t('ui.cmds.adminTip') },
+            on: () => openAdmin(this),
+          });
+        }
       }
       // Э7: командир базы — капитан → генерал (звание, бонусы, оборона).
       if (b.done && b.type === 'cc') {

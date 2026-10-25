@@ -253,6 +253,9 @@ try {
   const st = boot();
   HR.resetRaidConfig();
   const A = await import('../r/js/admin.js' + V);
+  // A3 (аудит 26.10): админка — только профиль владельца «best».
+  globalThis.localStorage.setItem('ac_save_nick', 'best');
+  window.__saveIdentity = { nick: 'best', pin: '1234' };
   globalThis.sessionStorage.setItem('ac_admin_ok', '1');
   A.closeAdmin();
   A.openAdmin(game);

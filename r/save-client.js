@@ -40,7 +40,13 @@ const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* пр�
 // ---- Адрес API: same-origin /api → иначе прямой порт 8790 ----
 let apiBase = null;
 let apiMode = 'не проверен';
-async function resolveApi() {
+// manual=true — единственный законный случай поиска канала без профиля:
+// игрок сам нажал «Войти» в панели профиля (это действие, а не фон).
+async function resolveApi(manual = false) {
+  // A2 (аудит владельца 26.10.2026): «без профиля — ноль запросов к серверу,
+  // условие максимально тихое». Здесь даже /health молчит: пока игрок не вошёл
+  // по нику и пину, клиент не знает канал и не имеет права его искать.
+  if (!identity && !manual) { apiBase = null; apiMode = 'нужен профиль'; return null; }
   try {
     const r = await fetch('/health', { cache: 'no-store' });
     if (r.ok || r.status === 401) { apiBase = ''; apiMode = 'прокси'; return apiBase; }
@@ -70,6 +76,9 @@ const lastSynced = {};
 const status = { online: false, lastError: '', lastPushTs: 0, lastPullTs: 0, api: apiMode };
 
 async function call(path, payload) {
+  // Страховка A2: любые фоновые /api/* (save/load/stats) без профиля — молчим,
+  // не трогая сеть и не оставляя записей на сервере.
+  if (!identity) return { j: { ok: false, error: 'нужен профиль' }, status: 0 };
   const base = apiBase === null ? await resolveApi() : apiBase;
   const r = await fetch(base + path, {
     method: 'POST',
@@ -143,6 +152,7 @@ async function reconcile() {
 }
 
 async function push(key, { force = false } = {}) {
+  if (!identity) return false; // A2: без профиля не сохраняем ничего
   const value = readLS(key);
   if (value == null) return false;
   if (!force && lastSynced[key] === value) return false;
@@ -223,6 +233,9 @@ window.__saveApi = {
   // Универсальный вызов API полигона (капсулы, рейтинг, ручные выдачи).
   // Держим сеть ТОЛЬКО здесь — гейт check_r.mjs [4] это проверяет.
   api: async (path, payload, opts = {}) => {
+    // A2: без профиля публичные ручки (капсулы, рейтинг) сеть не трогают —
+    // полигон работает на локальных данных, сервер про анонима не узнает.
+    if (!identity) return { ok: false, error: 'нужен профиль' };
     const base = apiBase === null ? await resolveApi() : apiBase;
     const method = opts.method || (payload ? 'POST' : 'GET');
     const headers = { 'Content-Type': 'application/json' };
@@ -244,6 +257,7 @@ window.__saveApi = {
     }
   },
   list: async () => {
+    if (!identity) return { ok: false, error: 'нужен профиль' };
     const base = apiBase === null ? await resolveApi() : apiBase;
     try {
       const r = await fetch(`${base}/api/list?player=${encodeURIComponent(identity ? identity.nick : player)}`, { cache: 'no-store' });
@@ -295,9 +309,19 @@ window.showProfilePanel = function showProfilePanel() {
   const setMsg = (text, bad = true) => { if (msg) { msg.textContent = text; msg.style.color = bad ? '#ff8d7a' : '#9be29e'; } };
 
   const refreshStatus = async () => {
+    const stateEl = $('#sv-state');
+    if (!identity) {
+      // A2: без профиля панель ничего не зондирует — только объясняет, что делать.
+      if (stateEl) {
+        stateEl.textContent = 'без профиля сеть молчит — войдите в КЦ (U), чтобы сейвы ходили между машинами';
+        stateEl.style.color = '#ffbf69';
+      }
+      const listEl = $('#sv-list');
+      if (listEl) listEl.textContent = 'на сервере: — (нужен профиль)';
+      return;
+    }
     await resolveApi();
     const st = window.__saveApi.status;
-    const stateEl = $('#sv-state');
     if (stateEl) {
       stateEl.textContent = `сервер: ${st.online ? 'на связи' : 'нет связи'} · канал: ${st.api}` +
         (st.lastPushTs ? ` · записано ${new Date(st.lastPushTs).toLocaleTimeString()}` : '');
@@ -333,7 +357,8 @@ window.showProfilePanel = function showProfilePanel() {
     if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick)) { setMsg('ник: 2–24 буквы/цифры/-/_'); return; }
     if (!/^\d{3,12}$/.test(pin)) { setMsg('пин: 3–12 цифр'); return; }
     setMsg('проверяю профиль…', false);
-    const base = apiBase === null ? await resolveApi() : apiBase;
+    // Ручной вход — единственное место, где сеть разрешена без профиля.
+    const base = apiBase === null ? await resolveApi(true) : apiBase;
     try {
       const r = await fetch(`${base}/api/load`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -357,17 +382,32 @@ window.showProfilePanel = function showProfilePanel() {
 // ------------------------------------------------------------------
 // Жизненный цикл синхронизации.
 // ------------------------------------------------------------------
-await resolveApi();
-// Публичный API нужен ДО сверки — им пользуется панель и raid-boot.
-await reconcile();
-setInterval(() => { for (const k of SYNC_KEYS) push(k); pushStats(); }, 15000);
+// A2 (аудит владельца 26.10.2026): без профиля — НОЛЬ сетевых запросов.
+// Порядок: есть профиль → ищем канал и сверяемся; нет профиля → тишина
+// (никаких /health, /api/save, /api/load, sendBeacon). Панель профиля и вход
+// по нику+пину — единственные места, где сеть просыпается: это действие
+// игрока, а не фоновая синхронизация.
+if (identity) {
+  await resolveApi();
+  // Публичный API нужен ДО сверки — им пользуется панель и raid-boot.
+  await reconcile();
+} else {
+  apiMode = 'нужен профиль';
+}
+setInterval(() => {
+  if (!identity) return; // A2: анонимный таймер спит
+  for (const k of SYNC_KEYS) push(k);
+  pushStats();
+}, 15000);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) for (const k of SYNC_KEYS) push(k, { force: true });
+  if (!identity || !document.hidden) return;
+  for (const k of SYNC_KEYS) push(k, { force: true });
 });
 // Уход со страницы: обычный fetch может не успеть — досылаем sendBeacon.
 // Тело отправляем как text/plain, чтобы браузер не требовал preflight;
 // сервер и так разбирает JSON независимо от Content-Type.
 function beaconFlush() {
+  if (!identity) return; // A2: уходя со страницы аноним тоже молчит
   try {
     const base = apiBase === null ? '' : apiBase;
     for (const key of SYNC_KEYS) {
@@ -381,9 +421,10 @@ function beaconFlush() {
     }
   } catch { /* приватный режим */ }
 }
-setTimeout(pushStats, 4000);
+setTimeout(() => { if (identity) pushStats(); }, 4000);
 addEventListener('pagehide', beaconFlush);
 addEventListener('beforeunload', beaconFlush);
 
-console.log('[save] клиент активен, канал', apiMode,
-  identity ? `профиль «${player}»` : `анонимно (${player})`);
+console.log(identity
+  ? `[save] клиент активен, канал ${apiMode}, профиль «${identity.nick}»`
+  : '[save] профиля нет — сеть молчит (вход: выделить КЦ → «Профиль» (U))');

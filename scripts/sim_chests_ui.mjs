@@ -116,6 +116,9 @@ try {
 
 // ---------- U3: панель админа ----------
 try {
+  // A3 (аудит 26.10): админка доступна только профилю владельца «best».
+  globalThis.localStorage.setItem('ac_save_nick', 'best');
+  window.__saveIdentity = { nick: 'best', pin: '1234' };
   A.openAdmin(game);
   const adm = byId('admin-overlay');
   assert(adm, 'панель админа не создана');

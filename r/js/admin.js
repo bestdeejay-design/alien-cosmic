@@ -17,13 +17,29 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { t } from './i18n.js?v=10262514';
-import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262514';
+import { t } from './i18n.js?v=10262515';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262515';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10262514';
+} from './chests.js?v=10262515';
+
+// A3 (аудит владельца 26.10.2026): «админка — только профиль владельца best,
+// без учёта регистра; другим на этапе разработки недоступна».
+// Гейт по ПРОФИЛЮ (ник+пин из панели КЦ), а не по PIN панели: пока ник не
+// «best», панели не существует ни в командах КЦ, ни в DOM.
+export const ADMIN_NICK = 'best';
+
+export function profileNick() {
+  const id = (typeof window !== 'undefined' && window.__saveIdentity) || null;
+  if (id && id.nick) return String(id.nick);
+  try { return String(localStorage.getItem('ac_save_nick') || ''); } catch { return ''; }
+}
+
+export function isAdminProfile() {
+  return profileNick().trim().toLowerCase() === ADMIN_NICK;
+}
 
 const PIN_KEY = 'ac_admin_pin';
 const ECON_KEY = 'ac_econ_scale';
@@ -46,6 +62,12 @@ function setAdminPin(v) {
 // ------------------------------------------------------------
 export function openAdmin(game) {
   if (!game || !game.state) return;
+  // A3: чужому профилю панель недоступна — тихий отказ, без формы и без текста
+  // «нет прав» (на этапе разработки админки для игроков не существует).
+  if (!isAdminProfile()) {
+    console.log('[admin] панель доступна только профилю владельца — войдите в КЦ (U) под ником best');
+    return;
+  }
   if (panel && document.body.contains(panel)) { panel.remove(); panel = null; return; }
   const entered = sessionStorage.getItem('ac_admin_ok');
   panel = document.createElement('div');
