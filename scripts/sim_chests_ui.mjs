@@ -5,7 +5,8 @@
 //   • оверлей капсул строится, карточек столько же, сколько в конфиге;
 //   • клик по готовой карточке вскрывает капсулу и начисляет награду;
 //   • «Забрать и продолжить» возвращает список (капсула помечена «забрана»);
-//   • панель админа: PIN, четыре вкладки, конструктор капсул (создание/сброс);
+//   • панель админа: PIN, пять вкладок (экон/капсулы/оборона/игроки/диагностика),
+//     конструктор капсул (создание/сброс);
 //   • ручной подарок и публикация конфига не падают без сети.
 //
 // Запуск: node scripts/sim_chests_ui.mjs
@@ -13,7 +14,7 @@
 import './harness.mjs';
 
 await import('../r/js/game.js');
-const V = '?v=10262510'; // тот же стемп, что внутри движка — иначе двойные модули
+const V = '?v=10262511'; // тот же стемп, что внутри движка — иначе двойные модули
 const CUI = await import('../r/js/chests-ui.js' + V);
 const C = await import('../r/js/chests.js' + V);
 const A = await import('../r/js/admin.js' + V);
@@ -51,8 +52,13 @@ try {
   assert(grid.children.length === cfg.chests.length,
     `карточек ${grid.children.length}, а капсул ${cfg.chests.length}`);
 
-  const ready = grid.children.find((c) => /is-ready/.test(c.className || ''));
-  assert(ready, 'нет ни одной готовой карточки (ежедневная должна быть доступна)');
+  // Карточек может быть несколько готовых (вечерний дроп зависит от времени
+  // суток) — вскрываем именно ежедневную, её и проверяем на «забрана».
+  const order = C.availableChests(game, C.buildContext(game, {}));
+  const di = order.findIndex((x) => x.chest.id === 'daily');
+  assert(di >= 0, 'в списке нет ежедневной капсулы');
+  const ready = grid.children[di];
+  assert(ready && /is-ready/.test(ready.className || ''), 'ежедневная капсула не готова к вскрытию');
   const erg0 = st.minerals.player;
   const units0 = st.units.filter((u) => !u.dead && u.side === 'player').length;
   const boost0 = st.boost ? 1 : 0;
@@ -126,14 +132,14 @@ try {
 
   const tabs = {};
   for (const t of adm.querySelectorAll('.adm-tab')) tabs[t.dataset.tab] = t;
-  assert(Object.keys(tabs).length === 4, 'вкладок не 4: ' + Object.keys(tabs).join(','));
-  const marker = { econ: 'adm-econ', chests: 'adm-add', players: 'adm-top', diag: 'adm-reset-claims' };
+  assert(Object.keys(tabs).length === 5 && tabs.raid, 'вкладок не 5 (экон/капсулы/оборона/игроки/диагностика): ' + Object.keys(tabs).join(','));
+  const marker = { econ: 'adm-econ', chests: 'adm-add', raid: 'adm-rd-scale', players: 'adm-top', diag: 'adm-reset-claims' };
   for (const [name, tab] of Object.entries(tabs)) {
     tab.click();
     const body = adm.querySelector('#adm-body');
     assert(body._html.includes(marker[name]), `вкладка «${name}» пустая`);
   }
-  pass('U3 админ: PIN (неверный/верный), 4 вкладки с содержимым');
+  pass('U3 админ: PIN (неверный/верный), 5 вкладок с содержимым (оборона — ползунок волны)');
 } catch (e) { fail('U3 админ: вход и вкладки', e); }
 
 // ---------- U4: конструктор капсул ----------

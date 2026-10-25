@@ -17,6 +17,7 @@
 //   [8] Вид 20 уровней (Э5+): контрольный рендер sim_skins.mjs.
 //   [9] Командир КЦ и оборона базы (Э7): sim_commander.mjs.
 //  [10] Локали: каждый литеральный ключ t('…') есть в RU и EN.
+//  [11] Приказы отрядам (Э7 ч.2): посты, отход к КЦ, трофеи, настройки рейдов.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -182,5 +183,16 @@ try {
   bad('check_i18n_keys:\n' + String(e.stdout || e.stderr || e.message));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир зелёные');
+// ---------- [11] приказы отрядам, трофеи, настройки рейдов ----------
+console.log('\n[11] Отряды и оборона (Э7 ч.2):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_squad.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+  if (!lines.length) bad('sim_squad: ни одного PASS');
+} catch (e) {
+  bad('sim_squad:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды зелёные');
 process.exit(failed ? 1 : 0);
