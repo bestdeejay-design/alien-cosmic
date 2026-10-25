@@ -5,10 +5,10 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10252058';
-import { unitAt } from './units.js?v=10252058';
-import { buildingAt } from './buildings.js?v=10252058';
-import { message } from './i18n.js?v=10252058';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262511';
+import { unitAt } from './units.js?v=10262511';
+import { buildingAt } from './buildings.js?v=10262511';
+import { message } from './i18n.js?v=10262511';
 
 export function attachInput(game) {
   const cv = game.canvas;
@@ -269,6 +269,13 @@ export function attachInput(game) {
     if (!st || !game.started || st.gameOver) return;
     const w = screenToWorld(e);
     if (e.button === 0) {
+      // Э7: режим «Держать сектор» — клик ставит пост отряду.
+      if (st.holdPick) {
+        st.holdPick = false;
+        cv.style.cursor = '';
+        game.hooks.issueHold(w.x, w.y);
+        return;
+      }
       // Режим атаки-движения: клик отдаёт приказ и выключает режим.
       if (st.attackMoveMode) {
         st.attackMoveMode = false;
@@ -288,6 +295,7 @@ export function attachInput(game) {
       }
       game.box = { x0: w.x, y0: w.y, x1: w.x, y1: w.y };
     } else if (e.button === 2) {
+      if (st.holdPick) { st.holdPick = false; cv.style.cursor = ''; return; }
       if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; return; }
       if (st.wallDrag) { st.wallDrag = null; return; }
       if (st.placing) { st.placing = null; return; }
@@ -390,6 +398,7 @@ export function attachInput(game) {
       if (game.paused) { game.togglePause(); return; }
       if (st.wallDrag) st.wallDrag = null;
       else if (st.placing) st.placing = null;
+      else if (st.holdPick) { st.holdPick = false; cv.style.cursor = ''; }
       else if (st.attackMoveMode) { st.attackMoveMode = false; cv.style.cursor = ''; }
       else if (st.buildMenu) st.buildMenu = false;
       else st.selection = [];
@@ -518,6 +527,12 @@ export function clickSelect(game, st, w, shift) {
 function touchTap(game, st, w, dbl) {
   // Пакет U: тап в режиме атака-движения — приказ и выход из режима
   // (зеркало ЛКМ-пути десктопа). Драг/пинч режим не съедают: тапили — значит приказ.
+  if (st.holdPick) {
+    st.holdPick = false;
+    game.canvas.style.cursor = '';
+    game.hooks.issueHold(w.x, w.y);
+    return;
+  }
   if (st.attackMoveMode) {
     st.attackMoveMode = false;
     game.canvas.style.cursor = '';

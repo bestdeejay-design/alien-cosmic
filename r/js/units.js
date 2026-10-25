@@ -7,9 +7,14 @@
 // ============================================================
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10252058';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10252058';
-import { message } from './i18n.js?v=10252058';
+  HOUSE,
+} from './config.js?v=10262511';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262511';
+import {
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262511';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262511';
+import { t, message } from './i18n.js?v=10262511';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262511';
 
 let nextId = 1;
 
@@ -43,13 +48,29 @@ export function atkBonus(st, attacker) {
   const t = st.tech[attacker.side];
   if (!t) return 0;
   const veh = attacker.kind === 'unit' && attacker.cfg.vehicle;
-  return (t[veh ? 'vehAtk' : 'infAtk'] || 0) * (veh ? 5 : 3);
+  const lvl = t[veh ? 'vehAtk' : 'infAtk'] || 0;
+  // Э1: ранг даёт +4% БАЗОВОГО урона за уровень (на 20 ур. ×1.8).
+  // Турель (здание) считается пехотным оружием, база — её грейдовый урон.
+  const base = attacker.kind === 'building'
+    ? gradeDmg(attacker.type, attacker.level || 1, attacker.cfg.dmg)
+    : attacker.cfg.dmg;
+  // Э7: во время обороны базы командир даёт своей стороне +X% урона.
+  // Важно: бонус работает и без изученных рангов (lvl = 0), иначе на старте
+  // командир был бы «невидимым».
+  let bonus = lvl ? Math.round(base * (attackMul(lvl) - 1) * 10) / 10 : 0;
+  if (st.homeRaid && st.homeRaid.active && attacker.side === 'player') {
+    const buff = Number(st.homeRaid.active.buff) || 1;
+    if (buff > 1) bonus = Math.round((bonus + base * (buff - 1)) * 10) / 10;
+  }
+  return bonus;
 }
-export function armorVal(st, victim) {
-  if (!st || !st.tech || !victim || victim.kind !== 'unit') return 0;
+// Э1: доля снижения урона от ранга брони (2.5%/ур., потолок 50%).
+export function damageTakenMul(st, victim) {
+  if (!st || !st.tech || !victim || victim.kind !== 'unit') return 1;
   const t = st.tech[victim.side];
-  if (!t) return 0;
-  return (t[victim.cfg.vehicle ? 'vehArm' : 'infArm'] || 0) * (victim.cfg.vehicle ? 3 : 2);
+  if (!t) return 1;
+  const lvl = t[victim.cfg.vehicle ? 'vehArm' : 'infArm'] || 0;
+  return 1 - armorFrac(lvl);
 }
 
 // Тряска экрана (в пикселях и секундах) — вызывается при взрывах.
@@ -132,6 +153,14 @@ export class SpatialGrid {
         if (arr) for (let i = 0; i < arr.length; i++) cb(arr[i]);
       }
   }
+}
+
+// Вместимость «отсека»: бункер — гарнизон по грейду, Дом — его вместимость
+// (решение владельца 25.10: у Дома одно число на отряд и на рейд).
+export function unitCapOf(b) {
+  if (!b) return 0;
+  if (b.type === 'depot') return HOUSE_LEVELS.slots(b.level || 1);
+  return gradeGar(b.type, b.level || 1, b.cfg && b.cfg.garrisonCap);
 }
 
 // ------------------------------------------------------------
@@ -1334,7 +1363,8 @@ function updateGather(st, u, dt) {
     if (Math.random() < dt * 3) addEffect(st, { kind: 'spark', x: c.x + (Math.random() - 0.5) * 14, y: c.y + (Math.random() - 0.5) * 14, ang: Math.random() * Math.PI, t: 0, life: 0.2 });
     if (Math.random() < dt * 2) st.game.sound.mine();
     if (u.mineT <= 0) {
-      const take = Math.min(MINERAL_PER_TRIP, c.amount);
+      const perTrip = u.side === 'player' && st.raidTripYield ? st.raidTripYield : MINERAL_PER_TRIP; // Э1: бур тира
+      const take = Math.min(perTrip, c.amount);
       u.carrying = take;
       c.amount -= take;
       if (c.amount <= 0) st.map.removeCrystal(c);
@@ -1356,7 +1386,16 @@ function updateGather(st, u, dt) {
       // Рейдовая вылазка без корабля-КЦ: рабочие сдают эрг в трюм челнока на площадке посадки.
       const pad = st.raidDrop;
       if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 2.2) {
-        st.raidCargo = Math.min(3000, (st.raidCargo || 0) + u.carrying); // кап хранилища Г2
+        const cap = st.raidCargoCap || HOUSE.cargo; // Э1: трюм Дома по его грейду
+        const before = st.raidCargo || 0;
+        const next = Math.min(cap, before + u.carrying);
+        // Э4: «не вся добыча поместится» — считаем излишек, он теряется.
+        st.raidCargoLost = (st.raidCargoLost || 0) + (before + u.carrying - next);
+        if (before + u.carrying > cap && !st.raidCargoFullToasted) {
+          st.raidCargoFullToasted = true;
+          st.game.ui.toast(t('ui.raid.toastCargoFull', { cap }), 'warn');
+        }
+        st.raidCargo = next;
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
         u.carrying = 0;
@@ -1383,7 +1422,9 @@ function updateGather(st, u, dt) {
     if (!drop) { u.moving = false; return; } // базы нет — стоим с грузом
     const rx = drop.tx * TILE, ry = drop.ty * TILE, rw = drop.w * TILE, rh = drop.h * TILE;
     if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 0.9) {
-      st.minerals[u.side] += u.carrying;
+      // Э6: бустер добычи из капсулы (×mul на время) — применяем на сдаче.
+      const boost = st.boost && st.boost.until > Date.now() ? st.boost.mul : 1;
+      st.minerals[u.side] += Math.round(u.carrying * boost);
       if (u.side === 'player') {
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
@@ -1510,7 +1551,7 @@ function updateGarrison(st, u) {
   if (!b || b.dead || !b.done) { orderStop(u); return; }
   const rx = b.tx * TILE, ry = b.ty * TILE, rw = b.w * TILE, rh = b.h * TILE;
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.0) {
-    if (b.garrison.length >= gradeGar(b.type, b.level || 1, b.cfg.garrisonCap)) { orderStop(u); return; } // F.2
+    if (b.garrison.length >= unitCapOf(b)) { orderStop(u); return; } // F.2 / Э4: у Дома — его вместимость
     // Заход внутрь: юнит исчезает с карты, живёт внутри бункера.
     u.garrison = b;
     b.garrison.push(u);
@@ -1877,14 +1918,34 @@ function nearBaseCC(st, x, y) {
   return false;
 }
 
+// Э4: в вылазке разрушенное вражеское здание отдаёт эрг. Это и есть «рейд на
+// чужой КЦ»: после сноса КЦ на карте остаётся куча обломков, и в трюм Дома
+// влезает НЕ ВСЁ — излишек теряется при эвакуации (канон владельца).
+export function dropLoot(st, b) {
+  if (!st || !b || b.side !== 'enemy') return 0;
+  if (st.raidMode !== 'expedition') return 0;
+  const pool = st.raidLootPool || 0;
+  if (pool <= 0) return 0;
+  const weight = (b.cfg && b.cfg.cost) || 50;
+  const share = weight / Math.max(1, st.raidLootWeight || 1);
+  const amount = Math.max(1, Math.round(pool * share));
+  st.raidLootLeft = Math.max(0, (st.raidLootLeft || pool) - amount);
+  const tx = Math.max(1, Math.min(st.map.w - 2, b.tx + ((b.w / 2) | 0)));
+  const ty = Math.max(1, Math.min(st.map.h - 2, b.ty + ((b.h / 2) | 0)));
+  if (!st.map.inBounds(tx, ty)) return 0;
+  st.map.addCrystal(tx, ty, amount, -1);
+  addFloat(st, b.x, b.y - 20, '+' + amount, COLORS.mineral);
+  return amount;
+}
+
 export function damageEntity(st, victim, dmg, attacker) {
   if (!victim || victim.dead) return;
   // Неуязвима в бункере только пехота. У зданий garrison — это массив
   // гарнизона (пустой массив истинен!), раньше эта строка делала ВСЕ
   // постройки бессмертными — вражескую базу было невозможно разрушить.
   if (victim.kind === 'unit' && victim.garrison) return;
-  // Исследования брони снижают входящий урон (минимум 1 — кровь всегда течёт).
-  dmg = Math.max(1, dmg - armorVal(st, victim));
+  // Э1: броня — ПРОЦЕНТ от ранга (2.5%/ур., потолок 50%), минимум 1 урона.
+  dmg = Math.max(1, dmg * damageTakenMul(st, victim));
   victim.hp -= dmg;
   victim.flashT = 0.14;
   // Тревога для игрока — не чаще раза в 8 секунд.
@@ -1920,6 +1981,7 @@ function killEntity(st, v, attacker) {
     if (v.cfg.vehicle) addShake(st, 3, 0.16);
     st.game.sound.boom(!!v.cfg.vehicle);
   } else {
+    if (v.kind === 'building') dropLoot(st, v); // Э4: лут с вражеского здания
     if (v.garrison && v.garrison.length) releaseGarrison(st, v); // выжившие выпрыгивают
     st.map.unmarkBuilding(v);
     st.bcount[v.side]--;
@@ -2183,7 +2245,9 @@ function healAura(ctx, u, rx, ry, t) {
 // мерцание тяги, покачивание лап на ходу, откат стволов по u.cd.
 // Контракт §3: нос по +X, габарит ±(r+8), тень/кольцо/HP снаружи.
 // ------------------------------------------------------------
-export function drawUnit(ctx, u, rx, ry) {
+// rank (0…20) — ранг юнита из лаборатории; влияет ТОЛЬКО на вид:
+// масштаб картинки и «сегменты брони» (см. skins.drawUnitGrade).
+export function drawUnit(ctx, u, rx, ry, rank = 0) {
   const isP = u.side === 'player';
   const main = isP ? COLORS.player : COLORS.enemy;
   const dark = isP ? COLORS.playerDark : COLORS.enemyDark;
@@ -2222,6 +2286,9 @@ export function drawUnit(ctx, u, rx, ry) {
   ctx.save();
   ctx.translate(rx, ry);
   ctx.rotate(u.angle);
+  // Э5+: ранг чуть увеличивает картинку юнита (до +8 %), хитбокс не меняется.
+  const rankScale = skinUnitScale(rank);
+  if (rankScale !== 1) ctx.scale(rankScale, rankScale);
 
   // Рендерное время анимации (на симуляцию не влияет).
   const t = performance.now() * 0.001 + u.id * 1.618;
@@ -2876,6 +2943,8 @@ export function drawUnit(ctx, u, rx, ry) {
     ctx.fillStyle = `rgba(255,255,255,${u.flashT * 2.8})`;
     ctx.beginPath(); ctx.arc(0, 0, u.r + 2, 0, Math.PI * 2); ctx.fill();
   }
+  // Э5+: слой ранга — сегменты брони, огни, антенна, неон/призма.
+  if (rank > 0 && u.side === 'player') drawUnitGrade(ctx, u, rank, t);
   ctx.restore();
 
   // Метка недостижимой цели: красный «!» — игрок видит, что приказ

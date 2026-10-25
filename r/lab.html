@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вид 20 уровней — лаборатория грейдов</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 14px 14px 40px;
+    background: radial-gradient(1200px 600px at 30% -10%, #123039, #071218 65%);
+    color: #dfe8ea; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 18px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 4px; }
+  h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: #76e3d7; margin: 22px 0 6px; }
+  p.sub { margin: 0 0 12px; opacity: .75; font-size: 12.5px; max-width: 900px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; opacity: .9; margin-bottom: 8px; }
+  .legend b { font-weight: 700; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid rgba(118,227,215,.18); border-radius: 10px; background: rgba(6,16,20,.55); }
+  canvas { display: block; }
+  .hint { font-size: 12px; opacity: .65; margin-top: 6px; }
+  a.back { color: #76e3d7; font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <h1>Вид 20 уровней</h1>
+  <p class="sub">Контрольный лист грейдов: как выглядят все здания (1–20) и все юниты (ранг 0–20).
+     Рисуется тем же кодом, что в игре — <code>r/js/skins.js</code> + <code>buildings.js</code>/<code>units.js</code>,
+     поэтому это не «макет», а честный рендер.</p>
+  <div class="legend">
+    <span><span class="swatch" style="background:#9fe8de"></span>сталь 1–4</span>
+    <span><span class="swatch" style="background:#f3c579"></span>золото 5–9</span>
+    <span><span class="swatch" style="background:#5a616a"></span>графит 10–14</span>
+    <span><span class="swatch" style="background:#7df3e2"></span>неон 15–19</span>
+    <span><span class="swatch" style="background:#c9a7ff"></span>призма 20</span>
+  </div>
+
+  <h2>Здания · Гелиос (человек)</h2>
+  <div class="wrap"><canvas id="b-human"></canvas></div>
+
+  <h2>Здания · Кхарид (пришелец)</h2>
+  <div class="wrap"><canvas id="b-alien"></canvas></div>
+
+  <h2>Юниты · Гелиос — ранг 0…20 (ранг = технологии лаборатории)</h2>
+  <div class="wrap"><canvas id="u-human"></canvas></div>
+
+  <h2>Юниты · Кхарид — ранг 0…20</h2>
+  <div class="wrap"><canvas id="u-alien"></canvas></div>
+
+  <p class="hint">Что меняется с уровнем: подтон и кромка корпуса, сегменты брони, угловые пластины,
+     вентушки, бегущие огни, пипсы уровня, «корона» на 20. У юнитов — размер картинки до +8 %,
+     сегменты брони по бортам, огни на корме, антенна (7+ и 14+), неон (15+) и ореол-призма (20).
+     Хитбоксы и правила игры не меняются.</p>
+  <p><a class="back" href="./">← вернуться в полигон</a></p>
+
+  <script type="module" src="./js/lab.js?v=10262511"></script>
+</body>
+</html>

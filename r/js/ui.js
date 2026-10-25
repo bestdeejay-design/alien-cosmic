@@ -5,13 +5,15 @@
 // Весь UI — DOM поверх canvas; иконки команд рисуются кодом.
 // ============================================================
 import {
-  TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar,
+  TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10252058';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10252058';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10252058';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10252058';
-import { crystalAt } from './units.js?v=10252058'; // F.1: тултип кристалла
+} from './config.js?v=10262511';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262511';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262511';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262511';
+import { crystalAt, unitCapOf } from './units.js?v=10262511'; // F.1: тултип кристалла + вместимость отсека
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262511';
+import { levelColor, levelStyle } from './skins.js?v=10262511';
 
 const $ = (id) => document.getElementById(id);
 
@@ -301,6 +303,39 @@ export function icon(type) {
       g.moveTo(-9, 0); g.lineTo(-4, 0); g.moveTo(4, 0); g.lineTo(9, 0);
       g.stroke();
       g.fillStyle = red; g.beginPath(); g.arc(0, 0, 1.8, 0, Math.PI * 2); g.fill();
+      break;
+    case 'hold': // Э7: «держать сектор» — щит с чертой поста.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(0, -9); g.lineTo(7, -5); g.lineTo(7, 3); g.lineTo(0, 9); g.lineTo(-7, 3); g.lineTo(-7, -5);
+      g.closePath(); g.stroke();
+      g.fillStyle = amber;
+      g.fillRect(-3.5, -1, 7, 2.2);
+      break;
+    case 'home': // Э7: «отойти к КЦ» — стрелка к базе.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(-8, 8); g.lineTo(4, -4); g.stroke();
+      g.fillStyle = amber;
+      g.beginPath(); g.moveTo(8, -8); g.lineTo(1, -6); g.lineTo(6, -1); g.closePath(); g.fill();
+      g.fillStyle = dark;
+      g.fillRect(-9, 5, 8, 7);
+      g.fillStyle = cyan;
+      g.fillRect(-9, 5, 8, 2);
+      break;
+    case 'officer': // Э7: командир — фуражка с козырьком и звезда звания.
+      g.fillStyle = amber;
+      g.beginPath(); g.ellipse(0, 1, 8, 5, 0, Math.PI, Math.PI * 2); g.fill();
+      g.fillStyle = dark;
+      g.fillRect(-9, 1, 18, 3);
+      g.fillStyle = cyan;
+      g.beginPath(); g.arc(0, -4, 2.2, 0, Math.PI * 2); g.fill();
+      break;
+    case 'capsule': // Э6+: капсула снабжения — контейнер с крышкой.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath(); g.roundRect ? g.roundRect(-5, -9, 10, 18, 4) : g.rect(-5, -9, 10, 18); g.stroke();
+      g.beginPath(); g.moveTo(-5, 0); g.lineTo(5, 0); g.stroke();
+      g.fillStyle = amber;
+      g.beginPath(); g.arc(0, -5, 2, 0, Math.PI * 2); g.fill();
       break;
     case 'shuttle': // R0: десантный челнок вылазки / эвакуации.
       g.fillStyle = steel;
@@ -754,7 +789,7 @@ export function renderRaidLaunch(game) {
     });
   }
 
-  // 1) Уровни вылазки 1–5.
+  // 1) Уровни вылазки 1–20 (Э1): тир открывает уровень КЦ.
   els.raidTierGrid.innerHTML = '';
   for (const tc of model.tiers) {
     const locked = tc.tier > model.unlockedTier;
@@ -770,9 +805,16 @@ export function renderRaidLaunch(game) {
     head.textContent = t('ui.raid.tierBtn', { tier: tc.tier }) + (locked ? t('ui.cmds.lockMark') : '');
     const sub = document.createElement('span');
     sub.className = 'rt-sub';
+    // Подпись: что даёт тир (добыча/бур/состав) и чем он открывается.
     sub.textContent = locked
-      ? t('ui.raid.tierUnlock.' + tc.tier)
+      ? t('ui.raid.tierNeedCC', { n: tc.unlockCC })
       : t('ui.raid.tierCaps', { units: tc.maxUnits, budget: tc.maxBudget });
+    const loot = document.createElement('span');
+    loot.className = 'rt-loot';
+    loot.textContent = t('ui.raid.tierLoot', {
+      yieldTotal: fmtNum(tc.yieldTotal), trip: tc.tripYield,
+    });
+    btn.appendChild(loot);
     btn.appendChild(head);
     btn.appendChild(sub);
     btn.addEventListener('click', () => {
@@ -899,7 +941,12 @@ export function renderRaidLaunch(game) {
   }
 }
 
+// Канон владельца: в топбаре НЕТ отдельных кнопок полигона. Кнопка
+// «Вылазка/Эвакуация» жила здесь раньше — теперь всё через команды строений:
+// Дом → «Вылазка» (Г2+), Дом/отряд в экспедиции → «Эвакуация».
+// Функция оставлена заглушкой, чтобы не плодить условных вызовов.
 function updateRaidTopbar(game) {
+  void game;
   if (!els || !els.raidAction) return;
   const st = game && game.state;
   if (!st || !st.raidMode) {
@@ -1970,6 +2017,19 @@ function rebuildPanel(game, sel) {
       box.appendChild(queuePanel);
     }
 
+    // Э4: Дом показывает главные числа одним взглядом: отсек · трюм · ход.
+    if (b.done && b.type === 'depot' && b.side === 'player') {
+      const cap = unitCapOf(b);
+      const inside = b.garrison ? b.garrison.length : 0;
+      const hint = document.createElement('div');
+      hint.className = 'small';
+      hint.textContent = t('ui.cmds.bayCard', {
+        n: inside, cap,
+        cargo: fmtNum(HOUSE.cargoAt(b.level || 1)),
+        speed: HOUSE.speedAt(b.level || 1) || '—',
+      });
+      box.appendChild(hint);
+    }
     if (b.done && b.cfg.garrisonCap) {
       const hint = document.createElement('div');
       hint.className = 'small';
@@ -2001,8 +2061,11 @@ function rebuildPanel(game, sel) {
     box.className = 'sel-box';
     const name = document.createElement('div');
     name.className = 'sel-name';
+    const tech = (game.state.tech && game.state.tech.player) || {};
+    const rankOf = (cfg2) => (cfg2.vehicle ? tech.vehAtk : tech.infAtk) || 0;
     const parts = Object.entries(counts).map(([t, n]) => fname(UNITS[t], first.faction) + ' ×' + n);
-    name.textContent = parts.join(', ');
+    const rank = rankOf(first.cfg);
+    name.textContent = parts.join(', ') + (rank > 0 ? ' · ' + t('ui.cmds.rankN', { n: GRADE_ROMAN[rank] || rank }) : '');
     box.appendChild(name);
     const hp = bar(first.hp / first.maxHp);
     box.appendChild(hp.el);
@@ -2012,7 +2075,8 @@ function rebuildPanel(game, sel) {
     dyn.unitLed = usl.led; dyn.unitText = usl.text;
     const sub = document.createElement('div');
     sub.className = 'small';
-    sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: first.cfg.dmg, cd: first.cfg.cooldown });
+    const effDmg = Math.round(first.cfg.dmg * attackMul(rank) * 10) / 10;
+    sub.textContent = t('ui.hints.unitSub', { desc: fdesc(first.cfg, first.faction), d: effDmg, cd: first.cfg.cooldown });
     box.appendChild(sub);
     els.selInfo.appendChild(box);
     }
@@ -2035,6 +2099,22 @@ function rebuildPanel(game, sel) {
     label.textContent = c.label;
     btn.appendChild(label);
 
+    // Э1: уровень прямо на кнопке (находка владельца: «не видно уровней в
+    // командном меню»). Здание — целевой грейд, лаборатория — ранг юнита.
+    if (Number(c.level) > 1) {
+      const lvl = document.createElement('span');
+      lvl.className = 'cmd-lvl';
+      // Э5: цвет уровня — фаза (сталь/золото/графит/неон/призма), чтобы шкала
+      // прокачки читалась прямо в панели команд.
+      const btype = selectedBuilding ? selectedBuilding.type : (c.icon || '').replace(/^a_/, '');
+      const col = levelColor(btype, c.level);
+      lvl.textContent = t('ui.cmds.levelN', { n: GRADE_ROMAN[c.level] || c.level });
+      lvl.style.color = col;
+      lvl.style.borderColor = col;
+      const ph = levelStyle(btype, c.level);
+      lvl.title = ph.phaseName;
+      btn.appendChild(lvl);
+    }
     const refund = refundForCommand(c, selectedBuilding);
     const shownCost = c.cost ? fmtNum(c.cost) : (refund !== null
       ? t('ui.process.refundShort', { n: fmtNum(refund) }) : '');
@@ -2255,6 +2335,10 @@ function commandAvailability(command, game, building) {
   const st = game.state;
   const faction = st.factions.player;
   if (st.gameOver) return { disabled: true, reason: t('ui.cmds.gameOver') };
+
+  // Э1: команда может нести готовую причину блокировки (правила КЦ/грейда) —
+  // она информативнее, чем общее «сейчас недоступно».
+  if (command.lock) return { disabled: true, reason: command.lock };
 
   const unitType = producedUnitForCommand(command, building);
   if (unitType && building.queue.length >= gradeQueue(building.type, building.level || 1)) {

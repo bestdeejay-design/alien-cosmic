@@ -44,22 +44,16 @@ if (!game) {
       }, true);
     }
 
-    // 3) Восстановление: сначала localStorage, при отсутствии — сервер (профиль ник+пин).
+    // 3) Восстановление: сначала localStorage, при отсутствии — сервер
+    //    (профиль ник+пин) ЧЕРЕЗ ЕДИНЫЙ КЛИЕНТ СЕЙВА (save-client.js):
+    //    один путь для кампании и базы рейда, один канал (same-origin /api).
     //    Так база ходит за игроком между машинами и браузерами.
+    for (let i = 0; i < 60 && !window.__saveApi; i++) await new Promise((r) => setTimeout(r, 50));
+    const saveApi = window.__saveApi || null;
     let saved = (() => { try { return localStorage.getItem(RAID_SAVE_KEY); } catch { return null; } })();
-    if (!saved && window.__saveIdentity) {
-      try {
-        const r = await fetch(`http://${location.hostname}:8790/api/load`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ player: window.__saveIdentity.nick, pin: window.__saveIdentity.pin, key: RAID_SAVE_KEY }),
-        });
-        const j = await r.json();
-        if (j.ok) {
-          saved = j.value;
-          try { localStorage.setItem(RAID_SAVE_KEY, saved); } catch { /* */ }
-          console.log('[r] сессия рейда восстановлена с сервера');
-        }
-      } catch (e) { /* сервер недоступен */ }
+    if (!saved && saveApi && saveApi.identity) {
+      saved = await saveApi.pullKey(RAID_SAVE_KEY);
+      if (saved) console.log('[r] сессия рейда восстановлена с сервера');
     }
     if (saved && !game.started) {
       try {
@@ -69,6 +63,14 @@ if (!game) {
     }
     if (!game.started) {
       game.startRaidHome('human');
+      // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
+      // карточки при входе (не кнопка в топбаре, а карточки на экране).
+      try {
+        const chestsUi = await import('./js/chests-ui.js?v=10262511');
+        chestsUi.registerChestCommand(game);
+        await chestsUi.hydrateFromServer(game);
+        chestsUi.maybeShowOnEntry(game);
+      } catch (e) { console.warn('[r] капсулы не поднялись', e); }
       window.dispatchEvent(new Event('ac-vv-check'));
       console.log('[r] полигон: рейд-хоум запущен; запуск вылазки — выделить корабль-КЦ → «Запуск» (E), эвакуация — клик по кольцу посадки');
     }
@@ -89,13 +91,8 @@ if (!game) {
         if (data === lastSaved) return;
         localStorage.setItem(RAID_SAVE_KEY, data);
         lastSaved = data;
-        const nick = localStorage.getItem('ac_save_nick'), pin = localStorage.getItem('ac_save_pin');
-        if (nick && pin) {
-          fetch(`http://${location.hostname}:8790/api/save`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ player: nick, pin, key: RAID_SAVE_KEY, value: data }),
-          }).catch(() => {});
-        }
+        // Толчок на сервер — через общий клиент (он знает канал и профиль).
+        if (saveApi && saveApi.identity) saveApi.pushKey(RAID_SAVE_KEY);
         if (why) console.log('[r] сейв рейда записан:', why);
       } catch (e) { /* приватный режим / переполнение */ }
     };
@@ -114,7 +111,7 @@ if (!game) {
     };
     document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow('вкладка скрыта'); });
     addEventListener('pagehide', () => saveNow('уход со страницы'));
-    setInterval(() => saveNow('таймер'), 1000);
+    setInterval(() => saveNow('таймер'), 1500);
     saveNow('старт полигона');
   } catch (e) {
     document.title = 'r/ BOOT ERR: ' + e.message;

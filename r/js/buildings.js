@@ -3,12 +3,14 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10252058';
-import { nearestFreeTileAround } from './pathfinding.js?v=10252058';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10252058';
-import { icon } from './ui.js?v=10252058'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
-import { distToRectPx } from './pathfinding.js?v=10252058';
-import { message } from './i18n.js?v=10252058';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10262511';
+import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10262511';
+import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10262511';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262511';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10262511';
+import { icon } from './ui.js?v=10262511'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
+import { distToRectPx } from './pathfinding.js?v=10262511';
+import { message } from './i18n.js?v=10262511';
 
 let nextBId = 1;
 
@@ -139,7 +141,10 @@ export function startResearch(st, b, key) {
   const lvl = (st.tech[b.side] && st.tech[b.side][key]) || 0;
   if (lvl >= u.max) return 'max';
   // H.1: ресерч за грейдом (авторемонт — за КЦ Г2). ИИ затвор не проходит.
-  if (u.requiresGrade && bestCCLevel(st, b.side) < u.requiresGrade.level) return 'grade';
+  const ccl = bestCCLevel(st, b.side);
+  if (u.requiresGrade && ccl < u.requiresGrade.level) return 'grade';
+  // Э1 (правило R3): ранг юнита не может обогнать уровень КЦ.
+  if (lvl + 1 > ccl) return 'grade';
   const cost = u.costs[lvl];
   if (st.minerals[b.side] < cost) return 'money';
   st.minerals[b.side] -= cost;
@@ -155,32 +160,28 @@ export function cancelResearch(st, b) {
   b.res = null;
 }
 
-// F.2: запустить грейд здания. Коды: ok | money | busy | max | wrong.
+// F.2/Э1: запустить грейд здания (1→20). Все правила — в economy.js:
+//   R1 цель ≤ уровня КЦ; R2 у КЦ своё условие «L зданий уровня L−1».
+// Коды: ok | money | busy | max | wrong | cclow | gate (cclow/gate несут
+// подробности в .need — панель команд показывает их игроку).
 export function startGrade(st, b) {
-  if (!b || b.dead || !b.done) return 'wrong';
-  const to = (b.level || 1) + 1;
-  const g = glevel(b.type, to);
-  if (!g || to > 3) return b.level >= 3 ? 'max' : 'wrong';
-  // ВЛАДЕЛЕЦ 25.10: ни одно здание не грейдится выше уровня КЦ.
-  // Дом-Г2 открывается внутри Г3 КЦ.
-  if (b.type !== 'cc') {
-    const ccLv = Math.max(1, ...st.buildings
-      .filter((x) => !x.dead && x.side === b.side && x.type === 'cc' && x.done)
-      .map((x) => x.level || 1));
-    if (to > ccLv) return 'cclow';
-  }
-  if (b.gradeUp) return 'busy';
-  if (st.minerals[b.side] < g.cost) return 'money';
-  st.minerals[b.side] -= g.cost;
-  b.gradeUp = { to, t: g.time, total: g.time };
-  return 'ok';
+  const gate = canGradeBuilding(st, b.side, b);
+  if (!gate.ok) return gate;
+  const g = gate.entry;
+  st.minerals.player -= g.cost;
+  b.gradeUp = { to: gate.to, t: g.time, total: g.time, cost: g.cost };
+  return { ...gate, code: 'ok' };
 }
 
 // F.2: отменить грейд (возврат минералов).
 export function cancelGrade(st, b) {
   if (!b.gradeUp) return;
-  const g = glevel(b.type, b.gradeUp.to);
-  if (g) st.minerals[b.side] += g.cost;
+  const refund = Number(b.gradeUp.cost);
+  if (Number.isFinite(refund) && refund > 0) st.minerals[b.side] += refund;
+  else {
+    const g = glevel(b.type, b.gradeUp.to);
+    if (g) st.minerals[b.side] += g.cost;
+  }
   b.gradeUp = null;
 }
 
@@ -190,9 +191,9 @@ function completeGrade(st, b) {
   b.level = to;
   b.gradeUp = null;
   const g = glevel(b.type, to);
-  if (g && g.hpMul) { // бункер: прочность растёт с добором HP
+  if (g && g.hpMul) { // бункер/КЦ/Дом: прочность растёт с добором HP
     const nm = Math.round(b.cfg.hp * g.hpMul);
-    b.hp += nm - b.maxHp;
+    b.hp = Math.max(1, Math.min(nm, b.hp + (nm - b.maxHp)));
     b.maxHp = nm;
   }
   if (b.side === 'player') {
@@ -220,7 +221,8 @@ export function updateBuildings(st, dt, grid) {
 
     // --- Исследования (лаборатория) ---
     if (b.res) {
-      b.res.t -= dt;
+      // Э1: грейд лаборатории ускоряет ранги юнитов (gradeRate 'lab')
+      b.res.t -= dt * (b.cfg.research ? gradeRate('lab', b.level || 1) : 1);
       if (b.res.t <= 0) {
         const key = b.res.key;
         st.tech[b.side][key] = b.res.lvl;
@@ -1651,6 +1653,16 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillText(Math.round((b.progress || 0) * 100) + '%', px + w / 2, py + h - 7);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
+  }
+
+  // Э5: визуальная эволюция уровня (фазы сталь → золото → графит → неон →
+  // призма) — по одному взгляду видно, насколько здание прокачано.
+  if (!ghost && b.done !== false && (b.level || 1) > 1) {
+    drawGradeTrim(ctx, b, px, py, w, h, performance.now() * 0.001);
+  }
+  // Э7: вымпел командира над КЦ (уровень ставит движок: b.commanderLevel).
+  if (!ghost && b.type === 'cc' && b.commanderLevel) {
+    drawCommanderMark(ctx, b, px, py, w, h, b.commanderLevel, performance.now() * 0.001);
   }
 
   // Трещины урона: тёмные рваные линии по корпусу.
