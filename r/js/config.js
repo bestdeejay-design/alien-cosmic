@@ -180,7 +180,12 @@ export const GRADES = {
     { cost: 2600, time: 45, hpMul: 1.3 }], // Г3: передвижная база
 };
 // ВЛАДЕЛЕЦ 25.10: параметры Дома как носителя рейдов
-export const HOUSE = Object.freeze({ slots: 10, cargo: 3000, moveSpeed: 96 });
+export const HOUSE = Object.freeze({
+  slots1: 8,      // ВЛАДЕЛЕЦ 25.10: Г1 — 8 мест юнитов
+  slots: 10,      // Г2+ — 10 мест
+  cargo: 3000,    // хранилище рейда с Г2
+  moveSpeed: 96,  // скорость Дома-Г3 (как у рабочего)
+});
 export const GRADE_ROMAN = ['', 'I', 'II', 'III'];
 export function glevel(type, level) { const g = GRADES[type]; return g ? g[level] || null : null; }
 export function gradeDmg(type, level, base) { const e = glevel(type, level); return e && e.dmg ? e.dmg : base; }

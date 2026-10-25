@@ -504,13 +504,24 @@ export function populateRaidState(game, st, m) {
     const exp = session.activeExpedition;
     spawnRandomOutpost(game, st, m);
     const pb = st.map.bases.player.cc;
-    const padTx = Math.max(2, Math.min(st.map.w - 3, pb.x + 2));
-    const padTy = Math.max(2, Math.min(st.map.h - 3, pb.y + 2));
+    const padTx = Math.max(2, Math.min(st.map.w - 4, pb.x + 2));
+    const padTy = Math.max(2, Math.min(st.map.h - 4, pb.y + 2));
+    // ВЛАДЕЛЕЦ 25.10: Дом — шаттл экспедиции. Летит с отрядом и сам является
+    // точкой эвакуации: кто не заехал — потерян.
+    const homeHouse = (st.buildings || []).find((b) => !b.dead && b.side === 'player' && b.type === 'depot' && b.done && (b.level || 1) >= 2);
+    const house = new B.Building(st, 'player', 'depot', padTx, padTy, true);
+    if (homeHouse) {
+      house.level = homeHouse.level;
+      house.hp = house.maxHp = homeHouse.maxHp;
+    }
+    st.map.markBuilding(house);
+    st.bcount.player++;
+    st.raidHouse = house;
     st.raidDrop = {
       tx: padTx,
       ty: padTy,
-      x: (padTx + 0.5) * TILE,
-      y: (padTy + 0.5) * TILE,
+      x: house.x,
+      y: house.y,
       r: 3.5,
       hold: 2.0,
     };

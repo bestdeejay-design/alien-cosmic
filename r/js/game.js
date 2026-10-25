@@ -844,6 +844,15 @@ export class Game {
           on: () => this.hooks.orderMassRally(b),
         });
       }
+      // ВЛАДЕЛЕЦ 25.10: Дом в экспедиции — команда «Эвакуация» внутри Дома.
+      if (b.done && b.type === 'depot' && st.raidMode === 'expedition' && b === st.raidHouse) {
+        cmds.push({
+          code: 'KeyE', icon: 'shuttle',
+          label: st.raidEvacuating ? t('ui.raid.topLiftoff', { n: (st.raidBoarded || []).length }) : t('ui.raid.topEvac'),
+          tip: { title: t('ui.raid.topEvacTitle'), lines: t('ui.raid.cmdLaunchTip') },
+          on: () => this.triggerRaidEvac(),
+        });
+      }
       // ВЛАДЕЛЕЦ 25.10: рейд запускается из ДОМА (Г2+), не из КЦ.
       if (b.done && b.type === 'depot' && (b.level || 1) >= 2 && st.raidMode === 'home') {
         cmds.push({
