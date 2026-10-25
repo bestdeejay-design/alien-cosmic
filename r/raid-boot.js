@@ -58,6 +58,12 @@ else {
   const saveNow = () => {
     if (!game.raidSession) return;
     try {
+      // Снапшот домашней базы движок обновляет лишь в отдельные моменты —
+      // перед записью актуализируем сами, иначе минералы/постройки уезжают
+      // в сейв устаревшими (урок демонстрации с минералами).
+      if (game.state && game.state.raidMode === 'home' && !game.state.gameOver) {
+        game.syncRaidHomeSnapshot();
+      }
       const data = JSON.stringify(game.raidSession);
       if (data === lastSaved) return;
       localStorage.setItem(RAID_SAVE_KEY, data);
