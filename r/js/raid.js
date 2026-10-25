@@ -95,8 +95,8 @@ export function countHomeRoster(st) {
 
 export function validateRaidLoadout(st, draft = {}) {
   // ВЛАДЕЛЕЦ 25.10: рейд открывает ДОМ Г2+ (карман рейдов), не КЦ.
-  const house = (st.buildings || []).find((b) => !b.dead && b.side === 'player' && b.type === 'depot');
-  if (!house || (house.level || 1) < 2 || !house.done) {
+  const house = (st.buildings || []).find((b) => !b.dead && b.side === 'player' && b.type === 'depot' && (b.level || 1) >= 2 && b.done);
+  if (!house) {
     return { ok: false, reasonKey: 'ui.raid.errNoHouse', reasonParams: {} };
   }
   if (!st || st.raidMode !== 'home' || st.gameOver) {

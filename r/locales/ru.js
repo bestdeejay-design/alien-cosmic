@@ -123,6 +123,7 @@ export default {
       planetName: 'Актан-4 · Рубеж новичка',
       topLaunch: 'Вылазка',
       topLaunchTitle: 'Открыть консоль вылазки (челнок с базы-КЦ)',
+      levelN: 'ур. {n}',
       houseMove: 'Переместить Дом',
       houseMoveTip: { title: 'Переместить Дом', lines: 'Дом-III перемещается как юнит: ПКМ по карте — новая точка' },
       houseMoveBlocked: 'Здесь Дом не разместить',

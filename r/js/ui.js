@@ -1918,7 +1918,10 @@ function rebuildPanel(game, sel) {
     box.appendChild(portraitEl(b.faction === 'alien' ? 'a_' + b.type : b.type));
     const name = document.createElement('div');
     name.className = 'sel-name';
-    name.textContent = fname(b.cfg, b.faction) + (b.done ? '' : t('ui.hints.buildWip'));
+    // ВЛАДЕЛЕЦ 25.10: уровень здания подписан в панели выделения.
+    name.textContent = fname(b.cfg, b.faction) +
+      (b.done ? ' · ' + t('ui.cmds.levelN', { n: b.level || 1 }) : '') +
+      (b.done ? '' : t('ui.hints.buildWip'));
     box.appendChild(name);
     const status = statusLine('', '');
     dyn.buildingLed = status.led;

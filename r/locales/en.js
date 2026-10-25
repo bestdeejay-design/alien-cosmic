@@ -127,6 +127,7 @@ export default {
       planetName: 'Actan-4 · Beginner Frontier',
       topLaunch: 'Expedition',
       topLaunchTitle: 'Open the expedition shuttle console',
+      levelN: 'lv. {n}',
       houseMove: 'Relocate House',
       houseMoveTip: { title: 'Relocate House', lines: 'House L3 moves like a unit: RMB a spot on the map' },
       houseMoveBlocked: 'The House cannot land here',
