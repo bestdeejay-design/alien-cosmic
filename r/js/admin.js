@@ -77,6 +77,8 @@ export function openAdmin(game) {
       </div>
     </div>`;
   document.body.append(panel);
+  // Панель админа — модальная: игра стоит, пока её не закроют.
+  if (game.state) { game.adminPausedBefore = !!game.paused; game.paused = true; }
   const $ = (s) => panel.querySelector(s);
   const msg = (text, isErr) => {
     const el = $('#adm-msg');
@@ -424,4 +426,6 @@ export function openAdmin(game) {
 
 export function closeAdmin() {
   if (panel) { panel.remove(); panel = null; }
+  const g = window.game;
+  if (g && g.state) { g.paused = !!g.adminPausedBefore; g.adminPausedBefore = false; }
 }

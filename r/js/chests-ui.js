@@ -70,7 +70,11 @@ function hide() {
   if (!overlay) return;
   overlay.classList.add('hidden');
   const game = window.game;
-  if (game && game.state) game.paused = false;
+  // Паузу снимаем только если её поставили мы (как в raid-launch оверлее).
+  if (game && game.state) {
+    game.paused = !!game.chestPausedBefore;
+    game.chestPausedBefore = false;
+  }
 }
 
 export function showChests(game) {
@@ -126,6 +130,7 @@ export function showChests(game) {
   });
 
   ov.classList.remove('hidden');
+  if (!game.chestPausedBefore) game.chestPausedBefore = !!game.paused;
   game.paused = true;
 }
 
