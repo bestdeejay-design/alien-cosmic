@@ -1,25 +1,29 @@
 // ============================================================
 // sim_house.mjs — аудит владельца 26.10.2026, пакет P2 «Дом» (issue #35).
 //
-// Три находки:
-//   B1 · T2/T2b — «сбор показывает не там, где он стоит»: moveHouse менял
-//        тайлы, но не мировой центр b.x/b.y. От центра считаются аура,
-//        выпуск отсека, ремонт и дистанции в панели — всё оставалось на
-//        старом месте.
-//   B2 · T5 — аура лечения Дома Г4+ работала ТОЛЬКО на вылазке (рейдовый
-//        тик). Владелец: «только на базовой локации, на вылазке не работает».
-//   B3 · T6 — сборщики не чинили сборщиков: цели ремонта фильтровались по
-//        cfg.vehicle. Владелец: «да, сами, это их базовая функция».
+// СПЕКА ПОСЛЕ ПРАВКИ ВЛАДЕЛЬЦА (§«мы всё напутали»):
+//   • чинят — СБОРЩИКИ сборщиков и технику (repair);
+//   • лечат — ХИЛЫ, и только СУЩЕСТВ (живых/людей своей расы): техника и
+//     дроны-сборщики не лечатся никогда;
+//   • авто-лечение = «КЦ отправляет хила к раненому»: пока у стороны есть КЦ,
+//     цель хилу выдаёт диспетчер у КЦ; без КЦ хил ищет раненого сам;
+//   • АУРА Дома Г4+ — наоборот, ТОЛЬКО В РЕЙДЕ (на своей базе её нет).
+//
+// B1 (перелёт) остаётся как было: центр здания b.x/b.y едет вместе с Домом —
+// точка сбора, отсек, эффекты и дистанции считаются от нового места.
 //
 // Проверяем:
 //   H1  после перелёта Дома b.x/b.y = центр нового места (и в полёте, и после);
 //   H2  отсек выпускается у НОВОГО места, а не у старого центра;
-//   H3  аура Г4+ на базе лечит своих в радиусе нового центра, включая
-//       сборщиков; Г3 не лечит; далеко от Дома не лечит;
-//   H4  на вылазке ауры нет (функция и живой тик) — канон владельца;
-//   H5  сборщик чинит сборщика: приказ repair появляется сам, HP растёт,
-//       приказ игрока (движение) не подменяется;
-//   H6  ПКМ по раненому сборщику — ремонт (как по технике), не «просто идём».
+//   H3  ауры Дома на БАЗЕ нет: Дом-Г6 рядом с раненым ничего не лечит;
+//   H4  аура в РЕЙДЕ работает: Дом-шаттл Г4+ поднимает HP существу рядом,
+//       но НЕ трогает технику/дрона и не лечит чужую расу;
+//   H5  сборщик чинит сборщика (приказ repair, HP растёт), приказ игрока цел;
+//   H6  ПКМ по раненому сборщику = ремонт;
+//   H7  хил лечит существо и НЕ лечит дрон-техника/технику/чужую расу;
+//   H8  авто-лечение: КЦ отправляет свободного хила к раненому; вне радиуса
+//       КЦ и без КЦ (нет базы) — хил не приходит, но действует сам;
+//   H9  приказ игрока у хила не перебивается диспетчером КЦ.
 //
 // Запуск: node scripts/sim_house.mjs
 // ============================================================
@@ -52,6 +56,7 @@ function boot(houseLv = 5) {
   st.map.markBuilding(depot);
   st.bcount.player++;
   st._depot = depot;
+  st._cc = cc;
   ticks(2);
   return st;
 }
@@ -61,15 +66,13 @@ try {
   const st = boot();
   const b = st._depot;
   const oldX = b.x, oldY = b.y;
-  const wx = (b.tx + 8) * TILE, wy = (b.ty + 6) * TILE;
-  game.moveHouse(b, wx, wy);
+  game.moveHouse(b, (b.tx + 8) * TILE, (b.ty + 6) * TILE);
   const expectX = (b.tx + b.w / 2) * TILE, expectY = (b.ty + b.h / 2) * TILE;
   assert(Math.abs(b.x - expectX) <= 1 && Math.abs(b.y - expectY) <= 1,
     `центр не обновился: (${b.x},${b.y}) вместо (${expectX},${expectY})`);
   assert(Math.hypot(b.x - oldX, b.y - oldY) > TILE * 3, 'Дом не сдвинулся');
-  ticks(200); // полёт закончился (3–4 c логики)
-  assert(Math.abs(b.x - expectX) <= 1 && Math.abs(b.y - expectY) <= 1,
-    'после полёта центр уехал');
+  ticks(200);
+  assert(Math.abs(b.x - expectX) <= 1 && Math.abs(b.y - expectY) <= 1, 'после полёта центр уехал');
   assert(!b.flight, 'визуальный полёт не завершился');
   pass(`H1 перелёт Дома: b.x/b.y = новый центр (${Math.round(b.x)},${Math.round(b.y)})`);
 } catch (e) { fail('H1 центр Дома после перелёта', e); }
@@ -95,38 +98,26 @@ try {
   pass(`H2 отсек выходит у нового места (${(dNew / TILE).toFixed(1)} тайла от центра, старое — ${(dOld / TILE).toFixed(1)})`);
 } catch (e) { fail('H2 выпуск отсека после перелёта', e); }
 
-// ---------- H3: аура Дома Г4+ на базе ----------
+// ---------- H3: на БАЗЕ ауры Дома нет ----------
 try {
-  const st = boot(4);
+  const st = boot(8);
   const b = st._depot;
   const marine = U.spawnUnit(st, 'player', 'marine', b.x + TILE, b.y, false);
   marine.hp = 10;
-  const worker = U.spawnUnit(st, 'player', 'worker', b.x - TILE, b.y, false);
+  const worker = U.spawnUnit(st, 'player', 'worker', b.x, b.y + TILE, false);
   worker.hp = 5;
-  ticks(120); // ~2 c логики
-  assert(marine.hp > 10, 'аура не лечит бойца рядом с Домом Г4');
-  assert(worker.hp > 5, 'аура не лечит сборщика рядом с Домом Г4 (владелец: чинит и их)');
+  // Убираем КЦ, чтобы диспетчер авто-лечения не подменил проверку ауры.
+  for (const cc of st.buildings) if (cc.type === 'cc' && cc.side === 'player') cc.dead = true;
+  ticks(150);
+  assert(marine.hp === 10, `на базе аура Дома всё ещё лечит существо (hp ${Math.round(marine.hp)})`);
+  assert(worker.hp === 5, `на базе аура Дома лечит дрона-сборщика (hp ${Math.round(worker.hp)})`);
+  pass('H3 на базе ауры Дома нет: ни существо, ни дрон HP не получают');
+} catch (e) { fail('H3 аура на базе выключена', e); }
 
-  // Далеко от Дома аура не достаёт.
-  const far = U.spawnUnit(st, 'player', 'marine', b.x + TILE * 10, b.y, false);
-  far.hp = 10;
-  ticks(60);
-  assert(far.hp === 10, 'аура лечит за пределами радиуса');
-
-  // Г3 — ауры ещё нет.
-  const st3 = boot(3);
-  const b3 = st3._depot;
-  const m3 = U.spawnUnit(st3, 'player', 'marine', b3.x + TILE, b3.y, false);
-  m3.hp = 10;
-  ticks(120);
-  assert(m3.hp === 10, 'аура работает на Доме Г3 (должна открываться с Г4)');
-  pass('H3 аура Г4+ на базе лечит своих (включая сборщиков), Г3 молчит, радиус соблюдён');
-} catch (e) { fail('H3 аура Дома на базе', e); }
-
-// ---------- H4: на вылазке ауры нет ----------
+// ---------- H4: аура Дома работает В РЕЙДЕ ----------
 try {
   const st = boot(6);
-  const cc = st.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+  const cc = st._cc;
   for (let i = 0; i < 3; i++) U.spawnUnit(st, 'player', 'worker', cc.x + 80 + i * 24, cc.y + 90, false);
   ticks(3);
   const res = game.launchRaidExpedition({ tier: 1, seed: 91, budget: 80, units: { worker: 2 } });
@@ -135,18 +126,33 @@ try {
   const ex = game.state;
   assert(ex.raidMode === 'expedition', 'не вылазка после запуска');
   const house = ex.raidHouse;
+  house.level = 6;
   assert(house && (house.level || 1) >= 4, 'Дом-шаттл ниже Г4 — тест ауры не о чём');
-  const u = ex.units.find((x) => x.side === 'player' && !x.dead && x.kind === 'unit');
-  assert(u, 'на вылазке нет своего юнита');
-  u.x = house.x + TILE; u.y = house.y; u.hp = 10;
-  const beforeFn = B.updateHouseAura(ex, 0.5);
-  assert(beforeFn === 0, 'updateHouseAura не выключена на вылазке (вернула ' + beforeFn + ')');
-  assert(u.hp === 10, 'прямой вызов ауры вылечил на вылазке');
-  // И живой тик тоже не лечит.
-  for (let i = 0; i < 90; i++) { u.x = house.x + TILE; u.y = house.y; game.tick(); if (game.state !== ex) break; }
-  assert(u.hp === 10, 'на вылазке аура Дома всё ещё лечит (hp ' + Math.round(u.hp) + ')');
-  pass('H4 на вылазке ауры нет (ни прямой вызов, ни живой тик), HP не растёт');
-} catch (e) { fail('H4 аура на вылазке выключена', e); }
+
+  const marine = U.spawnUnit(ex, 'player', 'marine', house.x + TILE, house.y, false);
+  marine.hp = 10;
+  const tank = U.spawnUnit(ex, 'player', 'tank', house.x - TILE, house.y, false);
+  tank.hp = 50;
+  const drone = ex.units.find((u) => u.side === 'player' && u.type === 'worker' && !u.dead);
+  drone.hp = 20;
+  const alien = U.spawnUnit(ex, 'player', 'marine', house.x, house.y + TILE, false);
+  alien.faction = 'alien';
+  alien.hp = 10;
+
+  for (let i = 0; i < 90; i++) { // ~3 c логики
+    marine.x = house.x + TILE; marine.y = house.y;
+    tank.x = house.x - TILE; tank.y = house.y;
+    drone.x = house.x; drone.y = house.y + TILE * 0.5;
+    alien.x = house.x; alien.y = house.y + TILE;
+    if (game.state !== ex) break;
+    game.tick();
+  }
+  assert(marine.hp > 10, 'аура Дома в рейде не лечит существо своей расы');
+  assert(tank.hp === 50, `аура Дома в рейде лечит технику (hp ${Math.round(tank.hp)}) — должна только существ`);
+  assert(drone.hp === 20, `аура Дома в рейде лечит дрона-сборщика (hp ${Math.round(drone.hp)}) — его чинят сборщики`);
+  assert(alien.hp === 10, `аура Дома в рейде лечит чужую расу (hp ${Math.round(alien.hp)})`);
+  pass('H4 аура Дома в рейде лечит существо своей расы, технику/дрона/чужую расу — нет');
+} catch (e) { fail('H4 аура в рейде', e); }
 
 // ---------- H5: сборщик чинит сборщика ----------
 try {
@@ -169,7 +175,6 @@ try {
     `ремонт сборщика не идёт: ${Math.round(hpBefore)} → ${Math.round(hurt.hp)}`);
   assert(target === hurt, 'цель ремонта подменилась');
 
-  // Приказ игрока сильнее: отправленный юнит не переключается на ремонт.
   const mover = st.units.find((x) => x.side === 'player' && x.type === 'worker' && x !== medic && !x.dead)
     || U.spawnUnit(st, 'player', 'worker', b.x + TILE * 2, b.y + TILE, false);
   hurt.hp = Math.round(hurt.maxHp * 0.5);
@@ -189,14 +194,133 @@ try {
   st.selection = [helper];
   st.minerals.player = 50000;
   game.issueRMB(hurt.x, hurt.y);
-  assert(helper.order.kind === 'repair',
-    'ПКМ по раненому сборщику не дал ремонт, а ' + helper.order.kind);
+  assert(helper.order.kind === 'repair', 'ПКМ по раненому сборщику не дал ремонт, а ' + helper.order.kind);
   assert(helper.order.target === hurt, 'ремонт назначен не на того сборщика');
   pass('H6 ПКМ по раненому сборщику ставит ремонт (как по технике)');
 } catch (e) { fail('H6 ПКМ-ремонт сборщика', e); }
+
+// ---------- H7: хил лечит только существа своей расы ----------
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  // Убираем стартовых дронов-техников: в этом тесте нас интересует ТОЛЬКО хил.
+  // (Иначе ремонт танка соседом — законная реакция сборщиков, а не протечка лечения.)
+  for (const w of st.units) if (w.side === 'player' && w.cfg.canMine) w.dead = true;
+  const x0 = cc.x + TILE * 5, y0 = cc.y + TILE * 6;
+  const healer = U.spawnUnit(st, 'player', 'medic', x0, y0, false);
+  const marine = U.spawnUnit(st, 'player', 'marine', x0 + 24, y0, false);
+  marine.hp = 20;
+  const drone = U.spawnUnit(st, 'player', 'worker', x0 - 30, y0 + 6, false);
+  drone.hp = 20;
+  const tank = U.spawnUnit(st, 'player', 'tank', x0, y0 + 30, false);
+  tank.hp = 40;
+  const foeRace = U.spawnUnit(st, 'player', 'marine', x0 + 12, y0 + 12, false);
+  foeRace.faction = 'alien';
+  foeRace.hp = 20;
+
+  const okDrone = U.orderHeal(st, healer, drone);
+  const okTank = U.orderHeal(st, healer, tank);
+  const okRace = U.orderHeal(st, healer, foeRace);
+  assert(okDrone === false, 'хил принял приказ лечить дрон-сборщика');
+  assert(okTank === false, 'хил принял приказ лечить технику');
+  assert(okRace === false, 'хил принял приказ лечить чужую расу');
+  assert(U.canBeHealed(marine) === true && U.canBeHealed(drone) === false &&
+    U.canBeHealed(tank) === false, 'классификация «существо/машина» неверна');
+  assert(U.canBeRepaired(drone) === true && U.canBeRepaired(tank) === true &&
+    U.canBeRepaired(marine) === false, 'классификация «ремонт» неверна');
+
+  const accepted = U.orderHeal(st, healer, marine);
+  assert(accepted === true, 'хил не принял приказ лечить марина своей расы');
+  const hp0 = marine.hp;
+  for (let i = 0; i < 90; i++) {
+    game.tick();
+    // КЦ продолжает выпускать дронов-техников из очереди — они законно чинят
+    // танк. Для чистоты теста про лечение убираем их из сцены каждый тик.
+    for (const w of st.units) if (w.side === 'player' && w.cfg.canMine && !w.dead) w.dead = true;
+    assert(!(healer.order.kind === 'heal' && healer.order.target && !U.canBeHealed(healer.order.target)),
+      'хил взял в цель машину (дрон/технику)');
+  }
+  assert(marine.hp > hp0, 'хил не лечит марина своей расы');
+  assert(drone.hp === 20 && tank.hp === 40 && foeRace.hp === 20,
+    `хил вылечил запрещённую цель (drone ${Math.round(drone.hp)}, tank ${Math.round(tank.hp)}, alien ${Math.round(foeRace.hp)})`);
+  pass('H7 хил лечит существо своей расы; дрон, техника и чужая раса — отказ');
+} catch (e) { fail('H7 хил: существа и раса', e); }
+
+// ---------- H8: авто-лечение = КЦ отправляет хила ----------
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  // Раненый марин рядом с КЦ, хил — свободен и тоже рядом.
+  const hurt = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 3, cc.y + TILE * 2, false);
+  hurt.hp = Math.round(hurt.maxHp * 0.35);
+  const healer = U.spawnUnit(st, 'player', 'medic', cc.x + TILE * 5, cc.y + TILE * 3, false);
+  let saw = null;
+  for (let i = 0; i < 200 && !saw; i++) {
+    game.tick();
+    if (healer.order.kind === 'heal' && healer.order.target === hurt) saw = healer.order;
+  }
+  assert(saw, 'КЦ не отправил свободного хила к раненому (авто-лечение не сработало)');
+  assert(saw.auto === true, 'приказ авто-лечения не помечен auto (нельзя отличить от приказа игрока)');
+  const hp0 = hurt.hp;
+  for (let i = 0; i < 90; i++) game.tick();
+  assert(hurt.hp > hp0, `авто-лечение не идёт: ${Math.round(hp0)} → ${Math.round(hurt.hp)}`);
+
+  // Вне радиуса КЦ диспетчер не вмешивается: раненый далеко, хил остаётся свободен.
+  const st2 = boot(3);
+  const cc2 = st2._cc;
+  const far = U.spawnUnit(st2, 'player', 'marine', cc2.x + TILE * 20, cc2.y + TILE * 20, false);
+  far.hp = Math.round(far.maxHp * 0.3);
+  const healer2 = U.spawnUnit(st2, 'player', 'medic', cc2.x + TILE * 22, cc2.y + TILE * 20, false);
+  for (let i = 0; i < 120; i++) game.tick();
+  assert(healer2.order.kind !== 'heal' || healer2.order.target !== far,
+    'диспетчер отправил хила за пределы радиуса КЦ');
+  pass('H8 авто-лечение: КЦ отправляет хила к раненому (auto), за радиусом не вмешивается');
+} catch (e) { fail('H8 авто-лечение от КЦ', e); }
+
+// ---------- H9: приказ игрока у хила не перебивается ----------
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  const hurt = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 2, cc.y + TILE * 2, false);
+  hurt.hp = Math.round(hurt.maxHp * 0.4);
+  const healer = U.spawnUnit(st, 'player', 'medic', cc.x + TILE * 4, cc.y + TILE * 2, false);
+  U.orderMove(st, healer, cc.x + TILE * 12, cc.y + TILE * 10);
+  const orderRef = healer.order;
+  for (let i = 0; i < 30; i++) game.tick();
+  assert(healer.order === orderRef && healer.order.kind === 'move',
+    'диспетчер КЦ перебил приказ игрока: ' + healer.order.kind);
+  pass('H9 приказ игрока у хила сильнее авто-лечения КЦ');
+} catch (e) { fail('H9 приоритет приказа игрока', e); }
+
+// ---------- H10: своя раса лечится, резерв без КЦ работает ----------
+try {
+  // 1) Кхарид-хил лечит кхарид-существо (сторона enemy, обе — alien).
+  const st = boot(3);
+  const cc = st._cc;
+  const x0 = cc.x + TILE * 5, y0 = cc.y + TILE * 7;
+  for (const w of st.units) if (w.side === 'enemy') w.dead = true;
+  const alienHealer = U.spawnUnit(st, 'enemy', 'medic', x0, y0, false);
+  const alienMarine = U.spawnUnit(st, 'enemy', 'marine', x0 + 22, y0, false);
+  assert(alienHealer.faction === 'alien' && alienMarine.faction === 'alien', 'не кхарид-пара');
+  alienMarine.hp = 20;
+  assert(U.orderHeal(st, alienHealer, alienMarine) === true, 'кхарид-хил не принял своё существо');
+  const hp0 = alienMarine.hp;
+  for (let i = 0; i < 60; i++) game.tick();
+  assert(alienMarine.hp > hp0, 'кхарид-хил не лечит своё существо');
+
+  // 2) Без КЦ (миссии без базы) хил всё равно поднимает раненого рядом сам.
+  const st2 = boot(3);
+  for (const b2 of st2.buildings) if (b2.type === 'cc') b2.dead = true;
+  const h2 = U.spawnUnit(st2, 'player', 'medic', st2._depot.x + TILE * 6, st2._depot.y + TILE * 6, false);
+  const m2 = U.spawnUnit(st2, 'player', 'marine', h2.x + 20, h2.y, false);
+  m2.hp = 15;
+  for (let i = 0; i < 120; i++) game.tick();
+  assert(m2.hp > 15, 'без КЦ хил не лечит раненого рядом (резервное поведение сломано)');
+  pass('H10 кхарид лечит кхарид; без КЦ хил работает сам (резерв для миссий без базы)');
+} catch (e) { fail('H10 раса и резерв без КЦ', e); }
 
 if (failures.length) {
   console.log(`\n❌ Дом (P2): провалено ${failures.length} (${failures.join(', ')})`);
   process.exit(1);
 }
-console.log('\n✅ Дом (P2): центр после перелёта, аура только на базе, сборщики чинят сборщиков');
+console.log('\n✅ Дом (P2): перелёт, аура только в рейде, хилы лечат существ, сборщики чинят машины');
