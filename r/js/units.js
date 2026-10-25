@@ -240,6 +240,20 @@ export function orderAttackMove(st, u, x, y) {
   resetStuck(u);
 }
 
+// ВЛАДЕЛЕЦ 25.10: ближайший к (tx,ty) проходимый тайл (спираль радиусом 3).
+function walkableNear(map, tx, ty) {
+  if (map.inBounds(tx, ty) && !map.blockedAt(tx, ty)) return { x: tx, y: ty };
+  for (let r = 1; r <= 3; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (const dy of (Math.abs(dx) === r ? range2(-r, r) : [-r, r])) {
+        if (map.inBounds(tx + dx, ty + dy) && !map.blockedAt(tx + dx, ty + dy)) return { x: tx + dx, y: ty + dy };
+      }
+    }
+  }
+  return { x: tx, y: ty };
+}
+function range2(a, b) { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; }
+
 export function orderGather(st, u, crystal, excludeFail) {
   if (u.garrison) return;
   u.order = { kind: 'gather', target: crystal, phase: u.carrying > 0 ? 'toDrop' : 'toMineral' };
@@ -1341,8 +1355,8 @@ function updateGather(st, u, dt) {
     if (!drop && u.side === 'player' && st.raidDrop) {
       // Рейдовая вылазка без корабля-КЦ: рабочие сдают эрг в трюм челнока на площадке посадки.
       const pad = st.raidDrop;
-      if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 1.6) {
-        st.raidCargo = (st.raidCargo || 0) + u.carrying;
+      if (Math.hypot(u.x - pad.x, u.y - pad.y) <= TILE * 2.2) {
+        st.raidCargo = Math.min(3000, (st.raidCargo || 0) + u.carrying); // кап хранилища Г2
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);
         u.carrying = 0;
@@ -1353,10 +1367,16 @@ function updateGather(st, u, dt) {
         return;
       }
       if (!u.path) {
-        u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, pad.tx, pad.ty, { clearance: clearanceOf(u) });
+        // ВЛАДЕЛЕЦ 25.10: сдаём эрг в ДОМ-шаттл; тайл Дома занят зданием —
+        // путь ведём к ближайшему свободному соседнему тайлу.
+        const near = walkableNear(st.map, pad.tx, pad.ty);
+        u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, near.x, near.y, { clearance: clearanceOf(u) });
         u.pathI = 0;
       }
-      repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, pad.tx, pad.ty, { clearance: clearanceOf(u) }));
+      repathIfBlocked(st, u, () => {
+        const near = walkableNear(st.map, pad.tx, pad.ty);
+        return pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, near.x, near.y, { clearance: clearanceOf(u) });
+      });
       if (followPath(st, u)) u.path = null;
       return;
     }
