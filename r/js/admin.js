@@ -17,12 +17,13 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { t } from './i18n.js?v=10262510';
+import { t } from './i18n.js?v=10262511';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262511';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10262510';
+} from './chests.js?v=10262511';
 
 const PIN_KEY = 'ac_admin_pin';
 const ECON_KEY = 'ac_econ_scale';
@@ -66,6 +67,7 @@ export function openAdmin(game) {
         <div class="adm-tabs" role="tablist">
           <button class="adm-tab is-active" data-tab="econ" type="button">Экономика</button>
           <button class="adm-tab" data-tab="chests" type="button">Капсулы</button>
+          <button class="adm-tab" data-tab="raid" type="button">Оборона</button>
           <button class="adm-tab" data-tab="players" type="button">Игроки</button>
           <button class="adm-tab" data-tab="diag" type="button">Диагностика</button>
         </div>
@@ -114,6 +116,7 @@ export function openAdmin(game) {
     if (!body) return;
     msg('');
     if (tab === 'econ') renderEcon(body);
+    else if (tab === 'raid') renderRaid(body);
     else if (tab === 'chests') renderChests(body);
     else if (tab === 'players') renderPlayers(body);
     else renderDiag(body);
@@ -147,6 +150,62 @@ export function openAdmin(game) {
       try { localStorage.setItem(ECON_KEY, String(Number(range.value))); } catch { /* */ }
       msg('Сохранено: ' + Number(range.value).toFixed(2) + '× — перезагружаю…');
       setTimeout(() => location.reload(), 500);
+    });
+  }
+
+  // ---------- Оборона базы (Э7) ----------
+  function renderRaid(body) {
+    const cfg = loadRaidConfig();
+    body.innerHTML = `
+      <div class="adm-hint">Входящие рейды на домашнюю базу. Пока рейд не отбит, следующий не
+      начинается. «Первый» — через сколько секунд после входа на базу; «Интервал» — пауза после
+      отражения. Масштаб уменьшает/увеличивает волну (0.5 — вдвое легче, 2 — вдвое злее).
+      Учебная тревога в карточке командира работает всегда.</div>
+      <div class="adm-row"><label><input id="adm-rd-on" type="checkbox" ${cfg.enabled ? 'checked' : ''}> входящие рейды включены</label></div>
+      <div class="adm-row"><label>Первый рейд, с</label>
+        <input id="adm-rd-first" type="number" min="30" max="1800" step="10" value="${cfg.first}" style="width:110px">
+      </div>
+      <div class="adm-row"><label>Интервал, с</label>
+        <input id="adm-rd-interval" type="number" min="60" max="1800" step="10" value="${cfg.interval}" style="width:110px">
+      </div>
+      <div class="adm-row"><label>Масштаб волны</label>
+        <input id="adm-rd-scale" type="range" min="0.25" max="3" step="0.05" value="${cfg.scale}">
+        <b id="adm-rd-scale-val">×${Number(cfg.scale).toFixed(2)}</b>
+      </div>
+      <div class="adm-row">
+        <button class="adm-btn" data-preset="240,300,1" type="button">Стандарт</button>
+        <button class="adm-btn" data-preset="120,180,0.6" type="button">Мягко (для школы)</button>
+        <button class="adm-btn" data-preset="60,90,1.6" type="button">Жёстко (проверка обороны)</button>
+        <button class="adm-btn primary" id="adm-rd-save" type="button">Сохранить</button>
+        <button class="adm-btn" id="adm-rd-reset" type="button">Сброс</button>
+      </div>
+      <div class="adm-hint">Новые настройки применяются к СЛЕДУЮЩЕМУ рейду; текущий таймер не перезапускается.</div>`;
+    const first = body.querySelector('#adm-rd-first');
+    const interval = body.querySelector('#adm-rd-interval');
+    const scale = body.querySelector('#adm-rd-scale');
+    const scaleVal = body.querySelector('#adm-rd-scale-val');
+    scale.addEventListener('input', () => { scaleVal.textContent = '×' + Number(scale.value).toFixed(2); });
+    for (const b of body.querySelectorAll('[data-preset]')) {
+      b.addEventListener('click', () => {
+        const [f, i, sc] = b.dataset.preset.split(',');
+        first.value = f; interval.value = i; scale.value = sc;
+        scaleVal.textContent = '×' + Number(sc).toFixed(2);
+        body.querySelector('#adm-rd-on').checked = true;
+      });
+    }
+    body.querySelector('#adm-rd-save').addEventListener('click', () => {
+      const saved = saveRaidConfig({
+        enabled: body.querySelector('#adm-rd-on').checked,
+        first: Number(first.value),
+        interval: Number(interval.value),
+        scale: Number(scale.value),
+      });
+      msg(`Оборона: ${saved.enabled ? 'вкл' : 'выкл'}, первый ${saved.first} с, интервал ${saved.interval} с, волна ×${saved.scale}`);
+    });
+    body.querySelector('#adm-rd-reset').addEventListener('click', () => {
+      resetRaidConfig();
+      renderRaid(body);
+      msg('Настройки обороны сброшены к стандарту');
     });
   }
 
@@ -391,6 +450,16 @@ export function openAdmin(game) {
         <tr><td>Дом</td><td>${house ? `ур. ${house.level || 1} · отсек ${(house.garrison || []).length}` : '—'}</td></tr>
         <tr><td>Вылетов</td><td>${ctx.raids}</td></tr>
         <tr><td>Добыто (сессия)</td><td>${Math.round(ctx.loot)}</td></tr>
+        <tr><td>Оборона базы</td><td>${(() => {
+          const rc = loadRaidConfig();
+          return rc.enabled
+            ? `рейд через ${(st.homeRaid ? Math.max(0, Math.ceil(st.homeRaid.nextAt - st.homeRaid.t)) : rc.first)} с · первый ${rc.first} с · интервал ${rc.interval} с · волна ×${rc.scale}${st.homeRaid && st.homeRaid.active ? ' · РЕЙД ИДЁТ' : ''}`
+            : 'входящие рейды выключены';
+        })()}</td></tr>
+        <tr><td>Посты отрядов</td><td>${(() => {
+          const posts = (st.units || []).filter((u) => u && !u.dead && u.hold).length;
+          return posts ? `${posts} бойц(ов) держат сектор` : '—';
+        })()}</td></tr>
         <tr><td>Капсул в конфиге</td><td>${cfg.chests.length}${cfg.enabled ? '' : ' (выключены)'}</td></tr>
         <tr><td>Забрано капсул</td><td>${claimed.length ? esc(claimed.join(', ')) : '—'}</td></tr>
         <tr><td>Профиль</td><td>${ident ? esc(ident.nick) : 'аноним'}</td></tr>

@@ -167,6 +167,14 @@ export default {
       autoOn: 'Auto-defense is on',
       autoOff: 'Auto-defense is off — manual orders only',
       buffOn: 'Defense: +{p}% damage',
+      logSalvageGone: 'Salvage burned away',
+      salvageToast: 'Salvage: {erg} erg at the landing site — collect in {s} s',
+      salvageGone: 'Salvage burned away — you were too slow',
+      salvageInfo: 'Salvage: {erg} erg · burns in {s} s',
+      postsCount: 'Posts held: {n}',
+      postsNone: 'No posts — squads are free',
+      defenseRetreat: 'All to CC',
+      defenseClear: 'Clear posts',
     },
 
     raid: {
@@ -357,6 +365,13 @@ export default {
       queueCancelLabel: 'Cancel {name} — reclaim {n} minerals',
     },
 
+    squad: {
+      hold: 'Hold sector ({n})',
+      retreat: 'Falling back to CC: {n} units',
+      cleared: 'Posts cleared: {n}',
+      none: 'No orders — nothing to do',
+    },
+
     cmds: {
       shortageHuman: 'Helios short by {n} erg', shortageAlien: 'The brood needs {n} more facets',
       queueFull: 'Queue full', gameOver: 'Battle is over', unavailable: 'Unavailable right now',
@@ -367,6 +382,12 @@ export default {
       profile: 'Profile',
       houseMove: 'Relocate House',
       houseMoveTip: { title: 'Relocate House', lines: 'House L3 moves like a unit: RMB a spot on the map' },
+      holdSector: 'Hold sector',
+      holdSectorTip: { title: 'Hold sector', lines: 'Tap a point on the map — the squad takes the post and engages only within {r} tiles' },
+      retreatCC: 'Fall back to CC',
+      retreatCCTip: { title: 'Fall back to CC', lines: 'The squad takes a ring around the CC and will not chase the enemy' },
+      holdClear: 'Clear posts',
+      holdClearTip: { title: 'Clear posts', lines: 'All squads are free again: normal orders and chasing the enemy' },
       levelN: 'lv. {n}',
       rankN: 'rank {n}',
       rankArrow: ' · {a}→{b}',

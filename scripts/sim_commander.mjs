@@ -17,7 +17,7 @@
 import './harness.mjs';
 
 await import('../r/js/game.js');
-const V = '?v=10262510';
+const V = '?v=10262511';
 const C = await import('../r/js/commander.js' + V);
 const HR = await import('../r/js/home-raid.js' + V);
 const CUI = await import('../r/js/commander-ui.js' + V);
@@ -214,6 +214,38 @@ try {
   assert(!document.body.children.some((c) => c.id === 'commander-overlay'), 'карточка не закрылась');
   pass('C6 карточка: звание МАЙОР, опыт, бонусы, оборона, учебная тревога, закрытие');
 } catch (e) { fail('C6 карточка командира', e); }
+
+// ---------- C8: карточка командира — посты и трофеи (Э7 ч.2) ----------
+try {
+  const st = boot();
+  C.ensureCommander(st).level = 8;
+  st.selection = [];
+  const a = U.spawnUnit(st, 'player', 'marine', 620, 620);
+  const b = U.spawnUnit(st, 'player', 'marine', 650, 620);
+  st.selection = [a, b];
+  // Трофеи на месте высадки: окно 50 секунд.
+  st.homeRaid.salvage = { until: (st.time || 0) + 50, amount: 480, crystals: [], wave: 2 };
+  CUI.openCommander(game);
+  const panel = document.body.children.find((c) => c.id === 'commander-overlay');
+  assert(panel, 'карточка не открылась');
+  const sv = panel.querySelector('#cm-salvage');
+  assert(/480/.test(sv.textContent) && /\d+/.test(sv.textContent), 'в карточке нет трофеев: ' + sv.textContent);
+  assert(sv.classList.contains('is-hot'), 'трофеи не подсвечены');
+
+  // «Все к КЦ» — приказ отряду прямо из карточки.
+  panel.querySelector('#cm-retreat').click();
+  assert(a.hold && a.hold.kind === 'cc' && b.hold.kind === 'cc', 'кнопка «Все к КЦ» не дала приказ');
+  const posts = panel.querySelector('#cm-posts');
+  assert(/2/.test(posts.textContent), 'счётчик постов в карточке неверен: ' + posts.textContent);
+
+  // «Снять посты».
+  panel.querySelector('#cm-clear').click();
+  assert(!a.hold && !b.hold, 'кнопка «Снять посты» не сработала');
+  assert(!/\d/.test(posts.textContent), 'счётчик постов не обнулился: ' + posts.textContent);
+  CUI.closeCommander();
+  st.homeRaid.salvage = null;
+  pass('C8 карточка: трофеи (окно/подсветка), «Все к КЦ», «Снять посты», счётчик постов');
+} catch (e) { fail('C8 посты/трофеи в карточке', e); }
 
 // ---------- C7: движок крутит оборону сам (интеграция в tick) ----------
 try {

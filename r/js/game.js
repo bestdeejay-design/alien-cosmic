@@ -6,40 +6,43 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262510';
+import './storage-ns.js?v=10262511';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262510';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262510';
-import { Fog } from './fog.js?v=10262510';
-import { Sound } from './audio.js?v=10262510';
-import * as U from './units.js?v=10262510';
-import * as B from './buildings.js?v=10262510';
-import { AIController } from './ai.js?v=10262510';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262510';
-import * as ui from './ui.js?v=10262510';
-import { drawRankMark } from './skins.js?v=10262510';
-import { openAdmin } from './admin.js?v=10262510';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262510';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262510';
-import { openCommander } from './commander-ui.js?v=10262510';
-import { showChests } from './chests-ui.js?v=10262510';
-import { createProfile } from './profile.js?v=10262510';
-import { attachInput, updateCamera } from './input.js?v=10262510';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262510';
+} from './config.js?v=10262511';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262511';
+import { Fog } from './fog.js?v=10262511';
+import { Sound } from './audio.js?v=10262511';
+import * as U from './units.js?v=10262511';
+import * as B from './buildings.js?v=10262511';
+import { AIController } from './ai.js?v=10262511';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262511';
+import * as ui from './ui.js?v=10262511';
+import { drawRankMark } from './skins.js?v=10262511';
+import { openAdmin } from './admin.js?v=10262511';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262511';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262511';
+import { openCommander } from './commander-ui.js?v=10262511';
+import {
+  issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits,
+} from './squad.js?v=10262511';
+import { showChests } from './chests-ui.js?v=10262511';
+import { createProfile } from './profile.js?v=10262511';
+import { attachInput, updateCamera } from './input.js?v=10262511';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262511';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262510';
+} from './economy.js?v=10262511';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10262510';
+} from './raid.js?v=10262511';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -421,7 +424,12 @@ export class Game {
           ? t('ui.commander.repelledToastXp', { erg: ev.reward, n: ev.level })
           : t('ui.commander.repelledToast', { erg: ev.reward }), 'info', 3600);
         this.sound.win();
+        if (ev.salvage) {
+          ui.toast(t('ui.commander.salvageToast', { erg: ev.salvage, s: 90 }), 'warn', 5000);
+        }
       }
+    } else if (ev.type === 'salvageGone') {
+      ui.toast(t('ui.commander.salvageGone'), 'warn', 3200);
     }
   }
 
@@ -1151,6 +1159,41 @@ export class Game {
           });
         }
         cmds.push({ code: 'KeyS', icon: 'stop', label: t('ui.cmds.stop'), on: () => this.hooks.stopSelected() });
+        // Э7: приказы командира отряду — пост «держать сектор» и отход к КЦ.
+        const squadSel = combatUnits(st, units);
+        if (squadSel.length) {
+          cmds.push({
+            code: 'KeyJ', icon: 'hold', label: t('ui.cmds.holdSector'),
+            tip: { title: t('ui.cmds.holdSector'), lines: t('ui.cmds.holdSectorTip') },
+            selected: !!st.holdPick,
+            on: () => {
+              st.holdPick = !st.holdPick;
+              this.canvas.style.cursor = st.holdPick ? 'crosshair' : '';
+              this.sound.click();
+            },
+          });
+          cmds.push({
+            code: 'KeyL', icon: 'home', label: t('ui.cmds.retreatCC'),
+            tip: { title: t('ui.cmds.retreatCC'), lines: t('ui.cmds.retreatCCTip') },
+            enabled: () => st.buildings.some((b) => !b.dead && b.side === 'player' && b.type === 'cc'),
+            on: () => {
+              const n = issueRetreatToCC(st, squadSel);
+              ui.toast(t('ui.squad.retreat', { n }), 'info');
+              this.sound.ack();
+            },
+          });
+          if (squadSel.some((u) => u.hold)) {
+            cmds.push({
+              code: 'KeyN', icon: 'stop', label: t('ui.cmds.holdClear'),
+              tip: { title: t('ui.cmds.holdClear'), lines: t('ui.cmds.holdClearTip') },
+              on: () => {
+                const n = clearHold(st, squadSel);
+                ui.toast(t('ui.squad.cleared', { n }), 'info');
+                this.sound.click();
+              },
+            });
+          }
+        }
       }
     }
     return cmds;
@@ -1165,6 +1208,15 @@ export class Game {
     const st = () => this.state;
     return {
       centerCamera: (wx, wy) => this.centerCamera(wx, wy),
+
+      // Э7: клик в режиме «Держать сектор» — ставим пост выделенным бойцам.
+      issueHold: (wx, wy) => {
+        const s = st();
+        const n = issueHold(s, wx, wy, s.selection);
+        if (n) ui.toast(t('ui.squad.hold', { n }), 'info');
+        else ui.toast(t('ui.squad.none'), 'warn');
+        this.sound.ack();
+      },
 
       issueRMB: (wx, wy) => this.issueRMB(wx, wy),
 
@@ -1656,6 +1708,8 @@ export class Game {
       st._hudT = (st._hudT || 0) + LOGIC_DT;
       if (st._hudT >= 0.5) { st._hudT = 0; ui.setObjective(this.objectiveText()); }
     }
+    // Э7: посты отрядов («держать сектор», «к КЦ») — поправляем раз в 0.35 с.
+    updateSquad(st, LOGIC_DT);
     U.updateProjectiles(st, LOGIC_DT);
     U.updateEffects(st, LOGIC_DT);
     if (!this.mission.noEnemyBase) st.ai.update(LOGIC_DT, st);
@@ -2024,6 +2078,8 @@ export class Game {
       }
     }
     drawRaidZone(ctx, st, cam, inView);
+    // Э7: кольца постов отрядов (видно, что отряд держит сектор).
+    drawSquadZones(ctx, st, cam, inView);
 
     // Юниты с интерполяцией между логическими тиками.
     for (const u of st.units) {

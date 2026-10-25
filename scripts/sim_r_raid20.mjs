@@ -24,7 +24,7 @@ await import('../r/js/game.js');
 // ВАЖНО: тот же суффикс ?v=, что и внутри движка, иначе Node создаст
 // ВТОРЫЕ экземпляры модулей (свой `els` в ui, свой стейт) — классическая
 // ловушка кэш-бастинга (см. коммит «штамп в путях»).
-const V = '?v=10262510';
+const V = '?v=10262511';
 const cfg = await import('../r/js/config.js' + V);
 const E = await import('../r/js/economy.js' + V);
 const U = await import('../r/js/units.js' + V);

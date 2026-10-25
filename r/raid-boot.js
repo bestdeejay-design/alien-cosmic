@@ -66,7 +66,7 @@ if (!game) {
       // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
       // карточки при входе (не кнопка в топбаре, а карточки на экране).
       try {
-        const chestsUi = await import('./js/chests-ui.js?v=10262510');
+        const chestsUi = await import('./js/chests-ui.js?v=10262511');
         chestsUi.registerChestCommand(game);
         await chestsUi.hydrateFromServer(game);
         chestsUi.maybeShowOnEntry(game);

@@ -7,13 +7,13 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10262510';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262510';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262510';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262510';
-import { crystalAt, unitCapOf } from './units.js?v=10262510'; // F.1: тултип кристалла + вместимость отсека
-import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262510';
-import { levelColor, levelStyle } from './skins.js?v=10262510';
+} from './config.js?v=10262511';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262511';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262511';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262511';
+import { crystalAt, unitCapOf } from './units.js?v=10262511'; // F.1: тултип кристалла + вместимость отсека
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262511';
+import { levelColor, levelStyle } from './skins.js?v=10262511';
 
 const $ = (id) => document.getElementById(id);
 
@@ -303,6 +303,24 @@ export function icon(type) {
       g.moveTo(-9, 0); g.lineTo(-4, 0); g.moveTo(4, 0); g.lineTo(9, 0);
       g.stroke();
       g.fillStyle = red; g.beginPath(); g.arc(0, 0, 1.8, 0, Math.PI * 2); g.fill();
+      break;
+    case 'hold': // Э7: «держать сектор» — щит с чертой поста.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(0, -9); g.lineTo(7, -5); g.lineTo(7, 3); g.lineTo(0, 9); g.lineTo(-7, 3); g.lineTo(-7, -5);
+      g.closePath(); g.stroke();
+      g.fillStyle = amber;
+      g.fillRect(-3.5, -1, 7, 2.2);
+      break;
+    case 'home': // Э7: «отойти к КЦ» — стрелка к базе.
+      g.strokeStyle = cyan; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(-8, 8); g.lineTo(4, -4); g.stroke();
+      g.fillStyle = amber;
+      g.beginPath(); g.moveTo(8, -8); g.lineTo(1, -6); g.lineTo(6, -1); g.closePath(); g.fill();
+      g.fillStyle = dark;
+      g.fillRect(-9, 5, 8, 7);
+      g.fillStyle = cyan;
+      g.fillRect(-9, 5, 8, 2);
       break;
     case 'officer': // Э7: командир — фуражка с козырьком и звезда звания.
       g.fillStyle = amber;

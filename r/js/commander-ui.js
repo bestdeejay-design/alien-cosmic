@@ -12,11 +12,12 @@
 //   • кнопка «Учебная тревога» — малая волна сразу, чтобы проверить оборону;
 //   • журнал последних событий.
 // ============================================================
-import { t } from './i18n.js?v=10262510';
+import { t } from './i18n.js?v=10262511';
 import {
   ensureCommander, rankOf, xpNeed, bonuses, commanderTitle, MAX_COMMANDER_LEVEL,
-} from './commander.js?v=10262510';
-import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10262510';
+} from './commander.js?v=10262511';
+import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10262511';
+import { issueRetreatToCC, clearHold, squadHoldCount } from './squad.js?v=10262511';
 
 let panel = null;
 let timer = null;
@@ -66,6 +67,12 @@ export function openCommander(game) {
           <div class="cm-h">${esc(t('ui.commander.defenseTitle'))}</div>
           <div class="cm-status" id="cm-def">—</div>
           <label class="cm-toggle"><input type="checkbox" id="cm-auto" ${c.autoDefense ? 'checked' : ''}> ${esc(t('ui.commander.autoDefense'))}</label>
+          <div class="cm-status cm-posts" id="cm-posts">—</div>
+          <div class="cm-row2">
+            <button class="cm-mini" id="cm-retreat" type="button">${esc(t('ui.commander.defenseRetreat'))}</button>
+            <button class="cm-mini" id="cm-clear" type="button">${esc(t('ui.commander.defenseClear'))}</button>
+          </div>
+          <div class="cm-salvage" id="cm-salvage"></div>
           <div class="cm-hint">${esc(t('ui.commander.trainingHint'))}</div>
           <button class="big-btn" id="cm-training" type="button">${esc(t('ui.commander.training'))}</button>
           <div class="cm-h">${esc(t('ui.commander.logTitle'))}</div>
@@ -84,6 +91,17 @@ export function openCommander(game) {
     const cc = ensureCommander(game.state);
     cc.autoDefense = !!e.target.checked;
     game.ui.toast(cc.autoDefense ? t('ui.commander.autoOn') : t('ui.commander.autoOff'), 'info');
+  });
+  $('#cm-retreat').addEventListener('click', () => {
+    const n = issueRetreatToCC(game.state);
+    game.ui.toast(n ? t('ui.squad.retreat', { n }) : t('ui.squad.none'), n ? 'info' : 'warn');
+    if (n) game.sound.ack();
+    refresh(game);
+  });
+  $('#cm-clear').addEventListener('click', () => {
+    const n = clearHold(game.state);
+    game.ui.toast(n ? t('ui.squad.cleared', { n }) : t('ui.squad.none'), n ? 'info' : 'warn');
+    refresh(game);
   });
   $('#cm-training').addEventListener('click', () => {
     const res = spawnHomeWave(game.state, { training: true });
@@ -143,6 +161,17 @@ function refresh(game) {
       ? t('ui.commander.raidActive', { n: rs.alive })
       : t('ui.commander.nextRaid', { s: rs.countdown });
     defEl.className = 'cm-status' + (rs.active ? ' is-hot' : '');
+  }
+  const postsEl = $('#cm-posts');
+  if (postsEl) {
+    const posts = squadHoldCount(st);
+    postsEl.textContent = posts ? t('ui.commander.postsCount', { n: posts }) : t('ui.commander.postsNone');
+    postsEl.classList.toggle('is-hot', posts > 0);
+  }
+  const svEl = $('#cm-salvage');
+  if (svEl) {
+    svEl.textContent = rs.salvage ? t('ui.commander.salvageInfo', { erg: rs.salvage.amount, s: rs.salvage.left }) : '';
+    svEl.classList.toggle('is-hot', !!rs.salvage);
   }
   const logEl = $('#cm-log');
   if (logEl) {
