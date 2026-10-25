@@ -252,6 +252,11 @@ try {
   U.orderGather(ex, w, c);
   const pile = ex.map.crystals.reduce((a, cr) => a + (cr.dead ? 0 : cr.amount), 0);
   assert(pile > 0 && pile < 3000, 'сумма месторождения тира вне ожиданий: ' + pile);
+  // Дом-шаттл в вылазке: команда эвакуации есть, грейда нет (грейд — только на базе).
+  selectOnly(ex.raidHouse);
+  paint();
+  assert(findCmd('KeyE'), 'у Дома-шаттла нет команды эвакуации в вылазке');
+  assert(!findCmd('KeyR'), 'на карте вылазки появилась кнопка грейда');
   // Дом-Г4 лечит отряд в радиусе ауры (канон владельца).
   const hurt = ex.units.find((u) => u.type === 'worker' && u.side === 'player' && !u.dead);
   ex.raidHouse.level = 4;
