@@ -8,13 +8,13 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
-} from './config.js?v=10262515';
-import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262515';
+} from './config.js?v=10262516';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262516';
 import {
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262515';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262515';
-import { t, message } from './i18n.js?v=10262515';
-import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262515';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262516';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262516';
+import { t, message } from './i18n.js?v=10262516';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262516';
 
 let nextId = 1;
 
@@ -436,7 +436,8 @@ export function orderRepairSpread(st, repairers, x, y, primary) {
     rest.push([distToRectPx(x, y, b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE), b]);
   }
   for (const v of st.units) {
-    if (v.kind !== 'unit' || v.side !== side || v.dead || !v.cfg.vehicle || v.hp >= v.maxHp || seen.has(v.id)) continue;
+    // B3: в волне ремонта рядом — техника И раненые сборщики.
+    if (v.kind !== 'unit' || v.side !== side || v.dead || !canBeRepaired(v) || v.hp >= v.maxHp || seen.has(v.id)) continue;
     rest.push([Math.hypot(v.x - x, v.y - y), v]);
   }
   rest.sort((a, b) => a[0] - b[0]);
@@ -746,7 +747,8 @@ function updateAutoRepair(st, dt) {
       if (near(b.x, b.y)) targets.push(b);
     }
     for (const u of st.units) {
-      if (u.dead || u.garrison || u.side !== side || !u.cfg.vehicle || u.hp >= u.maxHp) continue;
+      // B3: диспетчер авторемонта тоже видит раненых сборщиков, не только технику.
+      if (u.dead || u.garrison || u.side !== side || !canBeRepaired(u) || u.hp >= u.maxHp) continue;
       if (near(u.x, u.y)) targets.push(u);
     }
     if (!targets.length) continue;
@@ -848,8 +850,11 @@ function updateOrderByKind(st, u, dt, grid) {
                 Math.hypot(veh.x - cc.x, veh.y - cc.y) <= AUTOREPAIR_RADIUS);
             if (coveredByDispatcher) break;
             if (canStartAutoRepair(st, u.side, veh)) {
+              // B3: цель ремонта — сборщик, поэтому сам раненый тоже «свободный
+              // рабочий». Без исключения он оказывался «ближайшим» к самому
+              // себе, ремонт не начинался, и никто из соседей не подхватывал.
               const nearestIdle = st.units.filter((worker) => !worker.dead && !worker.garrison &&
-                worker.side === u.side && worker.cfg.canRepair && worker.order.kind === 'idle')
+                worker !== veh && worker.side === u.side && worker.cfg.canRepair && worker.order.kind === 'idle')
                 .sort((a, b) => Math.hypot(a.x - veh.x, a.y - veh.y) -
                   Math.hypot(b.x - veh.x, b.y - veh.y) || a.id - b.id)[0];
               if (nearestIdle === u) orderRepair(st, u, veh, true);
@@ -1036,11 +1041,19 @@ export function findUnfinishedSite(st, u) {
   return best;
 }
 
+// B3 (аудит владельца 26.10.2026, ответ 2: «да, сами, это их базовая функция»):
+// цели ремонта — не только техника, но и СБОРЩИКИ. Раньше фильтр требовал
+// cfg.vehicle, поэтому покалеченный техник так и стоял битым: своих чинить
+// было некому. Чиним только пострадавших, не себя и не сидящих в укрытии.
+export function canBeRepaired(a) {
+  return !!(a && a.kind === 'unit' && (a.cfg.vehicle || a.cfg.canMine));
+}
+
 function findRepairTarget(st, u) {
   let best = null, bd = Infinity;
   for (const a of st.units) {
     if (a.dead || a.garrison || a === u || a.side !== u.side) continue;
-    if (!a.cfg.vehicle || a.hp >= a.maxHp) continue;
+    if (!canBeRepaired(a) || a.hp >= a.maxHp) continue;
     const d = Math.hypot(a.x - u.x, a.y - u.y);
     if (d < bd && d <= u.cfg.sightTiles * TILE) { bd = d; best = a; }
   }
