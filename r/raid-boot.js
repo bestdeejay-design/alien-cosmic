@@ -63,6 +63,14 @@ if (!game) {
     }
     if (!game.started) {
       game.startRaidHome('human');
+      // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
+      // карточки при входе (не кнопка в топбаре, а карточки на экране).
+      try {
+        const chestsUi = await import('./js/chests-ui.js?v=10262510');
+        chestsUi.registerChestCommand(game);
+        await chestsUi.hydrateFromServer(game);
+        chestsUi.maybeShowOnEntry(game);
+      } catch (e) { console.warn('[r] капсулы не поднялись', e); }
       window.dispatchEvent(new Event('ac-vv-check'));
       console.log('[r] полигон: рейд-хоум запущен; запуск вылазки — выделить корабль-КЦ → «Запуск» (E), эвакуация — клик по кольцу посадки');
     }

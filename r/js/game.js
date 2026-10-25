@@ -22,6 +22,8 @@ import { AIController } from './ai.js?v=10262510';
 import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262510';
 import * as ui from './ui.js?v=10262510';
 import { drawRankMark } from './skins.js?v=10262510';
+import { openAdmin } from './admin.js?v=10262510';
+import { showChests } from './chests-ui.js?v=10262510';
 import { createProfile } from './profile.js?v=10262510';
 import { attachInput, updateCamera } from './input.js?v=10262510';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262510';
@@ -422,6 +424,27 @@ export class Game {
       raidSeq,
       validation,
     };
+  }
+
+  // Э6: награда-юнит из капсулы. Ставим рядом с КЦ на свободный тайл,
+  // не ломая население: если места нет — юнит всё равно появится (подарок).
+  spawnRewardUnit(st, type, tx, ty) {
+    if (!st || !UNITS[type]) return null;
+    const cc = (st.buildings || []).find((b) => !b.dead && b.done && b.side === 'player' && b.type === 'cc');
+    const cx = cc ? cc.tx + 2 : (tx | 0);
+    const cy = cc ? cc.ty + 4 : (ty | 0);
+    for (let r = 0; r < 8; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const gx = cx + dx, gy = cy + dy;
+          if (!st.map.inBounds(gx, gy) || st.map.blockedAt(gx, gy)) continue;
+          const u = U.spawnUnit(st, 'player', type, (gx + 0.5) * TILE, (gy + 0.5) * TILE, type === 'worker');
+          if (u) return u;
+        }
+      }
+    }
+    return null;
   }
 
   // Э4: «Собрать всех» — все свободные юниты базы идут в отсек Дома.
@@ -942,6 +965,20 @@ export class Game {
           code: 'KeyG', icon: 'rally', label: t('ui.cmds.rally'),
           tip: { title: t('ui.cmds.rally'), lines: t('ui.cmds.rallyTip') },
           on: () => this.hooks.orderMassRally(b),
+        });
+      }
+      // Э6: капсулы снабжения и панель админа — тоже команды КЦ
+      // (канон владельца: управление живёт в строениях, а не в топбаре).
+      if (b.done && b.type === 'cc') {
+        cmds.push({
+          code: 'KeyC', icon: 'grade', label: t('ui.cmds.capsules'),
+          tip: { title: t('ui.cmds.capsules'), lines: t('ui.cmds.capsulesTip') },
+          on: () => showChests(this),
+        });
+        cmds.push({
+          code: 'KeyO', icon: 'recon', label: t('ui.cmds.admin'),
+          tip: { title: t('ui.cmds.admin'), lines: t('ui.cmds.adminTip') },
+          on: () => openAdmin(this),
         });
       }
       // ВЛАДЕЛЕЦ 25.10: профиль/сохранения — команда КЦ (не в хедере).

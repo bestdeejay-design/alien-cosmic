@@ -350,6 +350,10 @@ export default {
       bayEmpty: 'No free units on the base to load',
       bayHomeOnly: 'Loading works only on your own base',
       bayCard: 'Bay: {n}/{cap} · hold {cargo} · move {speed}',
+      capsules: 'Capsules',
+      capsulesTip: ['Supply capsules: what is available and why it is locked', 'The daily capsule resets once a day'],
+      admin: 'Admin',
+      adminTip: ['Stand panel: price scale, capsules, leaderboard, diagnostics', 'Default PIN is 1234'],
       lockMark: ' · locked',
     },
 

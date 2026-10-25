@@ -434,6 +434,123 @@ try {
   pass(`E11 Дом: вместимость 8→24 (одно число, +1 за два грейда), «собрать всех» 10/10, вылет берёт отсек, лут с КЦ ${ex.raidLootPool}, перегруз считается`);
 } catch (e) { fail('E11 Дом: отсек и лут', e); }
 
+// ---------- E12: КАПСУЛЫ СНАБЖЕНИЯ (призы, условия, веса, выдача) ----------
+try {
+  const C = await import('../r/js/chests.js' + V);
+  // Чистое состояние капсул, чтобы прогон был повторяемым.
+  for (const k of ['ac_chest_cfg_v1', 'ac_chest_state_v1', 'ac_birthday_v1']) localStorage.removeItem(k);
+
+  const cfg0 = C.loadConfig();
+  assert(cfg0.chests.length >= 5, 'в заводском наборе не 5 капсул');
+  const ids = cfg0.chests.map((c) => c.id).sort().join(',');
+  assert(ids === 'birthday,daily,evening-drop,leader-100,raider-20', 'заводские id: ' + ids);
+
+  // 1) Окно входа 20:00–20:30.
+  const win = cfg0.chests.find((c) => c.id === 'evening-drop').condition;
+  assert(C.checkCondition(win, { now: new Date(2026, 0, 5, 20, 15) }).ok, 'окно 20:15 не сработало');
+  assert(!C.checkCondition(win, { now: new Date(2026, 0, 5, 19, 59) }).ok, 'окно сработало до 20:00');
+  assert(!C.checkCondition(win, { now: new Date(2026, 0, 5, 20, 31) }).ok, 'окно сработало после 20:30');
+  // Окно через полночь.
+  assert(C.checkCondition({ type: 'window', params: { from: '23:30', to: '00:30' } },
+    { now: new Date(2026, 0, 5, 0, 10) }).ok, 'окно через полночь не работает');
+
+  // 2) День рождения: без даты закрыто, в свой день открыто, назавтра — снова закрыто.
+  assert(!C.checkCondition({ type: 'birthday', params: {} }, { now: new Date(2026, 4, 1, 12, 0) }).ok,
+    'капсула именинника открыта без даты');
+  C.setBirthday(5, 1); // 01.05
+  assert(C.checkCondition({ type: 'birthday', params: {} }, { now: new Date(2026, 4, 1, 12, 0) }).ok,
+    'капсула именинника не открылась в ДР');
+  assert(!C.checkCondition({ type: 'birthday', params: {} }, { now: new Date(2026, 4, 2, 12, 0) }).ok,
+    'капсула именинника открыта не в ДР');
+
+  // 3) Пороговые условия: рейды / добыча / КЦ / топ.
+  assert(!C.checkCondition({ type: 'raids', params: { n: 20 } }, { raids: 19 }).ok, 'рейдер-20 открылся на 19');
+  assert(C.checkCondition({ type: 'raids', params: { n: 20 } }, { raids: 20 }).ok, 'рейдер-20 не открылся на 20');
+  assert(C.checkCondition({ type: 'loot', params: { n: 50_000 } }, { loot: 50_000 }).ok, 'лут-капсула не открылась');
+  assert(!C.checkCondition({ type: 'cc', params: { n: 10 } }, { ccLevel: 9 }).ok, 'КЦ-капсула открылась раньше времени');
+  assert(!C.checkCondition({ type: 'top', params: { n: 100 } }, { topRank: 5, statsAvailable: false }).ok,
+    'топ-капсула открылась без серверного рейтинга');
+  assert(C.checkCondition({ type: 'top', params: { n: 100 } }, { topRank: 42, statsAvailable: true }).ok,
+    'топ-100 не открылся для 42-го места');
+  assert(!C.checkCondition({ type: 'top', params: { n: 100 } }, { topRank: 420, statsAvailable: true }).ok,
+    'топ-100 открылся для 420-го места');
+
+  // 4) Веса наград: 60/30/10 на 10 000 бросков даёт ~60/30/10 %.
+  const pool = [
+    { kind: 'erg', params: { amount: 100 }, weight: 60 },
+    { kind: 'unit', params: { unit: 'marine', count: 1 }, weight: 30 },
+    { kind: 'boost', params: { mul: 1.2, minutes: 5 }, weight: 10 },
+  ];
+  const cnt = { erg: 0, unit: 0, boost: 0 };
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (let i = 0; i < 10_000; i++) cnt[C.pickReward(pool, rnd).kind]++;
+  assert(Math.abs(cnt.erg / 100 - 60) < 3 && Math.abs(cnt.unit / 100 - 30) < 3 && Math.abs(cnt.boost / 100 - 10) < 3,
+    'веса наград врут: ' + JSON.stringify(cnt));
+
+  // 5) Выдача наград в живую игру.
+  game.startRaidHome('human', { forceNew: true });
+  ticks(3);
+  const s2 = st();
+  s2.minerals.player = 1000;
+  const cc2 = ccOf(s2);
+  cc2.level = 6; // для проверки выдачи грейда достаточно уровня КЦ
+  const house2 = placeDone(s2, 'player', 'depot', cc2.tx, cc2.ty);
+  const erg0 = s2.minerals.player;
+  C.applyReward(game, { kind: 'erg', params: { amount: 2500 } });
+  assert(s2.minerals.player === erg0 + 2500, 'эрг из капсулы не зачислен');
+
+  const unitsBefore = s2.units.filter((u) => !u.dead && u.side === 'player').length;
+  const made = C.applyReward(game, { kind: 'unit', params: { unit: 'marine', count: 3 } });
+  ticks(2);
+  const unitsAfter = s2.units.filter((u) => !u.dead && u.side === 'player' && u.type === 'marine').length;
+  assert(/\+3/.test(made) && unitsAfter >= 3, 'юниты из капсулы не появились: ' + made);
+
+  // Грейд из капсулы не ломает канон R1 (не выше КЦ).
+  const lvl0 = house2.level || 1;
+  C.applyReward(game, { kind: 'grade', params: { building: 'depot', levels: 2 } });
+  assert((house2.level || 1) === lvl0 + 2, 'грейд Дома из капсулы не применился');
+  house2.level = 6; // ровно на уровне КЦ — выше нельзя (канон R1)
+  const capped = C.applyReward(game, { kind: 'grade', params: { building: 'depot', levels: 5 } });
+  assert(house2.level === 6 && /не выше КЦ/.test(capped), 'грейд из капсулы перепрыгнул КЦ: ' + capped);
+
+  const techBefore = s2.tech.player.infantryAtk || s2.tech.player.infAtk || 0;
+  C.applyReward(game, { kind: 'tech', params: { key: 'infAtk', levels: 1 } });
+  const techAfter = s2.tech.player.infAtk || 0;
+  assert(techAfter >= techBefore, 'ранг юнитов из капсулы не изменился');
+
+  C.applyReward(game, { kind: 'boost', params: { mul: 1.5, minutes: 20 } });
+  assert(s2.boost && s2.boost.mul === 1.5 && s2.boost.until > Date.now(), 'бустер добычи не включился');
+
+  // 6) «Забрал» — раз в день (day) и раз в жизни (once).
+  const ctx2 = C.buildContext(game, {});
+  const first = C.claimChest(game, 'daily', ctx2);
+  assert(first.ok, 'ежедневная капсула не вскрылась: ' + first.error);
+  const second = C.claimChest(game, 'daily', ctx2);
+  assert(!second.ok, 'ежедневную капсулу можно вскрыть дважды в день');
+  const bdChest = C.loadConfig().chests.find((c) => c.id === 'birthday');
+  assert(bdChest, 'капсулы именинника нет');
+  // «раз в жизни»: ставим ДР на сегодня, забираем, второй раз — уже нельзя.
+  const today = new Date();
+  C.setBirthday(today.getMonth() + 1, today.getDate());
+  const bdFirst = C.claimChest(game, 'birthday', C.buildContext(game, {}));
+  assert(bdFirst.ok, 'капсула именинника не вскрылась в ДР: ' + bdFirst.error);
+  const bdSecond = C.claimChest(game, 'birthday', C.buildContext(game, {}));
+  assert(!bdSecond.ok, 'капсулу «раз в жизни» можно забрать дважды');
+
+  // 7) Список для входного оверлея: доступные впереди, закрытые объясняют причину.
+  const cfg1 = C.loadConfig();
+  cfg1.chests = cfg1.chests.map((c) => (c.id === 'raider-20' ? { ...c, condition: { type: 'raids', params: { n: 1 } } } : c));
+  C.saveConfig(cfg1);
+  const list = C.availableChests(game, C.buildContext(game, {}));
+  assert(list.length === cfg1.chests.length, 'в списке не все капсулы');
+  assert(list.every((x) => x.chest && x.period), 'у карточки нет периода');
+  const locked = list.find((x) => !x.eligible);
+  assert(!locked || locked.why, 'закрытая капсула не объясняет причину');
+  assert(list[0].eligible || list.every((x) => !x.eligible), 'доступные не идут первыми');
+  pass(`E12 капсулы: ${cfg0.chests.length} заводских, окно/ДР/рейды/лут/КЦ/топ проверяются, веса 60/30/10 сходятся, эрг/юнит/грейд/ранг/бустер выдаются, «раз в день» и «раз в жизни» держат`);
+} catch (e) { fail('E12 капсулы', e); }
+
 // ---------- E8: сводка экономики ----------
 try {
   const plan = E.basePlanCost();

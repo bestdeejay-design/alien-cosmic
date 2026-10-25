@@ -13,6 +13,7 @@
 //   [5] localStorage-изоляция: полигон пишет terranrts.* ТОЛЬКО в acr.*,
 //       а прогресс S1 при этом остаётся нетронутым (живой прогон).
 //   [6] В r/index.html подключён ровно один движок — r/js/game.js.
+//   [7] Капсулы снабжения (Э6): headless-прогон sim_chests_ui.mjs.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -55,7 +56,9 @@ const insideR = (abs) => abs === R || abs.startsWith(R + path.sep);
 for (const rel of allRel) {
   const file = path.join(R, rel);
   const src = readFileSync(file, 'utf8');
-  const re = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g;
+  // Не ловим текст подсказок вида {"from":"20:00"} — только настоящий
+  // импорт: ключевое слово не внутри кавычек/идентификатора.
+  const re = /(?<![\w'"$])(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g;
   let m;
   while ((m = re.exec(src))) {
     const spec = m[1];
@@ -140,5 +143,14 @@ console.log('RESULT ' + JSON.stringify({ s1p, s1q, rp, rq }));
   bad('прогон изоляции хранилища: ' + String((e.stderr || e.message)).split('\n')[0]);
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1');
+// ---------- [7] капсулы снабжения: UI-прогон (Э6) ----------
+console.log('\n[7] Капсулы и панель админа (headless UI):');
+try {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_chests_ui.mjs')], { stdio: 'pipe' });
+  ok('карточки на входе, вскрытие, панель админа и конструктор капсул работают');
+} catch (e) {
+  bad('sim_chests_ui упал:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы зелёные');
 process.exit(failed ? 1 : 0);

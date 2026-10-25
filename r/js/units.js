@@ -1414,7 +1414,9 @@ function updateGather(st, u, dt) {
     if (!drop) { u.moving = false; return; } // базы нет — стоим с грузом
     const rx = drop.tx * TILE, ry = drop.ty * TILE, rw = drop.w * TILE, rh = drop.h * TILE;
     if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 0.9) {
-      st.minerals[u.side] += u.carrying;
+      // Э6: бустер добычи из капсулы (×mul на время) — применяем на сдаче.
+      const boost = st.boost && st.boost.until > Date.now() ? st.boost.mul : 1;
+      st.minerals[u.side] += Math.round(u.carrying * boost);
       if (u.side === 'player') {
         st.stats.mined += u.carrying;
         addFloat(st, u.x, u.y - 14, '+' + u.carrying, COLORS.mineral);

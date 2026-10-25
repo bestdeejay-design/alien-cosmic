@@ -514,7 +514,7 @@ body.panel-left #minimap-box, body.panel-right #minimap-box { border-bottom-left
   box-shadow: 0 0 0 4px rgba(118, 227, 215, .16);
   z-index: 2;
 }
-.cmd.blocked-feedback, .chip.blocked-feedback { animation: blocked-feedback .28s ease-out; }
+.cmd.blocked-feedback, .chip.blocked-feedback, .chest-card.blocked-feedback { animation: blocked-feedback .28s ease-out; }
 @keyframes blocked-feedback {
   0% { border-color: rgba(243, 197, 121, .9); box-shadow: 0 0 0 0 rgba(243, 197, 121, .22); }
   100% { border-color: rgba(243, 197, 121, .28); box-shadow: 0 0 0 5px rgba(243, 197, 121, 0); }
@@ -1422,3 +1422,83 @@ body.menu-active #zoom-controls { display: none; }
     box-shadow: inset 0 0 0 1px rgba(118, 227, 215, .18);
   }
 }
+
+
+/* ============================================================
+   Э6: КАПСУЛЫ СНАБЖЕНИЯ (chests-ui.js) — карточки входа и вскрытие
+   ============================================================ */
+.chest-box { max-width: 780px; }
+.chest-head h1 { letter-spacing: .08em; }
+.chest-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 10px; margin: 12px 0 max(12px, env(safe-area-inset-bottom));
+  max-height: 58vh; overflow-y: auto; padding: 2px;
+}
+.chest-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 14px 10px 10px; border-radius: 12px; cursor: pointer; text-align: center;
+  background: linear-gradient(180deg, rgba(18,34,40,.96), rgba(10,18,22,.96));
+  border: 1px solid rgba(118,227,215,.22); color: var(--text, #dfe8ea);
+  min-height: 176px; transition: transform .12s ease, border-color .12s ease;
+}
+.chest-card.is-ready { border-color: var(--rar, #9fe8de); box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 6px 22px -12px var(--rar, #9fe8de); }
+.chest-card.is-ready:hover { transform: translateY(-2px); }
+.chest-card.is-locked { opacity: .55; filter: saturate(.7); }
+.chest-rar { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--rar, #9fe8de); opacity: .9; }
+.chest-icon { color: var(--rar, #9fe8de); filter: drop-shadow(0 0 6px currentColor); margin: 2px 0; }
+.chest-name { font-size: 13px; font-weight: 700; line-height: 1.2; }
+.chest-desc { font-size: 11px; opacity: .72; line-height: 1.3; }
+.chest-state { margin-top: auto; font-size: 10.5px; letter-spacing: .04em; opacity: .85; color: var(--rar, #9fe8de); }
+.chest-empty { grid-column: 1 / -1; padding: 22px; text-align: center; opacity: .7; font-size: 13px; }
+.chest-foot { display: flex; justify-content: flex-end; }
+.chest-open { position: relative; text-align: center; padding: 26px 12px 12px; }
+.chest-reward-rar { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--rar, #f3c579); }
+.chest-reward-text { font-size: 26px; font-weight: 800; margin: 8px 0 2px; color: #fff; text-shadow: 0 0 18px var(--rar, #f3c579); }
+.chest-reward-sub { font-size: 12px; opacity: .7; margin-bottom: 18px; }
+.chest-burst {
+  position: absolute; inset: 0; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--rar, #f3c579) 0%, transparent 62%);
+  opacity: .22; animation: chest-burst 1.1s ease-out;
+}
+@keyframes chest-burst {
+  0% { transform: scale(.3); opacity: .75; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@media (max-width: 560px) {
+  .chest-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 62vh; }
+  .chest-card { min-height: 158px; padding: 12px 8px 8px; }
+  .chest-reward-text { font-size: 22px; }
+}
+
+/* ============================================================
+   Э6: ПАНЕЛЬ АДМИНА (admin.js)
+   ============================================================ */
+.adm-box { max-width: 860px; }
+.adm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.adm-tab {
+  background: rgba(20,40,46,.8); border: 1px solid rgba(118,227,215,.22); color: var(--text, #dfe8ea);
+  border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer;
+}
+.adm-tab.is-active { border-color: var(--cyan, #76e3d7); background: rgba(118,227,215,.16); }
+.adm-body { max-height: 58vh; overflow-y: auto; padding-right: 4px; font-size: 12.5px; }
+.adm-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.adm-row label { min-width: 130px; opacity: .8; }
+.adm-row input, .adm-row select, .adm-row textarea {
+  background: #0b1418; border: 1px solid #2a3a42; color: #dfe8ea; border-radius: 6px;
+  padding: 5px 8px; font-size: 12.5px; min-width: 0;
+}
+.adm-row textarea { width: 100%; min-height: 62px; font-family: ui-monospace, monospace; font-size: 11.5px; }
+.adm-chest { border: 1px solid #22343c; border-radius: 10px; padding: 8px 10px; margin: 8px 0; background: rgba(12,22,27,.7); }
+.adm-chest-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.adm-chest-name { font-weight: 700; }
+.adm-btn {
+  background: #1c2c33; border: 1px solid #2a3a42; color: #cfe3e6; border-radius: 7px;
+  padding: 6px 10px; cursor: pointer; font-size: 12px;
+}
+.adm-btn.primary { background: #2fa89b; border-color: #2fa89b; color: #04262a; font-weight: 700; }
+.adm-btn.danger { border-color: #6b2b28; color: #ff8d7a; }
+.adm-hint { opacity: .68; font-size: 11.5px; line-height: 1.45; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.adm-table th, .adm-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #1e2c33; }
+.adm-msg { min-height: 16px; color: #9be29e; font-size: 12px; margin-top: 8px; }
+.adm-msg.err { color: #ff8d7a; }

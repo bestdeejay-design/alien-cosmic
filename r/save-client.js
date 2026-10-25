@@ -22,6 +22,7 @@
 // База рейда исторически лежит под ac_raid_session_v1 — этот ключ НЕ меняем,
 // иначе у владельца «пропадёт» уже накопленная база.
 const SYNC_KEYS = ['terranrts.progress', 'terranrts.quickBattle', 'ac_raid_session_v1'];
+const STATS_KEY = 'ac_stats';
 const SRV_KEY = {
   'terranrts.progress': 'r.progress',
   'terranrts.quickBattle': 'r.quickBattle',
@@ -88,6 +89,41 @@ const TS_PREFIX = 'ac_save_ts_';
 //   serverTs > localTs → сервер новее, забираем (вторая машина играла);
 //   иначе              → локальный прогресс новее, отправляем.
 // Без этого первый же запуск на второй машине мог откатить базу назад.
+// Э6: статистика игрока для рейтинга (топ-100 по вылетам/добыче).
+// Считается из живого состояния игры; на сервере ключ ac_stats.
+function buildStats() {
+  const g = window.game;
+  if (!g || !g.state) return null;
+  const st = g.state;
+  let ccLevel = 1, houseLevel = 0;
+  for (const b of st.buildings || []) {
+    if (!b || b.dead || !b.done || b.side !== 'player') continue;
+    if (b.type === 'cc') ccLevel = Math.max(ccLevel, b.level || 1);
+    if (b.type === 'depot') houseLevel = Math.max(houseLevel, b.level || 1);
+  }
+  return JSON.stringify({
+    nick: identity ? identity.nick : player,
+    raids: (g.raidSession && g.raidSession.raidSeq) || 0,
+    loot: Math.round((st.stats && st.stats.mined) || 0),
+    ccLevel,
+    houseLevel,
+    ts: Date.now(),
+  });
+}
+
+async function pushStats() {
+  if (!identity || !window.game || !window.game.state) return;
+  const value = buildStats();
+  if (!value) return;
+  if (lastSynced[STATS_KEY] === value) return;
+  try {
+    const { j } = await call('/api/save', {
+      player: identity.nick, key: STATS_KEY, value, pin: identity.pin,
+    });
+    if (j.ok) lastSynced[STATS_KEY] = value;
+  } catch { /* офлайн */ }
+}
+
 async function reconcile() {
   if (!identity) return;
   const list = await window.__saveApi.list();
@@ -183,6 +219,29 @@ window.__saveApi = {
   clearIdentity: () => {
     try { localStorage.removeItem(NICK_KEY); localStorage.removeItem(PIN_KEY); } catch { /* */ }
     identity = null; window.__saveIdentity = null;
+  },
+  // Универсальный вызов API полигона (капсулы, рейтинг, ручные выдачи).
+  // Держим сеть ТОЛЬКО здесь — гейт check_r.mjs [4] это проверяет.
+  api: async (path, payload, opts = {}) => {
+    const base = apiBase === null ? await resolveApi() : apiBase;
+    const method = opts.method || (payload ? 'POST' : 'GET');
+    const headers = { 'Content-Type': 'application/json' };
+    if (opts.pin) headers.Authorization = 'Bearer ' + opts.pin;
+    try {
+      const r = await fetch(base + path, {
+        method,
+        headers,
+        body: payload ? JSON.stringify(payload) : undefined,
+        cache: 'no-store',
+      });
+      status.online = r.status < 500 || r.status === 403;
+      const j = await r.json().catch(() => ({ ok: false, error: 'bad json' }));
+      if (!r.ok && !j.error) j.error = 'http ' + r.status;
+      return j;
+    } catch {
+      status.online = false;
+      return { ok: false, error: 'сервер недоступен' };
+    }
   },
   list: async () => {
     const base = apiBase === null ? await resolveApi() : apiBase;
@@ -301,7 +360,7 @@ window.showProfilePanel = function showProfilePanel() {
 await resolveApi();
 // Публичный API нужен ДО сверки — им пользуется панель и raid-boot.
 await reconcile();
-setInterval(() => { for (const k of SYNC_KEYS) push(k); }, 15000);
+setInterval(() => { for (const k of SYNC_KEYS) push(k); pushStats(); }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) for (const k of SYNC_KEYS) push(k, { force: true });
 });
@@ -322,6 +381,7 @@ function beaconFlush() {
     }
   } catch { /* приватный режим */ }
 }
+setTimeout(pushStats, 4000);
 addEventListener('pagehide', beaconFlush);
 addEventListener('beforeunload', beaconFlush);
 
