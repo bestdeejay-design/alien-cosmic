@@ -17,7 +17,9 @@
 //   F5  хедер вылазки: счётчик = «трюм/ёмкость», население = места Дома,
 //       строка цели без сырых «{…}»;
 //   F6  эвакуация: борт берёт груз, кламп по грейду Дома, а не по константе;
-//   F7  дома (не на вылазке) хедер по-прежнему показывает минералы базы.
+//   F7  дома (не на вылазке) хедер по-прежнему показывает минералы базы;
+//   F10 аванпост воюет: охрана стоит на СВОБОДНОМ тайле у своего КЦ (не в
+//       центре здания) и при подходе игрока переходит в атаку.
 //
 // Запуск: node scripts/sim_raid_field.mjs
 // ============================================================
@@ -217,6 +219,34 @@ try {
   }
   pass('F9 «к КЦ» на вылазке собирает отряд вокруг Дома-шаттла');
 } catch (e) { fail('F9 «к КЦ» на вылазке', e); }
+
+// ---------- F10: аванпост воюет (регресс на дефект «охрана застревает в move») ----------
+try {
+  const st = launch(1, { worker: 1, marine: 3 }, 4);
+  const guards = st.units.filter((u) => u.side === 'enemy' && !u.dead);
+  assert(guards.length >= 2, 'у аванпоста нет охраны');
+  const ccE = st.buildings.find((b) => !b.dead && b.side === 'enemy' && b.type === 'cc');
+  assert(ccE, 'на аванпосте нет КЦ');
+  ticks(240);
+  for (const g of guards) {
+    // Главное: охрана не «застряла в пути внутрь здания» — она на посту.
+    assert(g.order.kind !== 'move' || g.idleReason !== 'unreachable',
+      'охрана застряла в недостижимом пути (снова точка сбора в центре КЦ)');
+    const inside = g.tx >= ccE.tx && g.tx < ccE.tx + ccE.w && g.ty >= ccE.ty && g.ty < ccE.ty + ccE.h;
+    assert(!inside, 'охрана стоит внутри здания КЦ');
+  }
+  const my = st.units.find((u) => u.side === 'player' && u.type === 'marine' && !u.dead);
+  assert(my, 'нет своего бойца для проверки агро');
+  my.hp = my.maxHp = 9999;
+  my.x = guards[0].x + 32 * 5;
+  my.y = guards[0].y;
+  ticks(120);
+  const engaged = guards.filter((g) => g.order.kind === 'attack' || g.order.kind === 'attackMove');
+  assert(engaged.length >= 1, 'охрана не отреагировала на игрока в 5 тайлах');
+  assert(engaged.some((g) => g.order.target === my || (g.order.target && g.order.target.side === 'player')),
+    'цель атаки охраны — не подошедший боец');
+  pass(`F10 аванпост воюет: ${engaged.length}/${guards.length} охраны перешли в атаку`);
+} catch (e) { fail('F10 агро аванпоста', e); }
 
 if (failures.length) {
   console.log(`\n❌ Вылазка: провалено ${failures.length} (${failures.join(', ')})`);
