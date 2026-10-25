@@ -7,13 +7,13 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10262512';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262512';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262512';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262512';
-import { crystalAt, unitCapOf } from './units.js?v=10262512'; // F.1: тултип кристалла + вместимость отсека
-import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262512';
-import { levelColor, levelStyle } from './skins.js?v=10262512';
+} from './config.js?v=10262513';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262513';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262513';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262513';
+import { crystalAt, unitCapOf } from './units.js?v=10262513'; // F.1: тултип кристалла + вместимость отсека
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262513';
+import { levelColor, levelStyle } from './skins.js?v=10262513';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1804,9 +1804,18 @@ export function update(game) {
   // Верхняя панель.
   // ВЛАДЕЛЕЦ 25.10: баланс ОДИН — счётчик в хедере. На вылазке он показывает
   // трюм Дома (баланс на локации), дома — минералы базы.
-  els.minerals.textContent = Math.floor(
-    st.raidMode === 'expedition' ? (st.raidCargo || 0) : st.minerals.player,
-  );
+  if (st.raidMode === 'expedition') {
+    // Хедер вылазки: трюм Дома-шаттла с ёмкостью — иначе игрок видел голое
+    // число и не понимал, сколько ещё влезет (а на телефоне строка цели
+    // скрыта стилями, и ёмкость вообще нигде не читалась).
+    const cargo = Math.floor(st.raidCargo || 0);
+    const cap = Math.floor(st.raidCargoCap || 0);
+    els.minerals.textContent = cap > 0 ? `${cargo}/${cap}` : String(cargo);
+    els.minerals.classList.toggle('is-full', cap > 0 && cargo >= cap);
+  } else {
+    els.minerals.textContent = String(Math.floor(st.minerals.player));
+    els.minerals.classList.remove('is-full');
+  }
   const sup = st.supply.player;
   els.supply.textContent = `${sup.used}/${sup.cap}`;
   els.supply.classList.toggle('blocked', sup.used >= sup.cap);

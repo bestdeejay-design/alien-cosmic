@@ -5,10 +5,10 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262512';
-import { unitAt } from './units.js?v=10262512';
-import { buildingAt } from './buildings.js?v=10262512';
-import { message } from './i18n.js?v=10262512';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262513';
+import { unitAt } from './units.js?v=10262513';
+import { buildingAt } from './buildings.js?v=10262513';
+import { message } from './i18n.js?v=10262513';
 
 export function attachInput(game) {
   const cv = game.canvas;

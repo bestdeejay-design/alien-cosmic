@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262512';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262513';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262512';
-import * as U from './units.js?v=10262512';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262512';
-import * as B from './buildings.js?v=10262512';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262512';
-import { t, message } from './i18n.js?v=10262512';
+} from './economy.js?v=10262513';
+import * as U from './units.js?v=10262513';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262513';
+import * as B from './buildings.js?v=10262513';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262513';
+import { t, message } from './i18n.js?v=10262513';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -592,7 +592,11 @@ export function updateRaidTick(game, st, dt) {
         u.evacT = (u.evacT || 0) + dt;
         if (u.evacT >= pad.hold) {
           if (u.carrying > 0) {
-            st.raidCargo = Math.min(HOUSE.cargo, (st.raidCargo || 0) + u.carrying);
+            // Э1: ёмкость трюма = грейд Дома-шаттла, а не базовая константа
+            // (иначе Г20 на вылазке обрезался до 3 000).
+            const cap = st.raidCargoCap || HOUSE.cargo;
+            st.raidCargoLost = (st.raidCargoLost || 0) + Math.max(0, (st.raidCargo || 0) + u.carrying - cap);
+            st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
             st.stats.mined += u.carrying;
             u.carrying = 0;
           }
@@ -648,7 +652,10 @@ export function raidObjectiveText(game, st) {
       const boarded = st.raidBoarded ? st.raidBoarded.length : 0;
       return t('ui.raid.hudEvac', { boarded, total: boarded + alive, cargo });
     }
-    return t('ui.raid.hudExpedition', { tier: st.raidTier || 1, cargo, alive });
+    // В хедере были сырые `{max}` и `{cap}`: строка ждёт четыре параметра,
+    // а передавали два (баг 26.10.2026 — «ошибки в хедере»).
+    const cap = Math.floor(st.raidCargoCap || HOUSE.cargo);
+    return t('ui.raid.hudExpedition', { tier: st.raidTier || 1, max: MAX_LEVEL, cargo, cap, alive });
   }
   return '';
 }

@@ -12,12 +12,12 @@
 //
 // Никаких новых кнопок в топбаре: точка входа — карточки при заходе и команда КЦ.
 // ============================================================
-import { t } from './i18n.js?v=10262512';
+import { t } from './i18n.js?v=10262513';
 import {
   availableChests, buildContext, claimChest, loadConfig, RARITY,
   loadState, isClaimed, getBirthday, setBirthday, pullGrants, fetchTop,
   applyReward, pickReward,
-} from './chests.js?v=10262512';
+} from './chests.js?v=10262513';
 
 let overlay = null;
 let shownThisSession = false;
@@ -230,7 +230,7 @@ export async function hydrateFromServer(game) {
       }
       if (changed) {
         // сохраняем локально, чтобы подарок не выдавался повторно
-        const { saveConfig } = await import('./chests.js?v=10262512');
+        const { saveConfig } = await import('./chests.js?v=10262513');
         saveConfig(cfg);
       }
     }

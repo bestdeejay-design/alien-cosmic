@@ -6,43 +6,43 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262512';
+import './storage-ns.js?v=10262513';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262512';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262512';
-import { Fog } from './fog.js?v=10262512';
-import { Sound } from './audio.js?v=10262512';
-import * as U from './units.js?v=10262512';
-import * as B from './buildings.js?v=10262512';
-import { AIController } from './ai.js?v=10262512';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262512';
-import * as ui from './ui.js?v=10262512';
-import { drawRankMark } from './skins.js?v=10262512';
-import { openAdmin } from './admin.js?v=10262512';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262512';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262512';
-import { openCommander } from './commander-ui.js?v=10262512';
+} from './config.js?v=10262513';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262513';
+import { Fog } from './fog.js?v=10262513';
+import { Sound } from './audio.js?v=10262513';
+import * as U from './units.js?v=10262513';
+import * as B from './buildings.js?v=10262513';
+import { AIController } from './ai.js?v=10262513';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262513';
+import * as ui from './ui.js?v=10262513';
+import { drawRankMark } from './skins.js?v=10262513';
+import { openAdmin } from './admin.js?v=10262513';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262513';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262513';
+import { openCommander } from './commander-ui.js?v=10262513';
 import {
-  issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits,
-} from './squad.js?v=10262512';
-import { showChests } from './chests-ui.js?v=10262512';
-import { createProfile } from './profile.js?v=10262512';
-import { attachInput, updateCamera } from './input.js?v=10262512';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262512';
+  issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
+} from './squad.js?v=10262513';
+import { showChests } from './chests-ui.js?v=10262513';
+import { createProfile } from './profile.js?v=10262513';
+import { attachInput, updateCamera } from './input.js?v=10262513';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262513';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262512';
+} from './economy.js?v=10262513';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10262512';
+} from './raid.js?v=10262513';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -1175,7 +1175,8 @@ export class Game {
           cmds.push({
             code: 'KeyL', icon: 'home', label: t('ui.cmds.retreatCC'),
             tip: { title: t('ui.cmds.retreatCC'), lines: t('ui.cmds.retreatCCTip') },
-            enabled: () => st.buildings.some((b) => !b.dead && b.side === 'player' && b.type === 'cc'),
+            // На вылазке роль КЦ играет Дом-шаттл — приказ должен работать и там.
+            enabled: () => !!ccAnchor(st),
             on: () => {
               const n = issueRetreatToCC(st, squadSel);
               ui.toast(t('ui.squad.retreat', { n }), 'info');
@@ -2583,7 +2584,16 @@ function calcSupply(st) {
       if (!b.dead && b.side === side && b.done) cap += b.cfg.supplyGain || 0;
     }
     if (side === 'player') cap += supplyBonus(st); // Э7: места от командира базы
-    st.supply[side].cap = (st.noBase && side === 'player') ? 99 : Math.min(cap, SUPPLY_MAX);
+    // Вылазка: «база» игрока — Дом-шаттл, его места и есть предел отряда.
+    // Раньше в хедере висело «4/99» (noBase-заглушка) — игрок читал это как
+    // ошибку: мест в Доме 10, а счётчик обещал 99.
+    if (st.raidMode === 'expedition' && st.raidHouse) {
+      const slots = HOUSE_LEVELS.slots(st.raidHouse.level || 1);
+      if (slots > 0) cap = slots;
+    } else if (st.noBase && side === 'player') {
+      cap = 99;
+    }
+    st.supply[side].cap = Math.min(cap, SUPPLY_MAX);
   }
 }
 

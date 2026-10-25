@@ -122,6 +122,8 @@ html.vv-follow #toasts {
 .dot.supply.warn { background: #ffae5e; box-shadow: 0 0 8px #ffae5e; animation: led-blink 1.2s infinite; }
 .dot.supply.crit { background: var(--red); box-shadow: 0 0 8px var(--red); animation: led-blink .7s infinite; }
 #res-supply.blocked { color: var(--red); animation: pulse 1s infinite; }
+/* Трюм вылазки заполнен: цифра «cargo/cap» краснеет, как и заблокированное население. */
+#res-minerals.is-full { color: var(--amber); text-shadow: 0 0 10px rgba(243,197,121,.45); }
 @keyframes pulse { 50% { opacity: .45; } }
 .spacer { flex: 1; }
 .tb-btn {

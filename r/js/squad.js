@@ -13,8 +13,8 @@
 //     освободится (u.order.kind === 'idle').
 // Приказы снимаются «Снять удержание» или при уходе с базы (вылазка/бой).
 // ============================================================
-import { TILE } from './config.js?v=10262512';
-import { orderAttack, orderMove } from './units.js?v=10262512';
+import { TILE } from './config.js?v=10262513';
+import { orderAttack, orderMove } from './units.js?v=10262513';
 
 export const HOLD_RADIUS = TILE * 5;
 export const CC_RADIUS = TILE * 4;
@@ -53,10 +53,21 @@ export function issueHold(st, x, y, units = null, radius = HOLD_RADIUS) {
   return n;
 }
 
+// «КЦ» игрока на текущей карте: на базе — командный центр, на вылазке —
+// Дом-шаттл (канон: в рейде Дом И ЕСТЬ КЦ, поэтому и приказы, и сдача эрга
+// идут к нему).
+export function ccAnchor(st) {
+  if (!st) return null;
+  const cc = (st.buildings || []).find((b) => b && !b.dead && b.done && b.side === 'player' && b.type === 'cc');
+  if (cc) return cc;
+  if (st.raidMode === 'expedition' && st.raidHouse && !st.raidHouse.dead) return st.raidHouse;
+  return null;
+}
+
 // «Отойти к КЦ»: собираем отряд у командного центра и держим периметр.
 export function issueRetreatToCC(st, units = null) {
   if (!st) return 0;
-  const cc = (st.buildings || []).find((b) => b && !b.dead && b.done && b.side === 'player' && b.type === 'cc');
+  const cc = ccAnchor(st);
   if (!cc) return 0;
   const list = combatUnits(st, units);
   if (!list.length) return 0;

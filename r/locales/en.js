@@ -203,7 +203,7 @@ export default {
         'Press again once troops have boarded for immediate liftoff',
       ],
       hudHome: 'Home Ship-CC · Actan-4 · tier {tier}/{max} · sorties: {raids}',
-      hudExpedition: 'Expedition T{tier}/{max} · hold: {cargo}/{cap} erg · active: {alive}',
+      hudExpedition: 'Expedition T{tier}/{max} · active: {alive} · hold: {cargo}/{cap}',
       hudEvac: 'Shuttle boarding: {boarded}/{total} aboard · hold: {cargo} erg',
       modalTitle: 'EXPEDITION CONSOLE',
       modalSub: 'Planet: Actan-4 · home reserve: {minerals} erg · sorties completed: {raids}',
