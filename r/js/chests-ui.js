@@ -12,12 +12,15 @@
 //
 // Никаких новых кнопок в топбаре: точка входа — карточки при заходе и команда КЦ.
 // ============================================================
-import { t } from './i18n.js?v=10262517';
+import { t } from './i18n.js?v=10262519';
+// З2 (#33): единая политика модалок — капсулы не открываются поверх
+// командира/админки/профиля и сами закрывают то, что было открыто.
+import { closeOthers, registerModal, unregisterModal, anyModalOpen } from './modals.js?v=10262519';
 import {
   availableChests, buildContext, claimChest, loadConfig, RARITY,
   loadState, isClaimed, getBirthday, setBirthday, pullGrants, fetchTop,
   applyReward, pickReward,
-} from './chests.js?v=10262517';
+} from './chests.js?v=10262519';
 
 let overlay = null;
 let shownThisSession = false;
@@ -67,6 +70,7 @@ function ensureOverlay() {
 }
 
 function hide() {
+  unregisterModal('chests');
   if (!overlay) return;
   overlay.classList.add('hidden');
   const game = window.game;
@@ -81,7 +85,10 @@ export function showChests(game) {
   if (!game || !game.state) return;
   const cfg = loadConfig();
   if (!cfg.enabled) return;
+  // З2: открытие капсул закрывает любую другую модалку (и наоборот).
+  closeOthers('chests');
   const ov = ensureOverlay();
+  registerModal('chests', hide);
   const grid = ov.querySelector('#chest-grid');
   const openBox = ov.querySelector('#chest-open');
   const sub = ov.querySelector('#chest-sub');
@@ -184,6 +191,9 @@ function openChest(game, chest, ctx, ov) {
 // ------------------------------------------------------------
 export function maybeShowOnEntry(game, extra) {
   if (shownThisSession) return;
+  // З2 (#33): автопоказ не лезет поверх уже открытой модалки — иначе вторая
+  // карточка перекрывает первую и обе становятся некликабельными.
+  if (anyModalOpen()) return;
   const cfg = loadConfig();
   if (!cfg.enabled || !cfg.showOnEntry) return;
   pendingCtx = extra || null;
@@ -193,7 +203,9 @@ export function maybeShowOnEntry(game, extra) {
   const anyNew = ready.length > 0;
   if (!anyNew) return;
   shownThisSession = true;
-  setTimeout(() => showChests(game), 900);
+  // З2 (#33): между «показать» и «показал» 900 мс — за это время игрок мог
+  // открыть командира/профиль. Второй раз проверяем прямо перед показом.
+  setTimeout(() => { if (anyModalOpen()) return; showChests(game); }, 900);
 }
 
 // Подтянуть серверные данные один раз: топ (для «капсулы лидера») и ручные
@@ -230,7 +242,7 @@ export async function hydrateFromServer(game) {
       }
       if (changed) {
         // сохраняем локально, чтобы подарок не выдавался повторно
-        const { saveConfig } = await import('./chests.js?v=10262517');
+        const { saveConfig } = await import('./chests.js?v=10262519');
         saveConfig(cfg);
       }
     }

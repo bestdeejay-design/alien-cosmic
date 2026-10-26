@@ -17,13 +17,14 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { t } from './i18n.js?v=10262517';
-import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262517';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10262519';
+import { t } from './i18n.js?v=10262519';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262519';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10262517';
+} from './chests.js?v=10262519';
 
 // A3 (аудит владельца 26.10.2026): «админка — только профиль владельца best,
 // без учёта регистра; другим на этапе разработки недоступна».
@@ -68,6 +69,8 @@ export function openAdmin(game) {
     console.log('[admin] панель доступна только профилю владельца — войдите в КЦ (U) под ником best');
     return;
   }
+  // З2 (#33): админка тоже подчиняется общему правилу модалок.
+  closeOthers('admin');
   if (panel && document.body.contains(panel)) { panel.remove(); panel = null; return; }
   const entered = sessionStorage.getItem('ac_admin_ok');
   panel = document.createElement('div');
@@ -101,6 +104,7 @@ export function openAdmin(game) {
       </div>
     </div>`;
   document.body.append(panel);
+  registerModal('admin', closeAdmin);
   // Панель админа — модальная: игра стоит, пока её не закроют.
   if (game.state) { game.adminPausedBefore = !!game.paused; game.paused = true; }
   const $ = (s) => panel.querySelector(s);
@@ -516,6 +520,7 @@ export function openAdmin(game) {
 }
 
 export function closeAdmin() {
+  unregisterModal('admin');
   if (panel) { panel.remove(); panel = null; }
   const g = window.game;
   if (g && g.state) { g.paused = !!g.adminPausedBefore; g.adminPausedBefore = false; }

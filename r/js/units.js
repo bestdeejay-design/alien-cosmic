@@ -8,13 +8,13 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
-} from './config.js?v=10262517';
-import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262517';
+} from './config.js?v=10262519';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10262519';
 import {
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, AUTOHEAL_RADIUS, AUTOHEAL_TICK, AUTOHEAL_HEALERS_PER_SIDE, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262517';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262517';
-import { t, message } from './i18n.js?v=10262517';
-import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262517';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, AUTOHEAL_RADIUS, AUTOHEAL_TICK, AUTOHEAL_HEALERS_PER_SIDE, HEALERS_PER_TARGET, HEAL_SPREAD_PX, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10262519';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10262519';
+import { t, message } from './i18n.js?v=10262519';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10262519';
 
 let nextId = 1;
 
@@ -283,8 +283,96 @@ function walkableNear(map, tx, ty) {
 }
 function range2(a, b) { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; }
 
+// ------------------------------------------------------------
+// #36 З2: канон владельца «лимит — сколько Дом может увезти».
+// Пока трюм Дома-шаттла не полон, рабочий бурит как обычно. Как только
+// очередной рейс уже не влезает (raidCargo >= cap или cap - trip < 0),
+// рабочий НЕ идёт за новой добычей: он едет к площадке челнока, встаёт и
+// ждёт эвакуации. Флаг u.evacWait/evacHold говорит авто-логике (диспетчер
+// ремонта, авто-возврат к кристаллу, авто-лечение), что юнита трогать нельзя.
+// ------------------------------------------------------------
+export function isAutoLocked(u) {
+  return !!(u && (u.evacWait || u.evacHold));
+}
+
+// Явный приказ игрока снимает ожидание: игрок всегда главнее авто-логики.
+export function clearEvacFlags(units) {
+  for (const u of units || []) {
+    if (!u) continue;
+    u.evacWait = false;
+    u.evacHold = false;
+    if (u.order) { u.order.evacWait = false; u.order.evacHold = false; }
+  }
+}
+
+// Полевые юниты стороны: не в отсеке, не на борту, живые.
+export function fieldUnits(st, side = 'player') {
+  return st.units.filter((u) => !u.dead && !u.evacuated && !u.garrison &&
+    u.side === side && u.kind === 'unit');
+}
+
+// Трюм вылазки уже не примет ещё один рейс?
+export function raidHoldFull(st, u) {
+  if (!st || st.raidMode !== 'expedition' || !u || u.side !== 'player') return false;
+  const cap = Number(st.raidCargoCap) || HOUSE.cargo;
+  const cargo = Number(st.raidCargo) || 0;
+  const trip = Number(st.raidTripYield) || MINERAL_PER_TRIP;
+  // Трюм полон ИЛИ в него не влезает даже один рейс — бурить бессмысленно.
+  return cargo >= cap || cap - trip <= 0;
+}
+
+// Рейс к площадке шаттла и ожидание эвакуации (п.1-2 спеки #36 З2).
+export function parkWorkerAtShuttle(st, u) {
+  if (!u || u.dead || u.garrison) return;
+  const pad = st.raidDrop;
+  u.evacWait = true;
+  if (!pad || (st.raidHouse && st.raidHouse.dead)) {
+    orderStop(u);
+    u.order.evacWait = true;
+    return;
+  }
+  const radPx = Math.max(TILE * 2.2, (pad.r || 2.2) * TILE);
+  if (Math.hypot(u.x - pad.x, u.y - pad.y) <= radPx * 0.9) {
+    // Уже у челнока — стоим и ждём (никакой авто-добычи: флаг держит).
+    orderStop(u);
+    u.order.evacWait = true;
+  } else {
+    // Тайлы Дома заняты зданием — идём к ближайшему свободному рядом.
+    const near = nearestFreeTileAround(st.map, pad.tx, pad.ty, 1, 1) || { x: pad.tx, y: pad.ty };
+    orderMove(st, u, (near.x + 0.5) * TILE, (near.y + 0.5) * TILE);
+    u.order.evacWait = true;
+  }
+  if (!st.evacWaitToasted) {
+    st.evacWaitToasted = true;
+    try { st.game.ui.toast(t('ui.raid.toastEvacWait'), 'info', 3600); } catch { /* headless */ }
+  }
+}
+
+// Сбор у площадки по команде «Эвакуация»: сбрасываем добычу/бой и держим
+// юнита в кольце. Раньше перебивались только те, кто стоял ВНЕ кольца, и
+// рабочий с приказом gather спокойно уходил бурить посреди эвакуации
+// (репро SZ BUG-1a).
+export function orderEvacHold(st, u, pad) {
+  if (!u || u.dead || u.garrison) return;
+  u.evacWait = false;
+  u.evacT = 0;
+  if (!pad) { orderStop(u); return; }
+  const radPx = Math.max(TILE * 2.2, (pad.r || 2.2) * TILE);
+  if (Math.hypot(u.x - pad.x, u.y - pad.y) <= radPx * 0.8) {
+    orderStop(u);
+    u.order.evacHold = true;
+    u.evacHold = true;
+  } else {
+    const near = nearestFreeTileAround(st.map, pad.tx, pad.ty, 1, 1) || { x: pad.tx, y: pad.ty };
+    orderMove(st, u, (near.x + 0.5) * TILE, (near.y + 0.5) * TILE);
+    u.order.evacHold = true;
+    u.evacHold = true;
+  }
+}
+
 export function orderGather(st, u, crystal, excludeFail) {
   if (u.garrison) return;
+  if (isAutoLocked(u)) return; // #36 З2: ждёт эвакуации у челнока — не бурит
   u.order = { kind: 'gather', target: crystal, phase: u.carrying > 0 ? 'toDrop' : 'toMineral' };
   if (excludeFail) u.lastFailed = crystal;
   u.path = null; u.pathI = 0;
@@ -306,6 +394,7 @@ export function orderBuild(st, u, building, auto = false) {
 // не команда игрока; маркер нужен для бюджета, лимита и безопасного снятия.
 export function orderHeal(st, u, target, auto = false) {
   if (u.garrison || !u.cfg.canHeal) return false;
+  if (auto && isAutoLocked(u)) return false; // #36 З2: ждёт эвакуации — не дёргаем
   if (!canBeHealed(target) || target.side !== u.side || target.faction !== u.faction) return false;
   if (target.hp >= target.maxHp) return false;
   u.order = { kind: 'heal', target, auto };
@@ -316,6 +405,7 @@ export function orderHeal(st, u, target, auto = false) {
 
 export function orderRepair(st, u, target, auto = false) {
   if (u.garrison) return;
+  if (auto && isAutoLocked(u)) return; // #36 З2: отряд собран у челнока
   u.order = { kind: 'repair', target, resume: currentCrystal(u), auto };
   u.path = null; u.pathI = 0;
   resetStuck(u);
@@ -420,7 +510,9 @@ function canStartAutoRepair(st, side, target) {
   return budget + REPAIR_BUDGET_EPSILON >= reservedRepairMinerals(st, side, target);
 }
 function sendIdleRepairerToGather(st, u) {
+  if (isAutoLocked(u)) return; // #36 З2: отряд собран у челнока — не выдёргиваем
   if (!u.cfg.canMine) { orderStop(u); return; }
+  if (raidHoldFull(st, u)) { parkWorkerAtShuttle(st, u); return; }
   const crystal = nearestCrystal(st, u);
   if (crystal) orderGather(st, u, crystal);
   else orderStop(u);
@@ -751,6 +843,55 @@ function hasOwnCC(st, side) {
 // его радиусе: КЦ находит раненое СУЩЕСТВО своей расы и отправляет к нему
 // ближайшего свободного хила. Приказы игрока неприкосновенны — диспетчер
 // берёт только простаивающих хилов и только когда у цели нет лекаря.
+// P3/#35: ПКМ «лечить» — симметрично orderRepairSpread. Кликнутая цель
+// первая, дальше раненые СУЩЕСТВА своей расы в радиусе по близости, по 2 хила
+// на цель; излишек хилов возвращается к делу (добыча) или просто стоит.
+// Технику и дронов лечить нельзя никогда (canBeHealed) — это ремонт сборщиков.
+export function healersOf(st, t, self) {
+  let n = 0;
+  for (const h of st.units) {
+    if (h === self || h.dead || h.side !== t.side || !h.cfg.canHeal) continue;
+    if (h.faction !== t.faction) continue;
+    const o = h.order;
+    if (o && o.kind === 'heal' && o.target === t) n++;
+  }
+  return n;
+}
+
+export function orderHealSpread(st, healers, x, y, primary) {
+  if (!healers.length) return false;
+  const side = healers[0].side;
+  const faction = healers[0].faction;
+  const pool = [];
+  const seen = new Set();
+  const push = (t) => {
+    if (!t || t.dead || t.garrison || t.side !== side) return;
+    if (!canBeHealed(t) || t.faction !== faction || t.hp >= t.maxHp || seen.has(t.id)) return;
+    seen.add(t.id); pool.push(t);
+  };
+  push(primary);
+  const rest = [];
+  for (const v of st.units) {
+    if (v.kind !== 'unit' || v.side !== side || v.dead || v.garrison || seen.has(v.id)) continue;
+    if (!canBeHealed(v) || v.faction !== faction || v.hp >= v.maxHp) continue;
+    rest.push([Math.hypot(v.x - x, v.y - y), v]);
+  }
+  rest.sort((a, b) => a[0] - b[0] || a[1].id - b[1].id);
+  for (const [d, t] of rest) if (d <= HEAL_SPREAD_PX) push(t);
+  if (!pool.length) return false;
+  let any = false;
+  for (const h of healers) {
+    const slot = pool.find((t) => t !== h && healersOf(st, t, h) < HEALERS_PER_TARGET);
+    if (slot && orderHeal(st, h, slot, false)) { any = true; continue; }
+    if (h.cfg.canMine) {
+      const c = nearestCrystal(st, h);
+      if (c) orderGather(st, h, c);
+      else orderStop(h);
+    } else orderStop(h);
+  }
+  return any;
+}
+
 function healersOn(st, target) {
   let n = 0;
   for (const u of st.units) {
@@ -792,15 +933,21 @@ function updateAutoHeal(st, dt) {
     wounded.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp) || a.id - b.id);
     let assigned = autoHealersCount(st, side);
     const pool = st.units.filter((u) => !u.dead && !u.garrison && u.side === side &&
-      u.cfg.canHeal && u.order.kind === 'idle' && nearCC(u.x, u.y));
+      u.cfg.canHeal && u.order.kind === 'idle' && !isAutoLocked(u) && nearCC(u.x, u.y));
     for (const target of wounded) {
       if (assigned >= AUTOHEAL_HEALERS_PER_SIDE) break;
       if (healersOn(st, target) > 0) continue;
       if (!pool.length) break;
-      pool.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) -
+      // R1 (аудит SZ): пул фильтруется по РАСЕ ЦЕЛИ. Раньше при несовпадении
+      // orderHeal возвращал false, а assigned уже сгорел — хил выпадал из
+      // диспетчера до следующего тика, и раненый оставался без лекаря.
+      const same = pool.filter((h) => h.faction === target.faction);
+      if (!same.length) continue;
+      same.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) -
         Math.hypot(b.x - target.x, b.y - target.y) || a.id - b.id);
-      const healer = pool.shift();
-      orderHeal(st, healer, target, true);
+      const healer = same[0];
+      if (!orderHeal(st, healer, target, true)) continue; // слот не сгорает
+      pool.splice(pool.indexOf(healer), 1);
       assigned++;
     }
   }
@@ -858,7 +1005,8 @@ function updateAutoRepair(st, dt) {
     for (const target of repairTargets) reservedCost += remainingRepairCost(target);
     let autoCount = autoRepairerCount(st, side);
     const pool = st.units.filter((u) => !released.has(u) && !u.dead && !u.garrison &&
-      u.side === side && u.cfg.canRepair && (u.order.kind === 'idle' || u.order.kind === 'gather'));
+      !isAutoLocked(u) && u.side === side && u.cfg.canRepair &&
+      (u.order.kind === 'idle' || u.order.kind === 'gather'));
     const minerals = Number(st.minerals[side]) || 0;
     let waiting = false; // H.1v2: ремонт востребован, но не по карману (для тоста)
 
@@ -1425,6 +1573,8 @@ function updateGather(st, u, dt) {
   if (u.carrying > 0 && o.phase !== 'toDrop' && o.phase !== 'mining') o.phase = 'toDrop';
 
   if (o.phase === 'toMineral') {
+    // #36 З2: трюм полон — за новой добычей не идём, ждём у челнока.
+    if (raidHoldFull(st, u)) { parkWorkerAtShuttle(st, u); return; }
     let c = o.target;
     if (!c || c.dead || c.amount <= 0) {
       c = nearestCrystal(st, u, u.lastFailed);
@@ -1463,6 +1613,8 @@ function updateGather(st, u, dt) {
   }
 
   if (o.phase === 'mining') {
+    // Трюм заполнился, пока бурили: не вынимаем эрг из жилы «в никуда».
+    if (raidHoldFull(st, u)) { parkWorkerAtShuttle(st, u); return; }
     const c = o.target;
     if (!c || c.dead || c.amount <= 0) { o.phase = 'toMineral'; u.path = null; return; }
     u.mineT -= dt;
@@ -1513,6 +1665,8 @@ function updateGather(st, u, dt) {
         o.phase = 'toMineral';
         u.path = null;
         st.game.sound.deposit();
+        // Сдали последний влезающий рейс — к площадке, ждать эвакуации.
+        if (raidHoldFull(st, u)) parkWorkerAtShuttle(st, u);
         return;
       }
       // ВЛАДЕЛЕЦ 25.10: сдаём эрг в ДОМ-шаттл; его тайлы заняты зданием —

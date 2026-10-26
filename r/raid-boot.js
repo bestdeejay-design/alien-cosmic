@@ -49,6 +49,17 @@ if (!game) {
     //    один путь для кампании и базы рейда, один канал (same-origin /api).
     //    Так база ходит за игроком между машинами и браузерами.
     for (let i = 0; i < 60 && !window.__saveApi; i++) await new Promise((r) => setTimeout(r, 50));
+    // C1 (кросс-браузер, P3/#35): дождаться СВЕРКИ профиля. Раньше boot читал
+    // localStorage сразу после появления __saveApi — то есть ДО pull, стартовал
+    // новую базу и первым же сейвом затирал серверный прогресс владельца.
+    if (window.__saveReady) {
+      try {
+        await Promise.race([
+          window.__saveReady,
+          new Promise((r) => setTimeout(r, 4000)),
+        ]);
+      } catch { /* сверка не удалась — работаем на локальных данных */ }
+    }
     const saveApi = window.__saveApi || null;
     let saved = (() => { try { return localStorage.getItem(RAID_SAVE_KEY); } catch { return null; } })();
     if (!saved && saveApi && saveApi.identity) {
@@ -66,7 +77,7 @@ if (!game) {
       // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
       // карточки при входе (не кнопка в топбаре, а карточки на экране).
       try {
-        const chestsUi = await import('./js/chests-ui.js?v=10262517');
+        const chestsUi = await import('./js/chests-ui.js?v=10262519');
         chestsUi.registerChestCommand(game);
         await chestsUi.hydrateFromServer(game);
         chestsUi.maybeShowOnEntry(game);

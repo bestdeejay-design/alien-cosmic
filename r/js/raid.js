@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262517';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262519';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262517';
-import * as U from './units.js?v=10262517';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262517';
-import * as B from './buildings.js?v=10262517';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262517';
-import { t, message } from './i18n.js?v=10262517';
+} from './economy.js?v=10262519';
+import * as U from './units.js?v=10262519';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262519';
+import * as B from './buildings.js?v=10262519';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262519';
+import { t, message } from './i18n.js?v=10262519';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -562,6 +562,7 @@ export function populateRaidState(game, st, m) {
     st.raidTripYield = tierCfg.tripYield;
     st.raidEvacuating = false;
     st.raidBoarded = [];
+    st.evacWaitToasted = false;    // #36 З2: тост «ждём эвакуации» — однократный
     st.raidTier = (exp && exp.tier) || m.raidTier || 1;
     // Э4: лут с обороны сектора. Пул = 120% добычи тира (канон: после сноса
     // чужого КЦ добыча ЧАСТО не влезает в трюм — излишек теряется).
@@ -584,6 +585,68 @@ export function populateRaidState(game, st, m) {
       spawnAroundTile(st, 'player', item.type, padTx, padTy, idx, item.hp, item.type === 'worker');
     });
   }
+}
+
+// ------------------------------------------------------------
+// #36 З1: канон владельца «собрались внутри = на борту».
+// Один путь посадки на всех: сдача груза в трюм с честным клампом,
+// запись в манифест, снятие юнита с карты.
+// ------------------------------------------------------------
+export function boardOneUnit(game, st, u) {
+  if (!u || u.dead || u.evacuated || u.side !== 'player' || u.kind !== 'unit') return false;
+  if (!Array.isArray(st.raidBoarded)) st.raidBoarded = [];
+  if (u.carrying > 0) {
+    // Э1: ёмкость трюма = грейд Дома-шаттла; излишек честно теряется (Э4).
+    const cap = st.raidCargoCap || HOUSE.cargo;
+    st.raidCargoLost = (st.raidCargoLost || 0) + Math.max(0, (st.raidCargo || 0) + u.carrying - cap);
+    st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
+    st.stats.mined += u.carrying;
+    u.carrying = 0;
+  }
+  st.raidBoarded.push({ type: u.type, hp: Math.max(1, Math.ceil(u.hp)) });
+  u.evacuated = true;
+  u.dead = true;
+  u.selected = false;
+  u.evacWait = false;
+  u.evacHold = false;
+  st.evacuated = (st.evacuated || 0) + 1;
+  U.addEffect(st, { kind: 'spark', x: u.x, y: u.y, ang: -Math.PI / 2, t: 0, life: 0.3 });
+  U.addFloat(st, u.x, u.y - 16, message('evacOne', st.factions.player), '#9be29e');
+  if (game && game.sound) game.sound.ready();
+  return true;
+}
+
+// Отсек Дома-шаттла = «уже на борту». Раньше гарнизон был невидим для цикла
+// посадки (continue по u.garrison), оставался в aliveLeft и авто-взлёт не
+// срабатывал никогда — вечный дедлок (репро SZ BUG-1b).
+export function boardHouseGarrison(game, st) {
+  const hb = st && st.raidHouse;
+  if (!hb || hb.dead || !Array.isArray(hb.garrison) || !hb.garrison.length) return 0;
+  let n = 0;
+  for (const u of hb.garrison.slice()) {
+    if (!u || u.dead || u.garrison !== hb) continue;
+    u.garrison = null;
+    u.hidden = false;
+    if (boardOneUnit(game, st, u)) n++;
+  }
+  hb.garrison = hb.garrison.filter((u) => u && !u.dead && !u.evacuated);
+  return n;
+}
+
+// Мгновенная посадка всех, кто УЖЕ стоит в кольце (второй нажим «Эвакуация»
+// не должен ждать 2 с удержания: отряд собрался — значит, на борту).
+export function boardRingNow(game, st) {
+  const pad = st && st.raidDrop;
+  if (!pad) return 0;
+  const radPx = Math.max(TILE * 2.2, (pad.r || 2.2) * TILE);
+  let n = 0;
+  for (const u of st.units.slice()) {
+    if (u.dead || u.evacuated || u.garrison || u.side !== 'player' || u.kind !== 'unit') continue;
+    if (Math.hypot(u.x - pad.x, u.y - pad.y) > radPx) continue;
+    if (boardOneUnit(game, st, u)) n++;
+  }
+  if (n) st.units = st.units.filter((u) => !u.evacuated);
+  return n;
 }
 
 export function updateRaidTick(game, st, dt) {
@@ -633,25 +696,7 @@ export function updateRaidTick(game, st, dt) {
       if (u.dead || u.evacuated || u.garrison || u.side !== 'player' || u.kind !== 'unit') continue;
       if (Math.hypot(u.x - pad.x, u.y - pad.y) <= radPx) {
         u.evacT = (u.evacT || 0) + dt;
-        if (u.evacT >= pad.hold) {
-          if (u.carrying > 0) {
-            // Э1: ёмкость трюма = грейд Дома-шаттла, а не базовая константа
-            // (иначе Г20 на вылазке обрезался до 3 000).
-            const cap = st.raidCargoCap || HOUSE.cargo;
-            st.raidCargoLost = (st.raidCargoLost || 0) + Math.max(0, (st.raidCargo || 0) + u.carrying - cap);
-            st.raidCargo = Math.min(cap, (st.raidCargo || 0) + u.carrying);
-            st.stats.mined += u.carrying;
-            u.carrying = 0;
-          }
-          st.raidBoarded.push({ type: u.type, hp: Math.max(1, Math.ceil(u.hp)) });
-          u.evacuated = true;
-          u.dead = true;
-          u.selected = false;
-          st.evacuated++;
-          U.addEffect(st, { kind: 'spark', x: u.x, y: u.y, ang: -Math.PI / 2, t: 0, life: 0.3 });
-          U.addFloat(st, u.x, u.y - 16, message('evacOne', st.factions.player), '#9be29e');
-          game.sound.ready();
-        }
+        if (u.evacT >= pad.hold) boardOneUnit(game, st, u);
       } else {
         u.evacT = 0;
       }
@@ -660,15 +705,28 @@ export function updateRaidTick(game, st, dt) {
     if (st.evacuated > 0) st.units = st.units.filter((u) => !u.evacuated);
   }
 
+  // Гарнизон, зашедший в отсек ПОСЛЕ старта эвакуации, тоже «на борту»:
+  // игрок мог отправить их в Дом уже во время сбора. Флешим ДО подсчёта,
+  // иначе отсек держал бы aliveLeft в нуле без посадки.
+  if (st.raidEvacuating) boardHouseGarrison(game, st);
+  // #36 З1: aliveLeft — только ПОЛЕВЫЕ. Сидящие в отсеке Дома считаются
+  // доставленными при старте эвакуации (boardHouseGarrison), а до этого их
+  // нельзя записывать ни в «на борту», ни в «все погибли» — иначе отряд,
+  // весь зашедший в отсек, мгновенно объявлялся бы потерянным.
   let aliveLeft = 0;
+  let inBay = 0;
   for (const u of st.units) {
-    if (!u.dead && !u.evacuated && u.side === 'player' && u.kind === 'unit') aliveLeft++;
+    if (u.dead || u.evacuated || u.side !== 'player' || u.kind !== 'unit') continue;
+    if (u.garrison) { inBay++; continue; }
+    aliveLeft++;
   }
-  if (st.raidEvacuating && aliveLeft === 0 && st.raidBoarded.length > 0) {
+  const boardedNow = st.raidBoarded ? st.raidBoarded.length : 0;
+  if (st.raidEvacuating && aliveLeft === 0 && boardedNow > 0) {
     game.finishRaidExpedition('evac');
-  } else if (aliveLeft === 0 && st.raidBoarded.length === 0) {
+  } else if (aliveLeft === 0 && inBay === 0 && boardedNow === 0) {
     game.finishRaidExpedition('wiped');
   }
+
 }
 
 export function checkRaidEnd(game, st) {
@@ -686,9 +744,12 @@ export function raidObjectiveText(game, st) {
     return t('ui.raid.hudHome', { tier, raids, max: MAX_LEVEL });
   }
   if (st.raidMode === 'expedition') {
+    // #36 З1: в «в строю/на борту» только полевые — сидящие в отсеке Дома
+    // учитываются как доставленные при эвакуации, а не как «ещё не сели».
     let alive = 0;
     for (const u of st.units) {
-      if (!u.dead && !u.evacuated && u.side === 'player' && u.kind === 'unit') alive++;
+      if (u.dead || u.evacuated || u.side !== 'player' || u.kind !== 'unit' || u.garrison) continue;
+      alive++;
     }
     const cargo = Math.floor(st.raidCargo || 0);
     if (st.raidEvacuating) {

@@ -309,20 +309,41 @@ try {
   gradeTo(s, cc, 2);
   gradeTo(s, house, 2);
   ticks(3);
-  // Консоль вылазки: 20 тиров, лимит состава не больше мест Дома.
+  // #36 З3: консоль показывает ТОЛЬКО доступные тиры (сетки 1–20 больше нет) и
+  // честный лимит — ТРЮМ ДОМА, а не «эрг на карте» (репро SZ BUG-3).
   ui.showRaidLaunch(game);
   const grid = document.getElementById('raid-tier-grid');
-  assert(grid && grid.children.length === 20, 'в консоли не 20 тиров: ' + (grid && grid.children.length));
   const model = game.getRaidConsoleModel(null);
+  const unlocked = model.unlockedTier;
+  assert(unlocked >= 1 && unlocked < R.RAID_TIERS.length, 'неподходящий стартовый доступ тиров: ' + unlocked);
+  assert(grid && grid.children.length === unlocked,
+    'в консоли должно быть ' + unlocked + ' доступных тиров, а не ' + (grid && grid.children.length));
+  for (const btn of grid.children) {
+    assert(!btn.disabled, 'в сетке остался заблокированный тир: ' + btn.id);
+    assert(!btn.classList.contains('is-locked'), 'в сетке остался is-locked тир: ' + btn.id);
+  }
   assert(model.houseSlots === 10, 'мест в Доме-Г2 не 10: ' + model.houseSlots);
+  assert(model.cargoCap === E.HOUSE_LEVELS.cargo(2), 'трюм консоли не по грейду Дома: ' + model.cargoCap);
+  const lootEl = (grid.children[0].children || []).find((c) => String(c.className || '').includes('rt-loot'));
+  assert(lootEl, 'у тира нет строки трюма (.rt-loot)');
+  const holdText = String(lootEl.textContent || '');
+  // Число форматируется fmtNum (3 000 с пробелом-разделителем) — сравниваем цифры.
+  const digits = (v) => String(v).replace(/[^0-9]/g, '');
+  assert(digits(holdText).includes(digits(model.cargoCap)), 'в консоли нет трюма Дома ({cap}): ' + holdText);
   for (const t of model.tiers) assert(t.maxUnits <= model.houseSlots, 'тир ' + t.tier + ' обещает больше мест, чем есть');
   ui.hideRaidLaunch();
+  // errTierRange больше не хардкодит «от 1 до 5» — диапазон идёт из RAID_TIERS.
+  const ruErr = (await import('../r/locales/ru.js' + V)).default;
+  const enErr = (await import('../r/locales/en.js' + V)).default;
+  for (const [loc, txt] of [['ru', ruErr.ui.raid.errTierRange], ['en', enErr.ui.raid.errTierRange]]) {
+    assert(!/1\s*(?:до|to|–|-)\s*5/.test(String(txt)), 'errTierRange всё ещё обещает 1–5 (' + loc + '): ' + txt);
+  }
   // Бейдж уровня на кнопке грейда (находка владельца про уровни в меню).
   selectOnly(cc);
   paint();
   const gradeBtn = findCmd('KeyR');
   assert(gradeBtn && gradeBtn.level === 3, 'у кнопки грейда нет целевого уровня: ' + (gradeBtn && gradeBtn.level));
-  pass('E9 консоль вылазки: 20 тиров, лимит по Дому-Г2 (10 мест), у кнопок есть уровень');
+  pass(`E9 консоль вылазки: только ${unlocked} доступных тира (без стены 1–20), трюм Дома-Г2 ${model.cargoCap}, лимит состава 10, у кнопок есть уровень`);
 } catch (e) { fail('E9 консоль вылазки', e); }
 
 // ---------- E10: «к 20 идти труднее» — элитное условие КЦ ----------

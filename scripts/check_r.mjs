@@ -24,6 +24,10 @@
 //  [15] Профиль и вход: клавиатура в полях, тихая сеть без профиля, админка best.
 //  [16] Дом: центр после перелёта, аура только В РЕЙДЕ, хилы лечат существ,
 //       сборщики чинят машины, авто-лечение от КЦ (правка спеки владельцем).
+//  [17] Эвакуация и трюм (issue #36): отсек = на борту, взлёт без дедлока,
+//       стоп добычи по трюму Дома и ожидание у челнока.
+//  [18] Модалки и сейв (issue #33 З2/З3): одна модалка за раз, Escape,
+//       честный тост тихой неудачи сохранения.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -292,5 +296,27 @@ try {
   bad('sim_house:\n' + String(e.stdout || e.stderr || e.message));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом зелёные');
+// ---------- [17] эвакуация и трюм (issue #36) ----------
+console.log('\n[17] Эвакуация и трюм (issue #36, P1):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_evac36.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+  if (!lines.length) bad('sim_evac36: ни одного PASS');
+} catch (e) {
+  bad('sim_evac36:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+// ---------- [18] модалки и сейв (issue #33 З2/З3) ----------
+console.log('\n[18] Модалки и сейв (issue #33 З2/З3):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_modals33.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+  if (!lines.length) bad('sim_modals33: ни одного PASS');
+} catch (e) {
+  bad('sim_modals33:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки зелёные');
 process.exit(failed ? 1 : 0);

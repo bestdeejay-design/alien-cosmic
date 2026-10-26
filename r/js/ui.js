@@ -7,13 +7,15 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10262517';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262517';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262517';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262517';
-import { crystalAt, unitCapOf } from './units.js?v=10262517'; // F.1: тултип кристалла + вместимость отсека
-import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262517';
-import { levelColor, levelStyle } from './skins.js?v=10262517';
+} from './config.js?v=10262519';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10262519';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10262519';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10262519';
+import { crystalAt, unitCapOf } from './units.js?v=10262519'; // F.1: тултип кристалла + вместимость отсека
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10262519';
+import { levelColor, levelStyle } from './skins.js?v=10262519';
+// З2 (#33): консоль вылазки — тоже модалка: одна за раз + Escape.
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10262519';
 
 const $ = (id) => document.getElementById(id);
 
@@ -641,6 +643,7 @@ export function isRaidOverlayOpen() {
 }
 
 export function hideRaidLaunch() {
+  unregisterModal('raidLaunch');
   raidModalOpen = false;
   if (els && els.raidOverlay) els.raidOverlay.classList.add('hidden');
   updateModalChrome();
@@ -767,6 +770,22 @@ export function showRaidLaunch(game) {
   raidDraft.seedStep = 0;
   raidDraft.seed = game.nextRaidSeed(raidDraft.tier);
   seedDefaultRaidSquad(baseModel);
+  // З2: открытие консоли закрывает капсулы/командира/профиль; Escape закрывает
+  // её тем же путём, что и «Назад» (снять паузу, вернуться в мир).
+  // Важно: сначала закрываем соседей — они в своём hide() правят game.paused,
+  // и только потом фиксируем паузу консоли.
+  closeOthers('raidLaunch');
+  {
+    const g = window.game;
+    if (g && g.state) g.paused = true;
+  }
+  registerModal('raidLaunch', () => {
+    const g = window.game;
+    if (g && typeof g.closeRaidLaunch === 'function') { g.closeRaidLaunch(); return; }
+    raidModalOpen = false;
+    if (els && els.raidOverlay) els.raidOverlay.classList.add('hidden');
+    updateModalChrome();
+  });
   raidModalOpen = true;
   els.raidOverlay.classList.remove('hidden');
   renderRaidLaunch(game);
@@ -789,9 +808,15 @@ export function renderRaidLaunch(game) {
     });
   }
 
-  // 1) Уровни вылазки 1–20 (Э1): тир открывает уровень КЦ.
+  // 1) Уровни вылазки (Э1): тир открывает уровень КЦ.
+  // #36 З3: сетки 1–20 больше нет — рисуем ТОЛЬКО доступные уровни. Заблокированные
+  // не показываем вовсе (владелец: «пишет 20 вариантов вылазки» — это ошибка).
+  // Новых кнопок нет: список по-прежнему = существующая сетка тиров.
   els.raidTierGrid.innerHTML = '';
-  for (const tc of model.tiers) {
+  const shownTiers = model.tiers.filter((tc) => tc.tier <= model.unlockedTier);
+  if (!shownTiers.length && model.tiers.length) shownTiers.push(model.tiers[0]);
+  if (raidDraft.tier > model.unlockedTier) raidDraft.tier = model.unlockedTier;
+  for (const tc of shownTiers) {
     const locked = tc.tier > model.unlockedTier;
     const selected = tc.tier === raidDraft.tier;
     const btn = document.createElement('button');
@@ -811,9 +836,9 @@ export function renderRaidLaunch(game) {
       : t('ui.raid.tierCaps', { units: tc.maxUnits, budget: tc.maxBudget });
     const loot = document.createElement('span');
     loot.className = 'rt-loot';
-    loot.textContent = t('ui.raid.tierLoot', {
-      yieldTotal: fmtNum(tc.yieldTotal), trip: tc.tripYield,
-    });
+    // #36 З3: честный лимит — трюм Дома-шаттла (HOUSE_LEVELS), а не «эрг на
+    // карте» (репро SZ BUG-3: обещали 900, на карте 1080 из-за пула ×1.2).
+    loot.textContent = t('ui.raid.tierHold', { cap: fmtNum(model.cargoCap), trip: tc.tripYield });
     btn.appendChild(loot);
     btn.appendChild(head);
     btn.appendChild(sub);
