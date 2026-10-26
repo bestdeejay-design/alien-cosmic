@@ -48,8 +48,8 @@ const ensureDepotAndLaunch = async (seed) => {
   await backHome();
   const v = await page.evaluate(async (s) => {
     const g = window.game, st = g.state;
-    const U = await import('/r/js/units.js?v=10262517');
-    const B = await import('/r/js/buildings.js?v=10262517');
+    const U = await import('/r/js/units.js?v=10262519');
+    const B = await import('/r/js/buildings.js?v=10262519');
     if (!st.buildings.some((b) => !b.dead && b.type === 'depot' && b.side === 'player')) {
       const cc = st.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
       const d = new B.Building(st, 'player', 'depot', cc.tx + 3, cc.ty + 3, true);
@@ -225,7 +225,7 @@ try {
 try {
   await ensureDepotAndLaunch(4244);
   const t3 = await page.evaluate(async () => {
-    const E = await import('/r/js/economy.js?v=10262517');
+    const E = await import('/r/js/economy.js?v=10262519');
     const st = window.game.state;
     const tcfg = E.raidTierAt(st.raidTier || 1);
     return { shown: tcfg.yieldTotal, pool: st.raidLootPool || 0, left: st.raidLootLeft || 0, tier: st.raidTier };
@@ -234,6 +234,168 @@ try {
   if (t3.pool > t3.shown) bad('BUG-3 ПОДТВЕРЖДЁН', `карта богаче обещанного на ${t3.pool - t3.shown} эрга (мультипликатор 1.2 в raid.js:575, консоль этого не знает)`);
   else ok('BUG-3 не воспроизвёлся', 'числа совпали');
 } catch (e) { bad('BUG-3 прогон', String((e && e.message) || e)); }
+
+// ============================================================
+// ПРОВЕРКА ФИКСА #36 (поставка P3). Шаги добавлены исполнителем:
+//   FIX-1b — весь отряд в отсеке: press1 флешит гарнизон в манифест, дальше
+//            авто-взлёт возвращает на базу (дедлока «Отход отменён» нет);
+//            press2 — ВСЕГДА взлёт (канон владельца «второй клик всегда взлёт»);
+//   FIX-1a — полевой в кольце с приказом добычи: press1 снимает приказ;
+//   FIX-2  — трюм 40/40: сборщики встают у челнока (u.evacWait), добыча стоит;
+//   FIX-3  — консоль вылазки: только доступные тиры + трюм Дома (не «эрг на карте»).
+// ============================================================
+const fixState = () => page.evaluate(() => {
+  const st = window.game.state;
+  const lr = (window.game.raidSession && window.game.raidSession.lastReturn) || null;
+  return {
+    mode: st.raidMode,
+    evac: !!st.raidEvacuating,
+    boarded: (st.raidBoarded || []).length,
+    field: st.units.filter((u) => !u.dead && !u.evacuated && !u.garrison && u.side === 'player' && u.kind === 'unit').length,
+    inBay: st.units.filter((u) => !u.dead && !u.evacuated && u.garrison).length,
+    evacWaitToasted: !!st.evacWaitToasted,
+    lastReturn: lr ? { outcome: lr.outcome, boardedCount: lr.boardedCount, sentCount: lr.sentCount } : null,
+  };
+});
+
+// ---------- FIX-1b ----------
+try {
+  await ensureDepotAndLaunch(900101);
+  const n = await page.evaluate(() => {
+    const st = window.game.state;
+    const house = st.raidHouse;
+    let k = 0;
+    for (const u of st.units.filter((x) => !x.dead && x.side === 'player' && x.kind === 'unit' && !x.garrison)) {
+      u.garrison = house; house.garrison.push(u); u.hidden = true; u.selected = false;
+      u.order = { kind: 'idle' }; u.path = null; k++;
+    }
+    return k;
+  });
+  await page.evaluate(() => window.game.triggerRaidEvac());
+  await page.waitForTimeout(1200);
+  const s1 = await fixState();
+  const flashed = s1.boarded;
+  await page.waitForTimeout(3000);
+  const s2 = await fixState();
+  if (s1.evac && flashed >= n && s2.mode === 'home' && s2.lastReturn && s2.lastReturn.outcome === 'evac') {
+    ok('FIX-1b', `отсек (${n}) флешнут в манифест (${flashed}) → авто-взлёт вернул на базу, борт ${s2.lastReturn.boardedCount}`);
+  } else {
+    bad('FIX-1b', `дедлок не снят: ${JSON.stringify({ s1, s2 })}`);
+  }
+  await shot(page, 'fix1b_autolift');
+  await backHome();
+} catch (e) { bad('FIX-1b прогон', String((e && e.message) || e)); }
+
+// ---------- FIX-1b2: press2 всегда взлёт даже если отряд ещё бежит ----------
+try {
+  await ensureDepotAndLaunch(900104);
+  await page.evaluate(() => {
+    const st = window.game.state;
+    const pad = st.raidDrop;
+    for (const [i, u] of st.units.filter((x) => !x.dead && !x.garrison && x.side === 'player' && x.kind === 'unit').entries()) {
+      u.x = pad.x + 32 * (14 + i); u.y = pad.y + 32 * 14; u.path = null; u.moving = false;
+    }
+  });
+  await page.evaluate(() => window.game.triggerRaidEvac());  // press 1 — маяк
+  await page.waitForTimeout(300);
+  const mid = await fixState();
+  await page.evaluate(() => window.game.triggerRaidEvac());  // press 2 — взлёт
+  await page.waitForTimeout(1200);
+  const after = await fixState();
+  if (mid.mode === 'expedition' && after.mode === 'home' && after.lastReturn && after.lastReturn.outcome === 'evac') {
+    ok('FIX-1b2', `второй клик = взлёт при отряде вне кольца (${after.lastReturn.boardedCount}/${after.lastReturn.sentCount} на борту), дедлока нет`);
+  } else {
+    bad('FIX-1b2', 'второй клик не взлетел: ' + JSON.stringify({ mid, after }));
+  }
+  await backHome();
+} catch (e) { bad('FIX-1b2 прогон', String((e && e.message) || e)); }
+
+// ---------- FIX-1a ----------
+try {
+  await ensureDepotAndLaunch(900102);
+  const before = await page.evaluate(() => {
+    const st = window.game.state;
+    const pad = st.raidDrop;
+    const w = st.units.find((u) => !u.dead && !u.garrison && u.side === 'player' && u.cfg.canMine);
+    if (!w) throw new Error('нет сборщика');
+    w.x = pad.x + 12; w.y = pad.y + 12; w.path = null;
+    const c = (st.map.crystals || [])[0] || null;
+    w.order = { kind: 'gather', target: c, phase: 'toMineral' };
+    return w.order.kind;
+  });
+  await page.evaluate(() => window.game.triggerRaidEvac());
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => {
+    const st = window.game.state;
+    const w = st.units.find((u) => !u.dead && !u.garrison && u.side === 'player' && u.cfg.canMine);
+    return { kind: w && w.order ? w.order.kind : null, hold: !!(w && w.evacHold) };
+  });
+  if (before === 'gather' && after.kind && after.kind !== 'gather') {
+    ok('FIX-1a', `приказ добычи в кольце снят при старте эвакуации (${before} → ${after.kind})`);
+  } else {
+    bad('FIX-1a', `приказ добычи не снят: ${JSON.stringify({ before, after })}`);
+  }
+  await backHome();
+} catch (e) { bad('FIX-1a прогон', String((e && e.message) || e)); }
+
+// ---------- FIX-2 ----------
+try {
+  await ensureDepotAndLaunch(900103);
+  await page.evaluate(() => { const st = window.game.state; st.raidCargoCap = 40; });
+  await page.waitForTimeout(35000);
+  const s = await raidState();
+  const info = await page.evaluate(() => {
+    const st = window.game.state;
+    const ws = st.units.filter((u) => !u.dead && u.side === 'player' && u.type === 'worker' && !u.garrison);
+    return {
+      cargo: Math.round(st.raidCargo || 0),
+      cap: st.raidCargoCap || 0,
+      mined: Math.round(st.stats.mined || 0),
+      waiting: ws.filter((u) => u.evacWait).length,
+      total: ws.length,
+      phases: ws.map((u) => (u.order && u.order.kind) || 'unset'),
+    };
+  });
+  await shot(page, 'fix2_cargo_stop');
+  await page.waitForTimeout(6000);
+  const info2 = await page.evaluate(() => Math.round(window.game.state.stats.mined || 0));
+  if (info.cargo >= info.cap && info.waiting === info.total && info2 === info.mined) {
+    ok('FIX-2', `трюм ${info.cargo}/${info.cap}: все ${info.total} сборщика ждут у челнока, добыто не растёт (${info.mined})`);
+  } else {
+    bad('FIX-2', `добыча не остановилась: ${JSON.stringify({ info, minedAfter: info2 })}`);
+  }
+  await backHome();
+} catch (e) { bad('FIX-2 прогон', String((e && e.message) || e)); }
+
+// ---------- FIX-3 ----------
+try {
+  await backHome();
+  const console3 = await page.evaluate(async () => {
+    const ui = await import('/r/js/ui.js?v=10262519');
+    const g = window.game;
+    ui.showRaidLaunch(g);
+    const grid = document.getElementById('raid-tier-grid');
+    const model = g.getRaidConsoleModel(null);
+    const first = grid && grid.children[0];
+    const loot = first ? first.querySelector('.rt-loot') : null;
+    const out = {
+      buttons: grid ? grid.children.length : -1,
+      unlocked: model.unlockedTier,
+      cargoCap: model.cargoCap,
+      loot: loot ? loot.textContent : '',
+      errTierRange: (await import('/r/locales/ru.js?v=10262519')).default.ui.raid.errTierRange,
+    };
+    ui.hideRaidLaunch();
+    return out;
+  });
+  const digits = (v) => String(v).replace(/[^0-9]/g, '');
+  if (console3.buttons === console3.unlocked && !/1\s*до\s*5/.test(console3.errTierRange)
+      && digits(console3.loot).includes(digits(console3.cargoCap))) {
+    ok('FIX-3', `консоль: ${console3.buttons} доступных тира (было 20), трюм Дома ${console3.cargoCap} в подписи, errTierRange без «1–5»`);
+  } else {
+    bad('FIX-3', 'консоль всё ещё врёт: ' + JSON.stringify(console3));
+  }
+} catch (e) { bad('FIX-3 прогон', String((e && e.message) || e)); }
 
 await shot(page, 'final');
 await browser.close();

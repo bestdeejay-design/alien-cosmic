@@ -234,4 +234,18 @@ globalThis.document.activeElement = globalThis.document.body;
 
 // Ручки поверх стабов.
 export function el(id) { return document.getElementById(id); }
+// Ручки для симов модалок (#33 З2): прокинуть window-событие и посмотреть,
+// кто на него подписан (harness собирает их в winHandlers).
+export function windowHandlers(ev) { return (winHandlers[ev] || []).slice(); }
+export function fireWindow(ev, data = {}) {
+  const e = {
+    type: ev, defaultPrevented: false, propagationStopped: false, immediateStopped: false,
+    preventDefault() { e.defaultPrevented = true; },
+    stopPropagation() { e.propagationStopped = true; },
+    stopImmediatePropagation() { e.immediateStopped = true; },
+    ...data,
+  };
+  for (const fn of windowHandlers(ev)) fn(e);
+  return e;
+}
 export function endStatsHTML() { return el('end-stats').innerHTML; }
