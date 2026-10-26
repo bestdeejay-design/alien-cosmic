@@ -34,6 +34,9 @@ const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
 const PORT = 8790;
 
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262518';
+import { t } from './js/i18n.js?v=10262518';
+
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
 
@@ -93,6 +96,27 @@ async function call(path, payload) {
 }
 
 const TS_PREFIX = 'ac_save_ts_';
+// З3 (#33, жалоба «сохранение не работает, а никто не сказал»): тихая неудача
+// пуша. Раньше ошибка жила только в панели профиля — игрок о ней не знал.
+// Тост показываем один раз на «эпизод» сбоя и не чаще, чем раз в SAVE_TOAST_MS.
+const SAVE_TOAST_MS = 5 * 60 * 1000;
+let lastSaveToastTs = 0;
+let lastSaveErrorShown = '';
+
+function notifySaveError(text) {
+  const now = Date.now();
+  if (lastSaveErrorShown === text && now - lastSaveToastTs < SAVE_TOAST_MS) return;
+  if (now - lastSaveToastTs < SAVE_TOAST_MS && lastSaveErrorShown === text) return;
+  lastSaveErrorShown = text;
+  lastSaveToastTs = now;
+  try {
+    const g = window.game;
+    if (g && g.ui && typeof g.ui.toast === 'function' && g.state) {
+      // Локаль — единый ключ (RU/EN симметрично), текст ошибки подставляется.
+      g.ui.toast(t('ui.save.failed', { err: text }), 'warn', 4200);
+    }
+  } catch { /* офлайн-стенд без UI */ }
+}
 
 // Разрешение конфликтов «локально ↔ сервер» по времени сервера:
 //   serverTs > localTs → сервер новее, забираем (вторая машина играла);
@@ -165,6 +189,7 @@ async function push(key, { force = false } = {}) {
       lastSynced[key] = value;
       if (j.ts) writeLS(TS_PREFIX + key, String(j.ts));
       status.online = true; status.lastError = ''; status.lastPushTs = Date.now();
+      lastSaveErrorShown = ''; // новый эпизод сбоя покажется снова
       if (j.player && identity && j.player !== identity.nick) {
         // сервер вернул канонический ник (другой регистр) — запомним его
         identity = { ...identity, nick: j.player };
@@ -175,10 +200,12 @@ async function push(key, { force = false } = {}) {
     }
     status.lastError = j.error === 'nick taken, wrong pin' ? '403: чужой пин' : String(j.error || 'ошибка');
     if (code === 403) status.online = true;
+    notifySaveError(status.lastError);   // З3: игрок видит, что сейв не ушёл
     return false;
   } catch (e) {
     status.online = false;
     status.lastError = 'сервер недоступен';
+    notifySaveError(status.lastError);
     return false;
   }
 }
@@ -274,7 +301,12 @@ window.__saveApi = {
 // ------------------------------------------------------------------
 window.showProfilePanel = function showProfilePanel() {
   const old = document.getElementById('sv-panel');
-  if (old) { old.remove(); return; }
+  // Только РЕАЛЬНО прикреплённая панель считается открытой: отсоединённый
+  // узел (или пустой стаб в headless-прогоне) не должен блокировать открытие.
+  const oldLive = old && (!document.body.contains || document.body.contains(old));
+  if (oldLive) { old.remove(); unregisterModal('profile'); return; }
+  // З2 (#33): профиль тоже модалка — закрывает капсулы/командира/админку.
+  closeOthers('profile');
   const panel = document.createElement('div');
   panel.id = 'sv-panel';
   panel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;' +
@@ -304,6 +336,7 @@ window.showProfilePanel = function showProfilePanel() {
     <div style="opacity:.55;font-size:11px;margin-top:6px">Ник запоминается без регистра: первый вход с пином закрепляет его за вами.</div>
     <button id="sv-close" style="margin-top:8px;background:none;border:0;color:#8fa6ae;cursor:pointer">закрыть</button>`;
   document.body.append(panel);
+  registerModal('profile', () => { unregisterModal('profile'); panel.remove(); });
   const $ = (id) => panel.querySelector(id);
   const msg = $('#sv-msg');
   const setMsg = (text, bad = true) => { if (msg) { msg.textContent = text; msg.style.color = bad ? '#ff8d7a' : '#9be29e'; } };
@@ -339,7 +372,7 @@ window.showProfilePanel = function showProfilePanel() {
     }
   };
 
-  $('#sv-close').addEventListener('click', () => panel.remove());
+  $('#sv-close').addEventListener('click', () => { unregisterModal('profile'); panel.remove(); });
   $('#sv-sync').addEventListener('click', async () => {
     setMsg('сохраняю…', false);
     const st = await window.__saveApi.pushAll();
@@ -387,13 +420,19 @@ window.showProfilePanel = function showProfilePanel() {
 // (никаких /health, /api/save, /api/load, sendBeacon). Панель профиля и вход
 // по нику+пину — единственные места, где сеть просыпается: это действие
 // игрока, а не фоновая синхронизация.
-if (identity) {
-  await resolveApi();
-  // Публичный API нужен ДО сверки — им пользуется панель и raid-boot.
-  await reconcile();
-} else {
-  apiMode = 'нужен профиль';
-}
+// C1 (кросс-браузер): raid-boot должен дождаться ЭТОЙ сверки, иначе он читает
+// пустой localStorage и стартует новую базу, хотя на сервере лежит прогресс
+// владельца. Промис публикуем ДО ожидания внутри — boot подписывается на него.
+window.__saveReady = (async () => {
+  if (!identity) { apiMode = 'нужен профиль'; return false; }
+  try {
+    await resolveApi();
+    // Публичный API нужен ДО сверки — им пользуется панель и raid-boot.
+    await reconcile();
+    return true;
+  } catch { return false; }
+})();
+await window.__saveReady;
 setInterval(() => {
   if (!identity) return; // A2: анонимный таймер спит
   for (const k of SYNC_KEYS) push(k);

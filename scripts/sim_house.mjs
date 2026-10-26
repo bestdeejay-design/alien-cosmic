@@ -23,7 +23,11 @@
 //   H7  хил лечит существо и НЕ лечит дрон-техника/технику/чужую расу;
 //   H8  авто-лечение: КЦ отправляет свободного хила к раненому; вне радиуса
 //       КЦ и без КЦ (нет базы) — хил не приходит, но действует сам;
-//   H9  приказ игрока у хила не перебивается диспетчером КЦ.
+//   H9  приказ игрока у хила не перебивается диспетчером КЦ;
+//   H11 R1 (аудит SZ): пул авто-хилов фильтруется по расе цели (слот не сгорает);
+//   H12 ПКМ «лечить» (GO владельца 26.10): хилы → heal, не-хилы → move,
+//       ветка ремонта техники B3 не сломана;
+//   H13 нет хилов в выделении → тихий фолбэк в движение.
 //
 // Запуск: node scripts/sim_house.mjs
 // ============================================================
@@ -318,6 +322,79 @@ try {
   assert(m2.hp > 15, 'без КЦ хил не лечит раненого рядом (резервное поведение сломано)');
   pass('H10 кхарид лечит кхарид; без КЦ хил работает сам (резерв для миссий без базы)');
 } catch (e) { fail('H10 раса и резерв без КЦ', e); }
+
+// ---------- H11: R1 — пул авто-хилов фильтруется по расе цели ----------
+// Аудит SZ: при несовпадении расы orderHeal возвращал false, а счётчик
+// назначений уже сгорал — хил выпадал из диспетчера до следующего тика и
+// раненый своей расы оставался без лекаря (слот «съедала» чужая цель).
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  const human = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 4, cc.y + TILE * 2, false);
+  human.hp = Math.round(human.maxHp * 0.4);
+  // Чужая раса на нашей стороне — БЛИЖЕ к хилу, поэтому старый код выбирал
+  // именно её и сжигал слот назначения.
+  const alien = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 5, cc.y + TILE * 3, false);
+  alien.faction = 'alien';
+  alien.hp = Math.round(alien.maxHp * 0.3);
+  const healer = U.spawnUnit(st, 'player', 'medic', cc.x + TILE * 6, cc.y + TILE * 3, false);
+  let auto = null;
+  for (let i = 0; i < 240 && !auto; i++) {
+    game.tick();
+    if (healer.order.kind === 'heal' && healer.order.auto) auto = healer.order;
+  }
+  assert(auto, 'R1: авто-лечение не назначило хила вовсе (слот сгорел на чужой расе)');
+  assert(auto.target === human,
+    'R1: хил взял не свою расу/не того раненого: ' + (auto.target === alien ? 'чужую расу' : 'иного юнита'));
+  const hp0 = human.hp;
+  for (let i = 0; i < 90; i++) game.tick();
+  assert(human.hp > hp0, 'R1: назначенный хил не лечит своего');
+  assert(alien.hp <= alien.maxHp, 'R1: чужую расу вылечили');
+  pass('H11 R1: пул авто-хилов фильтруется по расе цели — слот не сгорает, свой раненый получает лекаря');
+} catch (e) { fail('H11 R1 раса в пуле', e); }
+
+// ---------- H12: ПКМ «лечить» — симметрично ремонту (GO владельца) ----------
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  const hurt = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 6, cc.y + TILE * 4, false);
+  hurt.hp = Math.round(hurt.maxHp * 0.5);
+  const healer = U.spawnUnit(st, 'player', 'medic', cc.x + TILE * 8, cc.y + TILE * 4, false);
+  const marine = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 8, cc.y + TILE * 6, false);
+  st.selection = [healer, marine];
+  game.issueRMB(hurt.x, hurt.y);
+  assert(healer.order.kind === 'heal' && healer.order.target === hurt,
+    'ПКМ по раненому существу не дал приказ «лечить»: ' + healer.order.kind);
+  assert(healer.order.auto === false, 'ПКМ-лечение помечено как авто (приказ игрока!)');
+  assert(marine.order.kind === 'move', 'не-хил не пошёл к цели: ' + marine.order.kind);
+  const hp0 = hurt.hp;
+  for (let i = 0; i < 120; i++) game.tick();
+  assert(hurt.hp > hp0, 'ПКМ-лечение не поднимает HP: ' + Math.round(hp0) + ' → ' + Math.round(hurt.hp));
+  // Техника остаётся в ремонтной ветке B3: ПКМ по танку не лечит, а чинит.
+  const tank = U.spawnUnit(st, 'player', 'tank', cc.x + TILE * 4, cc.y + TILE * 6, false);
+  tank.hp = 40;
+  const tech = U.spawnUnit(st, 'player', 'worker', cc.x + TILE * 6, cc.y + TILE * 6, false);
+  st.selection = [tech];
+  game.issueRMB(tank.x, tank.y);
+  assert(tech.order.kind === 'repair' && tech.order.target === tank,
+    'ветка ремонта B3 сломалась: ПКМ по технике дал ' + tech.order.kind);
+  pass('H12 ПКМ «лечить»: хилы получают heal, не-хилы идут за целью, техника по-прежнему в ремонте');
+} catch (e) { fail('H12 ПКМ лечение', e); }
+
+// ---------- H13: нет хилов — тихий фолбэк в движение ----------
+try {
+  const st = boot(3);
+  const cc = st._cc;
+  const hurt = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 6, cc.y + TILE * 4, false);
+  hurt.hp = Math.round(hurt.maxHp * 0.4);
+  const marine = U.spawnUnit(st, 'player', 'marine', cc.x + TILE * 8, cc.y + TILE * 4, false);
+  st.selection = [marine];
+  let threw = null;
+  try { game.issueRMB(hurt.x, hurt.y); } catch (e) { threw = e; }
+  assert(!threw, 'ПКМ по раненому без хилов бросил исключение: ' + (threw && threw.message));
+  assert(marine.order.kind === 'move', 'без хилов приказ не стал движением: ' + marine.order.kind);
+  pass('H13 нет хилов в выделении: ПКМ по раненому = обычное движение (тихий фолбэк)');
+} catch (e) { fail('H13 тихий фолбэк', e); }
 
 if (failures.length) {
   console.log(`\n❌ Дом (P2): провалено ${failures.length} (${failures.join(', ')})`);

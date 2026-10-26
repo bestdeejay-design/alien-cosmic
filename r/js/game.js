@@ -6,43 +6,44 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262517';
+import './storage-ns.js?v=10262518';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262517';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262517';
-import { Fog } from './fog.js?v=10262517';
-import { Sound } from './audio.js?v=10262517';
-import * as U from './units.js?v=10262517';
-import * as B from './buildings.js?v=10262517';
-import { AIController } from './ai.js?v=10262517';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262517';
-import * as ui from './ui.js?v=10262517';
-import { drawRankMark } from './skins.js?v=10262517';
-import { openAdmin, isAdminProfile } from './admin.js?v=10262517';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262517';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262517';
-import { openCommander } from './commander-ui.js?v=10262517';
+} from './config.js?v=10262518';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262518';
+import { Fog } from './fog.js?v=10262518';
+import { Sound } from './audio.js?v=10262518';
+import * as U from './units.js?v=10262518';
+import * as B from './buildings.js?v=10262518';
+import { AIController } from './ai.js?v=10262518';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262518';
+import * as ui from './ui.js?v=10262518';
+import { drawRankMark } from './skins.js?v=10262518';
+import { openAdmin, isAdminProfile } from './admin.js?v=10262518';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262518';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262518';
+import { openCommander } from './commander-ui.js?v=10262518';
 import {
   issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
-} from './squad.js?v=10262517';
-import { showChests } from './chests-ui.js?v=10262517';
-import { createProfile } from './profile.js?v=10262517';
-import { attachInput, updateCamera } from './input.js?v=10262517';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262517';
+} from './squad.js?v=10262518';
+import { showChests } from './chests-ui.js?v=10262518';
+import { createProfile } from './profile.js?v=10262518';
+import { attachInput, updateCamera } from './input.js?v=10262518';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262518';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262517';
+} from './economy.js?v=10262518';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
-} from './raid.js?v=10262517';
+  boardHouseGarrison, boardRingNow,
+} from './raid.js?v=10262518';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -455,9 +456,16 @@ export class Game {
     // реальный лимит тира, а не «до 22 ед.» при Доме-Г2.
     const houseSlots = HOUSE.slotsAt(Math.max(2, houseLevelOf(st) || 2));
     const tiers = RAID_TIERS.map((t) => (t.maxUnits <= houseSlots ? t : { ...t, maxUnits: houseSlots }));
+    // #36 З3: реальный лимит вылазки — ТРЮМ ДОМА (канон владельца «лимит —
+    // сколько он может увезти»), а не «эрг на карте». Консоль показывает это
+    // число вместо фейкового yieldTotal.
+    const houseLevel = Math.max(2, houseLevelOf(st) || 2);
+    const cargoCap = HOUSE_LEVELS.cargo(houseLevel);
     return {
       unlockedTier,
       houseSlots,
+      houseLevel,
+      cargoCap,
       tiers,
       unitOrder: RAID_UNIT_ORDER,
       roster,
@@ -585,31 +593,41 @@ export class Game {
     const st = this.state;
     if (!st || st.raidMode !== 'expedition' || st.gameOver) return;
     const pad = st.raidDrop;
+    const boarded = () => (st.raidBoarded ? st.raidBoarded.length : 0);
     if (!st.raidEvacuating) {
+      // НАЖАТИЕ 1 — маяк. #36 З1: отсек Дома считается ДОСТАВЛЕННЫМ (владелец:
+      // «все собрались внутри»), а приказ сбрасывается у ВСЕХ полевых, включая
+      // стоящих в кольце с добычей (раньше movers-фильтр трогал только тех,
+      // кто снаружи, и рабочий уходил бурить посреди эвакуации).
       st.raidEvacuating = true;
-      if (pad) {
-        const movers = st.units.filter(
-          (u) => !u.dead && !u.evacuated && !u.garrison && u.side === 'player' && u.kind === 'unit' &&
-            Math.hypot(u.x - pad.x, u.y - pad.y) > pad.r * TILE * 0.85,
-        );
-        if (movers.length) U.orderMoveGroup(st, movers, pad.x, pad.y);
-      }
+      st.evacFinal = false;
+      boardHouseGarrison(this, st);
+      for (const u of U.fieldUnits(st)) U.orderEvacHold(st, u, pad);
       ui.update(this);
       ui.setObjective(this.objectiveText());
       ui.toast(t('ui.raid.toastEvacStart'), 'info');
       this.sound.ping();
       return;
     }
-    if (st.raidBoarded && st.raidBoarded.length > 0) {
-      this.finishRaidExpedition('evac');
+    // НАЖАТИЕ 2+ — ВЗЛЁТ, а не отмена (репро SZ BUG-1b: «Отход отменён» делал
+    // взлёт недостижимым). Кто уже в кольце — сразу на борт, без удержания 2 с.
+    boardRingNow(this, st);
+    if (boarded() > 0) { this.finishRaidExpedition('evac'); return; }
+    const field = U.fieldUnits(st);
+    if (!field.length) { this.finishRaidExpedition('evac'); return; }
+    if (!st.evacFinal) {
+      // Финальный сбор: отряд ещё бежит к кольцу. Даём ему последний приказ и
+      // один раз честно говорим об этом — следующее нажатие поднимет челнок
+      // даже без опоздавших (дедлока нет: любое нажатие ведёт к взлёту).
+      st.evacFinal = true;
+      for (const u of field) U.orderEvacHold(st, u, pad);
+      ui.update(this);
+      ui.setObjective(this.objectiveText());
+      ui.toast(t('ui.raid.toastEvacWait'), 'warn', 3200);
+      this.sound.ping();
       return;
     }
-    st.raidEvacuating = false;
-    for (const u of st.units) if (u.side === 'player') u.evacT = 0;
-    ui.update(this);
-    ui.setObjective(this.objectiveText());
-    ui.toast(t('ui.raid.toastEvacCancel'), 'info');
-    this.sound.click();
+    this.finishRaidExpedition('evac');
   }
 
   finishRaidExpedition(outcome) {
@@ -1184,6 +1202,7 @@ export class Game {
             // На вылазке роль КЦ играет Дом-шаттл — приказ должен работать и там.
             enabled: () => !!ccAnchor(st),
             on: () => {
+              U.clearEvacFlags(squadSel); // приказ игрока главнее ожидания у челнока
               const n = issueRetreatToCC(st, squadSel);
               ui.toast(t('ui.squad.retreat', { n }), 'info');
               this.sound.ack();
@@ -1219,6 +1238,7 @@ export class Game {
       // Э7: клик в режиме «Держать сектор» — ставим пост выделенным бойцам.
       issueHold: (wx, wy) => {
         const s = st();
+        U.clearEvacFlags(s.selection); // явный приказ снимает «жду эвакуации»
         const n = issueHold(s, wx, wy, s.selection);
         if (n) ui.toast(t('ui.squad.hold', { n }), 'info');
         else ui.toast(t('ui.squad.none'), 'warn');
@@ -1303,6 +1323,7 @@ export class Game {
       cancelQueue: (b, i) => B.cancelQueueItem(st(), b, i),
 
       stopSelected: () => {
+        U.clearEvacFlags(st().selection); // явный приказ снимает «жду эвакуации»
         for (const e of st().selection) if (e.kind === 'unit') U.orderStop(e);
         this.sound.click();
       },
@@ -1314,6 +1335,7 @@ export class Game {
         const units = s.selection.filter((e) => e.kind === 'unit' && e.side === 'player' &&
           !e.dead && !e.garrison && e.cfg.dmg > 0);
         if (!units.length) return;
+        U.clearEvacFlags(units);
         // Слоты строя проверяются по карте (не в стене) — как у обычного движения.
         const goals = U.formationGoals(s, units, wx, wy);
         for (let i = 0; i < units.length; i++) {
@@ -1480,6 +1502,8 @@ export class Game {
     }
     const units = sel.filter((e) => e.kind === 'unit' && e.side === 'player');
     if (!units.length) return;
+    // #36 З2: явный приказ игрока неприкосновенен — снимаем «жду эвакуации».
+    U.clearEvacFlags(units);
 
     // 1) Враг — атака.
     const enemyU = U.unitAt(st, wx, wy, 'enemy');
@@ -1551,6 +1575,22 @@ export class Game {
       if (repairers.length) {
         U.orderRepairSpread(st, repairers, wx, wy, ownU); // G.4
         for (const u of units) if (!u.cfg.canRepair) U.orderMove(st, u, ownU.x, ownU.y);
+        this.sound.ack();
+        return;
+      }
+    }
+    // 4b) Своё раненое СУЩЕСТВО под курсором — лечение (GO владельца 26.10:
+    // «всё делаем симметрично» с ремонтом). Лечат только хилы и только свою
+    // расу; не-хилы просто идут к цели. Нет хилов — тихий фолбэк в движение
+    // (никаких тостов: приказ не «не сработал», просто нет лекарей).
+    if (ownU && !ownU.cfg.vehicle && !ownU.cfg.canMine && ownU.hp < ownU.maxHp) {
+      const healers = units.filter((u) => u.cfg.canHeal && u.faction === ownU.faction && u !== ownU);
+      if (healers.length && U.orderHealSpread(st, healers, wx, wy, ownU)) {
+        for (const u of units) {
+          if (u.cfg.canHeal && u.faction === ownU.faction) continue;
+          if (u.garrison) continue;
+          U.orderMove(st, u, ownU.x, ownU.y);
+        }
         this.sound.ack();
         return;
       }

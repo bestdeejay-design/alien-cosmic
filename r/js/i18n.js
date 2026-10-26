@@ -24,8 +24,8 @@ const LS_KEY = 'terranrts.language';
 // Реестр локалей: только записям реестра разрешён import() и показ
 // в переключателе. Новая локаль = файл locales/<code>.js + запись здесь.
 export const SUPPORTED_LOCALES = {
-  ru: { code: 'ru', label: 'Русский', htmlLang: 'ru', import: () => import('../locales/ru.js?v=10262517') },
-  en: { code: 'en', label: 'English', htmlLang: 'en', import: () => import('../locales/en.js?v=10262517') },
+  ru: { code: 'ru', label: 'Русский', htmlLang: 'ru', import: () => import('../locales/ru.js?v=10262518') },
+  en: { code: 'en', label: 'English', htmlLang: 'en', import: () => import('../locales/en.js?v=10262518') },
 };
 
 let dict = null;      // словарь выбранной локали

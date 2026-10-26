@@ -12,12 +12,13 @@
 //   • кнопка «Учебная тревога» — малая волна сразу, чтобы проверить оборону;
 //   • журнал последних событий.
 // ============================================================
-import { t } from './i18n.js?v=10262517';
+import { t } from './i18n.js?v=10262518';
 import {
   ensureCommander, rankOf, xpNeed, bonuses, commanderTitle, MAX_COMMANDER_LEVEL,
-} from './commander.js?v=10262517';
-import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10262517';
-import { issueRetreatToCC, clearHold, squadHoldCount } from './squad.js?v=10262517';
+} from './commander.js?v=10262518';
+import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10262518';
+import { issueRetreatToCC, clearHold, squadHoldCount } from './squad.js?v=10262518';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10262518';
 
 let panel = null;
 let timer = null;
@@ -32,6 +33,9 @@ function pips(n) {
 export function openCommander(game) {
   if (!game || !game.state) return;
   if (panel && document.body.contains(panel)) { closeCommander(); return; }
+  // З2 (#33): командир закрывает всё, что было открыто (капсулы/админку/профиль)
+  // — раньше он лез поверх капсул и карточки становились некликабельными.
+  closeOthers('commander');
   const st = game.state;
   const c = ensureCommander(st);
   const b = bonuses(c.level);
@@ -82,6 +86,7 @@ export function openCommander(game) {
       <div class="cm-foot"><button class="big-btn ghost-btn" id="cm-close" type="button">${esc(t('ui.commander.close'))}</button></div>
     </div>`;
   document.body.append(panel);
+  registerModal('commander', closeCommander);
   if (st) { game.commanderPausedBefore = !!game.paused; game.paused = true; }
 
   const $ = (id) => panel.querySelector(id);
@@ -184,6 +189,7 @@ function refresh(game) {
 }
 
 export function closeCommander() {
+  unregisterModal('commander');
   if (timer) { clearInterval(timer); timer = null; }
   if (panel) { panel.remove(); panel = null; }
   const g = window.game;

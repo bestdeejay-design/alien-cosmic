@@ -24,6 +24,11 @@ export default {
       hint: 'Page zoom changed by the system — the game follows the visible area. Pinch to restore the default zoom.',
     },
 
+    // З3 (#33): a silent save failure is no longer silent — the player sees a toast.
+    save: {
+      failed: 'Save failed: {err}. Progress is only in this browser for now.',
+    },
+
     menu: {
       sub: 'A real-time strategy: colonists and natives wage war for the erg of Frontier-64',
       heroEyebrow: 'INBOUND SIGNAL · FRONTIER-64',
@@ -188,7 +193,7 @@ export default {
       topEvac: 'Evacuate',
       topEvacTitle: 'Gather the squad at the shuttle pad and return to base',
       topLiftoff: 'Liftoff ({n})',
-      topEvacCancel: 'Cancel evac',
+      topEvacCancel: 'Lift off',
       abortConfirm: 'Abort the expedition? Unboarded units and shuttle cargo will be lost.',
       cmdLaunch: 'Expedition',
       cmdLaunchTip: [
@@ -197,20 +202,22 @@ export default {
       ],
       cmdEvac: 'Evacuate',
       cmdLiftoff: 'Liftoff ({n})',
-      cmdEvacCancel: 'Cancel evac',
+      cmdEvacCancel: 'Lift off',
       cmdEvacTip: [
         'Squad gathers on the shuttle beacon (2s hold to board)',
-        'Press again once troops have boarded for immediate liftoff',
+        'Anyone inside the House bay is already aboard',
+        'Press again to lift off: stragglers stay on the planet',
       ],
       hudHome: 'Home Ship-CC · Actan-4 · tier {tier}/{max} · sorties: {raids}',
       hudExpedition: 'Expedition T{tier}/{max} · active: {alive} · hold: {cargo}/{cap}',
       hudEvac: 'Shuttle boarding: {boarded}/{total} aboard · hold: {cargo} erg',
       modalTitle: 'EXPEDITION CONSOLE',
       modalSub: 'Planet: Actan-4 · home reserve: {minerals} erg · sorties completed: {raids}',
-      tierLabel: 'Loadout tier (1–20) · unlocked by CC level',
+      tierLabel: 'Loadout tier · unlocked by CC level',
       tierBtn: 'Tier {tier}',
       tierCaps: 'up to {units} · budget {budget}',
       tierLoot: 'erg on map {yieldTotal} · per trip {trip}',
+      tierHold: 'House hold: {cap} erg · per trip {trip}',
       tierNeedCC: 'needs CC level {n}',
       tierUnlock: {
         1: 'Command Ship',
@@ -235,7 +242,7 @@ export default {
       launchBtn: 'Launch shuttle',
       cancelBtn: 'Stay at base',
       errNotHome: 'Expeditions can only launch from your home Command Ship.',
-      errTierRange: 'Select a loadout tier from 1 to 5.',
+      errTierRange: 'Select an available loadout tier.',
       errTierLocked: 'Tier {tier} locked — requires: {hint}.',
       errInvalidSquad: 'Invalid squad selection.',
       errNotEnoughUnits: 'Not enough matching units available at home base.',
@@ -247,6 +254,8 @@ export default {
       toastLaunch: 'Shuttle deployed (T{tier}, squad: {n}). Deliver erg to the landing pad.',
       toastEvacStart: 'Evacuation beacon active: gather your squad inside the landing ring.',
       toastEvacCancel: 'Evacuation cancelled — expedition continues.',
+      toastEvacWait: 'The squad assembled at the shuttle and awaits evacuation — press "Evacuation" once more.',
+      toastEvacLift: 'Everyone is aboard — the shuttle is lifting off.',
       toastCargoFull: 'Hold is full ({cap}): surplus erg is lost',
       toastOverflow: 'Did not fit in the hold: {n} erg',
       toastLeft: 'Left on the map: {n} erg',
