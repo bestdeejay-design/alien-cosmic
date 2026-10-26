@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" role="img" aria-labelledby="titleBrok">
+  <title id="titleBrok">Брок-Тхаал — фиолетовый мир улья</title>
+  <defs>
+    <radialGradient id="gBrok" cx="32%" cy="26%" r="80%">
+      <stop offset="0%" stop-color="#e8d0ff"/>
+      <stop offset="14%" stop-color="#9b6fcf"/>
+      <stop offset="36%" stop-color="#5b2e7a"/>
+      <stop offset="62%" stop-color="#2a1a40"/>
+      <stop offset="100%" stop-color="#0d0a1a"/>
+    </radialGradient>
+    <radialGradient id="haloBrok" cx="50%" cy="50%" r="53%">
+      <stop offset="62%" stop-color="#a78bdb" stop-opacity="0"/>
+      <stop offset="85%" stop-color="#a78bdb" stop-opacity=".08"/>
+      <stop offset="100%" stop-color="#a78bdb" stop-opacity=".22"/>
+    </radialGradient>
+  </defs>
+  <g fill="#c5fff1" opacity=".55"><circle cx="28" cy="52" r="1"/><circle cx="96" cy="18" r=".8"/><circle cx="308" cy="44" r="1.2"/><circle cx="372" cy="28" r="1"/><circle cx="354" cy="412" r=".9"/><circle cx="18" cy="388" r=".9"/></g>
+  <ellipse cx="200" cy="240" rx="162" ry="162" fill="none" stroke="#e9f8f2" stroke-opacity=".86" stroke-width="1.1"/>
+  <circle cx="200" cy="240" r="172" fill="url(#haloBrok)"/>
+  <circle cx="200" cy="240" r="92" fill="url(#gBrok)" stroke="#c5fff1" stroke-opacity=".18" stroke-width="1"/>
+  <g clip-path="url(#clipBrok)">
+    <path d="M128 218c18 3 32 9 44 18l10 18-16 14-26-2-14-14-20 2-10-11 14-16 18-9z" fill="#c9a6ff" fill-opacity=".38"/>
+    <path d="M158 258c26-10 54-12 78-6 14 6 24 14 28 24l-8 20-22 10-18 12-16-4-8-14-18-8-12-18 6-18z" fill="#7a4a9e" fill-opacity=".48"/>
+    <path d="M140 190c22 12 38 24 48 36" stroke="#9ff5b8" stroke-opacity=".35" stroke-width="1.1" stroke-dasharray="3 6"/>
+    <path d="M198 142c14 28 18 52 12 72" stroke="#e9f8f2" stroke-opacity=".16" stroke-width="6"/>
+    <circle cx="184" cy="218" r="3" fill="#9ff5b8"/><circle cx="184" cy="218" r="11" fill="none" stroke="#9ff5b8" stroke-opacity=".45"/><circle cx="184" cy="218" r="20" fill="none" stroke="#9ff5b8" stroke-opacity=".18" stroke-dasharray="2 5"/>
+    <circle cx="224" cy="298" r="3" fill="#f3c579"/><circle cx="224" cy="298" r="11" fill="none" stroke="#f3c579" stroke-opacity=".4"/>
+  </g>
+  <clipPath id="clipBrok"><circle cx="200" cy="240" r="92"/></clipPath>
+  <circle cx="200" cy="240" r="92" fill="none" stroke="#c5fff1" stroke-opacity=".14" stroke-width=".8"/>
+  <g stroke="#e9f8f2" fill="none">
+    <g transform="translate(200,78)"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.8" fill="#e9f8f2"/></g>
+    <g transform="translate(362,240)"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.8" fill="#e9f8f2"/></g>
+    <g transform="translate(200,402)"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.8" fill="#e9f8f2"/></g>
+    <g transform="translate(38,240)"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.8" fill="#e9f8f2"/></g>
+  </g>
+  <g font-family="Inter,sans-serif" font-size="6.5" font-weight="750" letter-spacing=".14em" fill="#e9f8f2" text-anchor="middle">
+    <text x="200" y="66">CRYSTAL DENSITY</text><text x="200" y="74" font-size="6" font-weight="600" fill="#91adae">0.94 GRANES / M²</text>
+    <text x="340" y="222">MASS</text><text x="340" y="230" font-size="6" font-weight="600" fill="#91adae">0.89 OF EARTH'S</text>
+    <text x="200" y="432">BROOD SONG</text><text x="200" y="440" font-size="6" font-weight="600" fill="#91adae">9.3 — 14.7 HZ</text>
+    <text x="62" y="222">SURFACE AREA</text><text x="62" y="230" font-size="6" font-weight="600" fill="#91adae">0.95 OF EARTH'S</text>
+  </g>
+  <text x="200" y="98" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="900" letter-spacing=".32em" fill="#e9f8f2">BROK — THAAL</text>
+  <line x1="120" y1="470" x2="280" y2="470" stroke="#e9f8f2" stroke-opacity=".85" stroke-width=".9"/>
+  <g transform="translate(200,470)"><rect x="-8" y="-8" width="16" height="16" transform="rotate(45)" fill="#a78bdb" stroke="#0d2028"/><circle cx="0" cy="0" r="3" fill="#0d2028"/></g>
+  <g font-family="Inter,sans-serif" text-anchor="middle">
+    <rect x="92" y="482" width="92" height="18" rx="2" fill="none" stroke="#e9f8f2" stroke-opacity=".55"/><rect x="216" y="482" width="92" height="18" rx="2" fill="none" stroke="#e9f8f2" stroke-opacity=".55"/>
+    <g transform="translate(138,475)"><rect x="-5" y="-5" width="10" height="10" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.2" fill="#e9f8f2"/></g>
+    <g transform="translate(262,475)"><rect x="-5" y="-5" width="10" height="10" transform="rotate(45)" fill="#0d2028" stroke="#e9f8f2"/><circle cx="0" cy="0" r="1.2" fill="#e9f8f2"/></g>
+    <text x="138" y="494" font-size="6.2" font-weight="700" letter-spacing=".08em" fill="#e9f8f2">2.14 AU</text><text x="262" y="494" font-size="6.2" font-weight="700" fill="#e9f8f2">1.78 AU</text>
+    <text x="138" y="510" font-size="5.5" font-weight="700" letter-spacing=".16em" fill="#91adae">APHELION</text><text x="262" y="510" font-size="5.5" font-weight="700" fill="#91adae">PERIHELION</text>
+  </g>
+</svg>

@@ -823,8 +823,7 @@ function updateOrderByKind(st, u, dt, grid) {
         }
       }
       // Бойцы без приказа сами ищут цель в радиусе обзора.
-      // Сценарная героиня S2 не бросает позицию без приказа игрока.
-      if (!u.s2NoAutoAcquire && !u.cfg.canMine && !u.cfg.canHeal && !u.cfg.scout) { // H.3: затвор №2
+      if (!u.cfg.canMine && !u.cfg.canHeal && !u.cfg.scout) { // H.3: затвор №2
         u.scanT -= dt;
         if (u.scanT <= 0) {
           u.scanT = 0.25 + srand(st) * 0.15;
@@ -869,11 +868,6 @@ function updateOrderByKind(st, u, dt, grid) {
 
 // Атака-движение: есть цель в обзоре — бьём её; нет — продолжаем путь.
 // Цель считаем живой, пока она в радиусе обзора (иначе «прилипаем» к убежавшему).
-function hiddenBySeason2Trail(st, unit) {
-  return !!(st && st.s2 && unit && unit.side === 'player' &&
-    typeof st.s2.isOnTrail === 'function' && st.s2.isOnTrail(unit));
-}
-
 function targetInSight(st, u, t) {
   const rx = t.kind === 'building' ? t.tx * TILE : t.x - t.r;
   const ry = t.kind === 'building' ? t.ty * TILE : t.y - t.r;
@@ -885,7 +879,7 @@ function targetInSight(st, u, t) {
 function updateAttackMove(st, u, dt, grid) {
   const o = u.order;
   let t = o.target;
-  if (t && (t.dead || !targetInSight(st, u, t) || (u.side === 'enemy' && hiddenBySeason2Trail(st, t)))) { t = null; o.target = null; }
+  if (t && (t.dead || !targetInSight(st, u, t))) { t = null; o.target = null; }
   if (!t) {
     t = acquireTarget(st, u, grid);
     if (t) { o.target = t; u.path = null; u.pathI = 0; u.repathT = 0; }
@@ -933,7 +927,6 @@ function updateAttackMove(st, u, dt, grid) {
 // в радиусе оружия (юниты — из пространственной сетки). Медики на
 // марше вдобавок подлечивают раненых, проходя мимо.
 function busyDefence(st, u, dt, grid) {
-  if (u.s2Ceasefire) return;
   const k = u.order.kind;
   if (k !== 'move' && k !== 'gather' && k !== 'build' && k !== 'repair') return;
   if (u.cfg.canHeal) {
@@ -956,7 +949,6 @@ function busyDefence(st, u, dt, grid) {
   grid.query(u.x, u.y, R, (e) => {
     if (e.dead || e.side === u.side || e.garrison) return;
     if (u.side === 'player' && !e.visible) return;
-    if (u.side === 'enemy' && hiddenBySeason2Trail(st, e)) return;
     const d = Math.hypot(e.x - u.x, e.y - u.y);
     if (d < bd && d <= R) { bd = d; best = e; }
   });
@@ -1194,7 +1186,6 @@ function followPath(st, u) {
 // Атака: подойти в пределах range и стрелять с перезарядкой.
 function updateAttack(st, u, dt, grid) {
   let t = u.order.target;
-  if (u.side === 'enemy' && hiddenBySeason2Trail(st, t)) { orderStop(u); return; }
   if (!t || t.dead) {
     // Цель погибла: авто-агро ищет следующую, приказ — ближайшего врага.
     const next = u.order.auto ? acquireTarget(st, u, grid)
@@ -1248,12 +1239,7 @@ function updateAttack(st, u, dt, grid) {
 export function shoot(st, u, t) {
   const cfg = u.cfg;
   const base = u.kind === 'building' ? gradeDmg(u.type, u.level || 1, cfg.dmg) : cfg.dmg; // F.2: грейд турели
-  let dmg = base + atkBonus(st, u);   // исследования усиливают выстрел
-  const auraHero = st.s2 && st.s2.heroine && !st.s2.heroine.dead ? st.s2.heroine : null;
-  if (u.side === 'player' && auraHero && auraHero.cfg.auraDamageBonus &&
-      Math.hypot(u.x - auraHero.x, u.y - auraHero.y) <= auraHero.cfg.auraRadiusTiles * TILE) {
-    dmg = Math.round(dmg * (1 + auraHero.cfg.auraDamageBonus));
-  }
+  const dmg = base + atkBonus(st, u);   // исследования усиливают выстрел
   const reach = u.r || Math.max(cfg.w, cfg.h) * TILE * 0.5;
   u.angle = Math.atan2(t.y - u.y, t.x - u.x);
   const muzzleX = u.x + Math.cos(u.angle) * (reach + 4);
@@ -1443,12 +1429,7 @@ function updateRepair(st, u, dt) {
   if (distToRectPx(u.x, u.y, rx, ry, rw, rh) <= TILE * 1.1) {
     u.path = null; u.moving = false;
     u.angle = Math.atan2(t.y - u.y, t.x - u.x);
-    let rate = REPAIR_RATE[isB ? 'building' : 'unit'];
-    const auraHero = st.s2 && st.s2.heroine && !st.s2.heroine.dead ? st.s2.heroine : null;
-    if (u.side === 'player' && auraHero && auraHero.cfg.auraRepairMultiplier &&
-        Math.hypot(u.x - auraHero.x, u.y - auraHero.y) <= auraHero.cfg.auraRadiusTiles * TILE) {
-      rate *= auraHero.cfg.auraRepairMultiplier;
-    }
+    const rate = REPAIR_RATE[isB ? 'building' : 'unit'];
     const hpToRestore = Math.min(rate * dt, Math.max(0, t.maxHp - t.hp));
     const cost = hpToRestore / REPAIR_HP_PER_MINERAL;
     if (minerals + REPAIR_BUDGET_EPSILON < cost) {
@@ -1512,14 +1493,12 @@ function updateGarrison(st, u) {
 // Автопоиск цели в радиусе обзора (только для своей стороны; для игрока —
 // с учётом тумана войны). Юниты в приоритете, здания — если в зоне боя.
 export function acquireTarget(st, u, grid) {
-  if (u.s2Ceasefire) return null;
   const R = u.cfg.sightTiles * TILE;
   const rng = u.kind === 'building' ? gradeRange(u.type, u.level || 1, u.cfg.range) : u.cfg.range; // F.2
   let best = null, bd = Infinity;
   grid.query(u.x, u.y, R, (e) => {
     if (e.dead || e.side === u.side || e.garrison) return;
     if (u.side === 'player' && !e.visible) return; // туман войны
-    if (u.side === 'enemy' && hiddenBySeason2Trail(st, e)) return;
     const d = Math.hypot(e.x - u.x, e.y - u.y);
     if (d < bd && d <= R) { bd = d; best = e; }
   });
@@ -1990,6 +1969,164 @@ function poly(ctx, p) {
 }
 
 // ------------------------------------------------------------
+// Свет и объём (шлифовка #31). Канон DESIGN_SYSTEM.md §1: мир тёмный,
+// сущности светятся, свет сверху-слева. У всего объёмного есть кромка
+// света — иначе корпус читается плоской заливкой и «мыло» на биоме.
+// Полоса обрезается по фигуре, поэтому повторяет силуэт точно.
+// ------------------------------------------------------------
+
+// Световая полоса по верхней кромке многоугольника.
+function topLight(ctx, pts, h = 2.2, a = 0.42) {
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    if (pts[i + 1] < minY) minY = pts[i + 1];
+    if (pts[i + 1] > maxY) maxY = pts[i + 1];
+    if (pts[i] < minX) minX = pts[i];
+    if (pts[i] > maxX) maxX = pts[i];
+  }
+  ctx.save();
+  poly(ctx, pts); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(minX, minY, maxX - minX, h);
+  ctx.restore();
+}
+
+// То же для скруглённого прямоугольника (корпуса-«утюги», платформы).
+function topLightRect(ctx, x, y, w, h, a = 0.4, rh = 2.2) {
+  ctx.save();
+  rr(ctx, x, y, w, h, 6); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(x, y, w, rh);
+  ctx.restore();
+}
+
+// То же для круга/овала (диск медика, купола).
+function topLightEllipse(ctx, cx, cy, rx, ry, a = 0.38, rh = 2.2) {
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+  ctx.fillRect(cx - rx, cy - ry, rx * 2, rh);
+  ctx.restore();
+}
+
+// Влажный блик органики кхарид: тёплое пятно сверху-слева, без резкой
+// кромки — плоть «мокрая», а не пластиковая. Делаётся слоями эллипсов,
+// а не createRadialGradient: на 200 юнитов градиент в кадр — это аллокации,
+// а здесь только fill. Симуляцию не трогает.
+function wetLight(ctx, cx, cy, rx, ry, a = 0.3) {
+  const gx = cx - rx * 0.32, gy = cy - ry * 0.44;
+  ctx.save();
+  for (let i = 3; i >= 1; i--) {
+    const k = i / 3;
+    ctx.fillStyle = 'rgba(255,226,232,' + (a * (0.28 + 0.52 * (1 - k))).toFixed(3) + ')';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, rx * 0.6 * k, ry * 0.6 * k, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// --- Аура лечения (V-3): поле вокруг аптечка, «+» здоровья и рой
+// нанодронов у Гелиоса. Цвет — как у эффекта 'heal' в drawEffects
+// (#7dff9b), чтобы поле юнита и плюсики над леченым читались одним.
+// Рисуется в МИРОВОЙ СК (вызывается до rotate): «+» всегда всплывают
+// вверх, куда бы ни смотрел юнит. Без градиентов и без shadowBlur —
+// A9-стаб не умеет createRadialGradient, а «одно свечение на спрайт»
+// остаётся за ядром-крестом. Симуляцию не трогает.
+function healAura(ctx, u, rx, ry, t) {
+  const A = '#7dff9b';
+  const alien = u.faction === 'alien';
+  const R = u.r + 8;
+  const ph = 0.5 + 0.5 * Math.sin(t * 3.4 + u.id);
+  if (alien) {
+    // Кхарид: облако спор — плотнее и зеленее, чем у техники: пыльца
+    // стелется вокруг тела и висит в воздухе.
+    for (let i = 0; i < 7; i++) {
+      const a = i * 1.35 + u.id * 0.8;
+      const d = R * (0.4 + 0.36 * ((i * 37) % 11) / 11);
+      const rr2 = R * (0.46 + 0.18 * ((i * 53) % 7) / 7);
+      ctx.globalAlpha = 0.12 + 0.06 * ph;
+      ctx.fillStyle = A;
+      ctx.beginPath();
+      ctx.ellipse(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.72,
+        rr2, rr2 * 0.76, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Пыльца: точки по краю облака — крутятся, мигают и меняют размер.
+    for (let i = 0; i < 10; i++) {
+      const a = i * 0.9 + u.id * 0.6 + t * 0.22;
+      const d = R * (0.7 + 0.22 * ((i * 29) % 5) / 5);
+      const blink = 0.5 + 0.5 * Math.sin(t * 2.6 + i * 1.3);
+      ctx.globalAlpha = 0.28 + 0.45 * blink;
+      ctx.fillStyle = blink > 0.6 ? '#c8ffbe' : '#8fe87f';
+      ctx.beginPath();
+      ctx.arc(rx + Math.cos(a) * d, ry + Math.sin(a) * d * 0.8,
+        0.9 + blink * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Гелиос: ровный купол-поле с кромкой и расходящейся волной.
+    ctx.globalAlpha = 0.1 + ph * 0.06;
+    ctx.fillStyle = A;
+    ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.fill();
+    // Ядро-крест: мягкое зелёное сияние вокруг аппарата (слоями, без blur).
+    ctx.globalAlpha = 0.24 + 0.1 * ph;
+    ctx.beginPath(); ctx.arc(rx, ry, u.r + 4, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = A; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.stroke();
+    const wave = (t * 0.85 + u.id * 0.37) % 1;
+    ctx.globalAlpha = (1 - wave) * 0.5;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.arc(rx, ry, u.r + 2 + wave * 8, 0, Math.PI * 2); ctx.stroke();
+    // Рой нанодронов: пять настоящих блюдец на орбите — корпус, ободок,
+    // окошко и свой крестик; к ядру каждый tied дугой «связи».
+    const orbR = u.r + 3.6;
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.256 + t * 0.5 + u.id * 0.4;
+      const dx = rx + Math.cos(a) * orbR;
+      const dy = ry + Math.sin(a) * orbR * 0.72;
+      ctx.globalAlpha = 0.28 + 0.22 * ph;
+      ctx.strokeStyle = A; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.quadraticCurveTo(rx + Math.cos(a) * orbR * 0.55,
+        ry + Math.sin(a) * orbR * 0.36, dx, dy);
+      ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#e8eef2';
+      ctx.beginPath(); ctx.ellipse(dx, dy, 3.5, 2.7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#596069';
+      ctx.beginPath(); ctx.ellipse(dx, dy - 0.7, 3.5, 1.6, 0, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#7df3e2';
+      ctx.fillRect(dx - 1.6, dy - 0.5, 3.2, 1.3);
+      ctx.fillStyle = A;
+      ctx.fillRect(dx - 0.35, dy - 2, 0.7, 4);
+      ctx.fillRect(dx - 2, dy - 0.35, 4, 0.7);
+    }
+  }
+  // «+» здоровья: три плюсика дрейфуют вверх и тают (обе расы).
+  for (let i = 0; i < 3; i++) {
+    const k = (t * 0.5 + i * 0.34 + u.id * 0.21) % 1;
+    const a = i * 2.09 + u.id * 0.7;
+    const pr = u.r + 1 + k * 7;
+    const ps = 1.9 + k * 1.1;
+    const x = rx + Math.cos(a) * pr;
+    const y = ry + Math.sin(a) * pr - k * 4;
+    // Мягкое сияние плюсика — слоем, без shadowBlur.
+    ctx.globalAlpha = (1 - k) * 0.16;
+    ctx.fillStyle = A;
+    ctx.beginPath(); ctx.arc(x, y, ps * 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = (1 - k) * 0.9;
+    ctx.fillRect(x - ps * 0.26, y - ps, ps * 0.52, ps * 2);
+    ctx.fillRect(x - ps, y - ps * 0.26, ps * 2, ps * 0.52);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ------------------------------------------------------------
 // Отрисовка юнита (rx, ry — уже интерполированная позиция).
 // Стиль-гайд v2 «семейства»:
 //   Гелиос — угловатая ховер-техника: шестигранники, прямые кромки,
@@ -2035,6 +2172,11 @@ export function drawUnit(ctx, u, rx, ry) {
     ctx.stroke();
   }
 
+  // Аура лечения (V-3): у аптечков поле видно всегда — это их подпись.
+  if (u.cfg && u.cfg.canHeal) {
+    healAura(ctx, u, rx, ry, performance.now() * 0.001 + u.id * 1.618);
+  }
+
   ctx.save();
   ctx.translate(rx, ry);
   ctx.rotate(u.angle);
@@ -2073,6 +2215,8 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.strokeStyle = outline; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.ellipse(-1, 0, 5.5, 7.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.ellipse(5, 0, 5, 6, 0, 0, Math.PI * 2); ctx.stroke();
+      wetLight(ctx, -1, -1.5, 5.5, 7.5, 0.32);
+      wetLight(ctx, 5, -1, 5, 6, 0.22);
       // Спинные шипики.
       ctx.fillStyle = bio;
       poly(ctx, [-4, -7, -2, -11, 0, -7]); ctx.fill();
@@ -2096,6 +2240,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(-1, 0, 10.5, 7.2, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, -1, -1.5, 10.5, 7.2, 0.3);
       // Гребень: шипы с био-кончиками.
       for (let i = 0; i < 5; i++) {
         const sx = -7 + i * 3.4, h = 5 + (i % 2) * 2.5;
@@ -2134,11 +2279,14 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(-1, 0, 10, 6, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(-2, 0, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
-      // Спинной плавник.
+      // Спинные плавники: два ряда — «скользень» читается по хребту.
       ctx.fillStyle = flesh;
       poly(ctx, [-5, -4, -2, -11, 1, -4]); ctx.fill();
+      poly(ctx, [-9, -3.5, -7, -8, -4, -3.5]); ctx.fill();
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-2, -11, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-7, -8, 1.1, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, -1, -1.5, 10, 6, 0.3);
       // Голова, клыки и тройка глаз.
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.arc(8, 0, 4.6, 0, Math.PI * 2); ctx.fill();
@@ -2162,6 +2310,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.ellipse(0, 0, 15, 11.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3, 0, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -2, 15, 11.5, 0.26);
       ctx.fillStyle = flesh; // крап панциря
       ctx.beginPath(); ctx.arc(0, -3, 1.8, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(5, 4, 1.5, 0, Math.PI * 2); ctx.fill();
@@ -2201,6 +2350,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.arc(8, 0, 1.3, 0, Math.PI * 2); ctx.fill();
     } else if (u.type === 'medic') {
       // Цветень: капля с венчиком из 6 лепестков и свечой-ростком.
+      // Облако спор с «+» — в healAura (мировая СК, орг-вариант поля).
       const pr = 8.6 + pulse * 0.9;
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3 + t * 0.6;
@@ -2217,20 +2367,31 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.moveTo(-7, -3); ctx.quadraticCurveTo(-11, -4, -13, -6 + step * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-7, 3); ctx.quadraticCurveTo(-11, 4, -13, 6 - step * 2); ctx.stroke();
       ctx.globalAlpha = 1;
+      // Сияние мякоти: спора лечит изнутри — зелёный ореол вокруг капли
+      // (слоями, без shadowBlur: свечение остаётся за свечой-ростком).
+      ctx.globalAlpha = 0.2 + 0.12 * pulse;
+      ctx.fillStyle = '#a8ff9e';
+      ctx.beginPath(); ctx.ellipse(0, 0, 11, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = dark;
       ctx.beginPath(); ctx.ellipse(0, 0, 8, 7, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.ellipse(0, 0, 8, 7, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(1, 0, 5.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -1.5, 8, 7, 0.34);
       ctx.fillStyle = bright;
       ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI * 2); ctx.fill();
-      // Свеча-росток с пульсирующим пламенем.
+      // Свеча-росток с пульсирующим пламенем — «соска» няньки, она же
+      // ориентир: по ней видно, кто здесь лечит.
       ctx.strokeStyle = bio; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-2, -5); ctx.lineTo(-2 + sway, -11); ctx.stroke();
       ctx.shadowColor = bio; ctx.shadowBlur = 8;
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-2 + sway, -12.5, 2.4 + pulse * 1, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.4 + 0.3 * pulse;
+      ctx.beginPath(); ctx.arc(-2 + sway, -12.5, 4.4 + pulse * 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
     } else if (u.type === 'flamer') {
       // Кислотник: пузатый плевун — бородавки, боковые мешки, рыло-сопло.
@@ -2243,6 +2404,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.arc(0, 0, 10.5, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = main;
       ctx.beginPath(); ctx.ellipse(3.5, 0, 7, 6.6, 0, 0, Math.PI * 2); ctx.fill();
+      wetLight(ctx, 0, -2, 10.5, 10.5, 0.26);
       // Бородавки и пульсирующие мешки.
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(-4, -6.5, 1.8, 0, Math.PI * 2); ctx.fill();
@@ -2276,6 +2438,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = flesh;
       poly(ctx, [2, -4, 5, -11, 7, -3]); ctx.fill();
       poly(ctx, [-3, -4, -1, -11, 1, -3]); ctx.fill();
+      wetLight(ctx, 0, -1, 8, 5, 0.32);
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(5, -11, 1.3, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(-1, -11, 1.3, 0, Math.PI * 2); ctx.fill();
@@ -2288,40 +2451,6 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.shadowColor = bio; ctx.shadowBlur = 5;
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(sx, sy, 1.7, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
-    } else if (u.type === 'hero') {
-      // Тха-Рисса: высокий силуэт защитницы, корона-шип, плащ из жил
-      // и открытое светящееся ядро — её аура читается даже в миниатюре.
-      const f = step * 1.8;
-      ctx.strokeStyle = flesh; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(-7 + f, 13); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(4, 5); ctx.lineTo(7 - f, 13); ctx.stroke();
-      ctx.fillStyle = flesh;
-      poly(ctx, [-7, -6, -15, -2, -17, 8, -9, 5, -5, 13, 2, 8, 8, 13, 10, 4, 7, -6]); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 1.8; ctx.stroke();
-      ctx.fillStyle = dark;
-      ctx.beginPath(); ctx.ellipse(0, 0, 8.2, 11, -0.08, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 1.8;
-      ctx.beginPath(); ctx.ellipse(0, 0, 8.2, 11, -0.08, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = main;
-      poly(ctx, [-5, -7, 4, -8, 7, 3, 2, 10, -6, 6]); ctx.fill();
-      ctx.fillStyle = flesh;
-      ctx.beginPath(); ctx.ellipse(1, -10, 6.5, 6, 0, 0, Math.PI * 2); ctx.fill();
-      // Кристаллическая корона и две короткие костяные лопасти.
-      ctx.fillStyle = bone;
-      poly(ctx, [-6, -12, -8, -20, -2, -15, 1, -22, 4, -14, 9, -19, 7, -10]); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 1.2; ctx.stroke();
-      ctx.fillStyle = bio;
-      ctx.beginPath(); ctx.arc(2, -10, 2.5 + pulse, 0, Math.PI * 2); ctx.fill();
-      // Руки и светящийся посох-кристалл.
-      ctx.strokeStyle = dark; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(-5, -4); ctx.lineTo(-12, 2 + f); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(5, -4); ctx.lineTo(11, 1 - f); ctx.stroke();
-      ctx.strokeStyle = bio; ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.moveTo(13, -11); ctx.lineTo(11, 12); ctx.stroke();
-      ctx.shadowColor = bio; ctx.shadowBlur = 8;
-      ctx.fillStyle = bio;
-      poly(ctx, [13, -16, 16, -11, 13, -6, 10, -11]); ctx.fill();
       ctx.shadowBlur = 0;
     } else {
       // Спогром: червь из 4 сегментов, мортира на спине, споровые мешки.
@@ -2338,6 +2467,7 @@ export function drawUnit(ctx, u, rx, ry) {
         const gx = segX[i] + 3;
         ctx.beginPath(); ctx.moveTo(gx, -7.5); ctx.quadraticCurveTo(gx + 1.5, 0, gx, 7.5); ctx.stroke();
       }
+      wetLight(ctx, -1, -2.5, 12, 9, 0.24);
       // Споровые мешки.
       ctx.fillStyle = bio;
       ctx.beginPath(); ctx.arc(4, -8.5, 2.4 + pulse * 0.8, 0, Math.PI * 2); ctx.fill();
@@ -2404,9 +2534,14 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.stroke();
       ctx.fillStyle = hull2;
       poly(ctx, [7, 0, 3, -5, -4, -5, -7, 0, -4, 5, 3, 5]); ctx.fill();
+      topLight(ctx, [7, 0, 3, -5, -4, -5, -7, 0, -4, 5, 3, 5], 1.8, 0.5);
       ctx.strokeStyle = main; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(-4, -5); ctx.lineTo(3, -5); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(3, 5); ctx.stroke();
+      // Заклёпки-пиксели на панели: «инженерия», а не заливка.
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(-5, -3.4, 1.6, 1.6); ctx.fillRect(-1, -3.4, 1.6, 1.6);
+      ctx.fillRect(-5, 2, 1.6, 1.6); ctx.fillRect(-1, 2, 1.6, 1.6);
       // Мачта с маяком.
       ctx.strokeStyle = hull2; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(-6, -12); ctx.stroke();
@@ -2448,6 +2583,11 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.stroke();
       ctx.fillStyle = hull2;
       poly(ctx, [4, 0, 0, -6, -6, -6, -8, 0, -6, 6, 0, 6]); ctx.fill();
+      topLight(ctx, [4, 0, 0, -6, -6, -6, -8, 0, -6, 6, 0, 6], 1.8, 0.5);
+      // Бортовые панели с заклёпками.
+      ctx.fillStyle = 'rgba(255,255,255,0.32)';
+      ctx.fillRect(-6.5, -4.6, 1.5, 1.5); ctx.fillRect(-3, -4.6, 1.5, 1.5);
+      ctx.fillRect(-6.5, 3.2, 1.5, 1.5); ctx.fillRect(-3, 3.2, 1.5, 1.5);
       // Наплечники.
       ctx.fillStyle = amber;
       ctx.fillRect(-10, -11.5, 6, 3.6); ctx.fillRect(-10, 7.9, 6, 3.6);
@@ -2476,6 +2616,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.strokeStyle = main; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.moveTo(11, -1.5); ctx.lineTo(-5, -9); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(11, 1.5); ctx.lineTo(-5, 9); ctx.stroke();
+      topLight(ctx, [15, 0, -6, -11, -11, -11, -3, 0, -11, 11, -6, 11], 2, 0.4);
       // Хребет и кабина.
       ctx.fillStyle = main;
       ctx.fillRect(-9, -1.4, 14, 2.8);
@@ -2504,6 +2645,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.globalAlpha = 1;
       ctx.fillStyle = hull;
       rr(ctx, -14, -11, 28, 22, 6); ctx.fill();
+      topLightRect(ctx, -14, -11, 28, 22, 0.4);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       // Отвал с шевроном.
@@ -2514,6 +2656,7 @@ export function drawUnit(ctx, u, rx, ry) {
       // Башня с заклёпками.
       ctx.fillStyle = hull2;
       rr(ctx, -9, -7, 18, 14, 5); ctx.fill();
+      topLightRect(ctx, -9, -7, 18, 14, 0.46, 1.8);
       ctx.strokeStyle = outline; ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.fillStyle = main;
@@ -2538,7 +2681,9 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = amber;
       ctx.fillRect(-15.5, -4, 2.2, 3); ctx.fillRect(-15.5, 1, 2.2, 3);
     } else if (u.type === 'medic') {
-      // Нанит: блюдце с кольцом, купол, пульсирующий крест, дюзы.
+      // Нанит: ядро-крест роя — блюдце с куполом, пульсирующий крест и
+      // дюзы. Рой нанодронов на орбите, купол-поле и всплывающие «+» —
+      // в healAura (мировая СК, чтобы «+» всегда шли вверх).
       ctx.fillStyle = main;
       ctx.globalAlpha = 0.55 + 0.45 * flick;
       ctx.fillRect(-13.5, -2.6, 3.4, 5.2); ctx.fillRect(10.1, -2.6, 3.4, 5.2);
@@ -2546,16 +2691,23 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.globalAlpha = 1;
       ctx.fillStyle = hull;
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+      topLightEllipse(ctx, 0, 0, 10, 10, 0.42, 2.2);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = main; ctx.lineWidth = 2.4;
       ctx.beginPath(); ctx.arc(0, 0, 7.6, t * 0.8, t * 0.8 + Math.PI * 1.5); ctx.stroke();
+      // Иллюминаторы по бокам: блюдце читается аппаратом, а не шариком.
+      ctx.fillStyle = '#7df3e2';
+      ctx.fillRect(-8.4, -2.6, 3.4, 5.2); ctx.fillRect(5, -2.6, 3.4, 5.2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(-8.4, -2.6, 3.4, 1.2); ctx.fillRect(5, -2.6, 3.4, 1.2);
       ctx.fillStyle = hull2;
       ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill();
-      // Крест наномедицины — дышит.
+      // Крест наномедицины — дышит. Цвет лечащего «+» из drawEffects,
+      // чтобы ядро роя и плюсики над раненым были одного языка.
       const cw = 1.7 + pulse * 0.5;
-      ctx.shadowColor = bright; ctx.shadowBlur = 6;
-      ctx.fillStyle = bright;
+      ctx.shadowColor = '#7dff9b'; ctx.shadowBlur = 6;
+      ctx.fillStyle = '#7dff9b';
       ctx.fillRect(-cw / 2, -6.4, cw, 12.8);
       ctx.fillRect(-6.4, -cw / 2, 12.8, cw);
       ctx.shadowBlur = 0;
@@ -2574,6 +2726,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillRect(-3.5, -10.4, 2.4, 2.8); ctx.fillRect(-3.5, 7.6, 2.4, 2.8);
       ctx.fillStyle = hull;
       rr(ctx, -11, -8, 19, 16, 5); ctx.fill();
+      topLightRect(ctx, -11, -8, 19, 16, 0.42);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       ctx.fillStyle = hull2;
@@ -2597,6 +2750,7 @@ export function drawUnit(ctx, u, rx, ry) {
       // Следопыт: клин-ховер без пушек, мачта-антенна, парящий дрон-точка.
       ctx.fillStyle = hull;
       poly(ctx, [12, 0, -8, -8, -4, 0, -8, 8]); ctx.fill();
+      topLight(ctx, [12, 0, -8, -8, -4, 0, -8, 8], 1.8, 0.44);
       ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
       ctx.strokeStyle = main; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, -6); ctx.moveTo(9, 0); ctx.lineTo(-6, 6); ctx.stroke();
@@ -2617,45 +2771,6 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.fillStyle = heat; ctx.globalAlpha = 0.7;
       poly(ctx, [-8, -3, -8 - 4 * eng, 0, -8, 3]); ctx.fill();
       ctx.globalAlpha = 1;
-    } else if (u.type === 'hero') {
-      // Капитан Рейн: офицерский нагрудник, плечевые пластины,
-      // янтарный визор и командная лента; силуэт читается отдельно от рейнджера.
-      const f = step * 1.4;
-      ctx.strokeStyle = hull; ctx.lineWidth = 3.4;
-      ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(-6 + f, 13); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(4, 5); ctx.lineTo(6 - f, 13); ctx.stroke();
-      ctx.fillStyle = hull;
-      poly(ctx, [-6, -7, -15, -2, -17, 8, -8, 5, -5, 13, 2, 8, 8, 13, 10, 4, 7, -7]); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = hull2;
-      rr(ctx, -8, -8, 16, 19, 5); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 1.8; ctx.stroke();
-      // Нагрудные пластины и командная лента.
-      ctx.fillStyle = main;
-      poly(ctx, [-6, -5, -1, -7, 0, 2, -5, 5]); ctx.fill();
-      poly(ctx, [1, -7, 6, -5, 5, 5, 1, 2]); ctx.fill();
-      ctx.strokeStyle = amber; ctx.lineWidth = 2.2;
-      ctx.beginPath(); ctx.moveTo(-5, -1); ctx.lineTo(5, 6); ctx.stroke();
-      ctx.fillStyle = amber;
-      ctx.beginPath(); ctx.arc(0, -2, 2.2 + pulse * 0.4, 0, Math.PI * 2); ctx.fill();
-      // Голова и визор.
-      ctx.fillStyle = hull;
-      ctx.beginPath(); ctx.ellipse(0, -11, 7.2, 6.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = outline; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.ellipse(0, -11, 7.2, 6.2, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#d4e5df';
-      poly(ctx, [-6, -12, 5, -13, 6, -9, -5, -8]); ctx.fill();
-      ctx.fillStyle = amber;
-      ctx.shadowColor = amber; ctx.shadowBlur = 6;
-      ctx.fillRect(1, -11.7, 4, 1.5);
-      ctx.shadowBlur = 0;
-      // Карабин опущен вдоль руки, пока капитан не вступил в бой.
-      ctx.strokeStyle = hull; ctx.lineWidth = 3.2;
-      ctx.beginPath(); ctx.moveTo(6, -3); ctx.lineTo(11, 2 + f); ctx.stroke();
-      ctx.fillStyle = '#0a1418';
-      ctx.fillRect(9, 0, 3, 10);
-      ctx.fillStyle = amber;
-      ctx.fillRect(10, 8, 1.2, 2.4);
     } else {
       // Мортира «Нова»: длинная платформа, барабан, поднятый ствол.
       ctx.fillStyle = hull;
@@ -2673,6 +2788,7 @@ export function drawUnit(ctx, u, rx, ry) {
       ctx.beginPath(); ctx.moveTo(-14, 7); ctx.lineTo(-19, 11); ctx.stroke();
       ctx.fillStyle = hull;
       rr(ctx, -14, -7.5, 26, 15, 4); ctx.fill();
+      topLightRect(ctx, -14, -7.5, 26, 15, 0.4);
       ctx.strokeStyle = outline; ctx.lineWidth = 2;
       ctx.stroke();
       // Барабан боепитания с янтарными секторами.

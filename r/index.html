@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ru" class="menu-active">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <!-- Пакет Q: maximum-scale/user-scalable — страховка зума страницы на Android;
+       iOS игнорирует их (доступность, iOS 10+) — там зум закрыт touch-action-политикой
+       (style.css) и gesturestart-гвардом (game.js). См. design/MOBILE_VIEWPORT_AUDIT.md. -->
+  <title>Alien Cosmic — Frontier-64 RTS</title>
+  <meta name="description" content="Alien Cosmic is a real-time strategy at the edge of space: choose a side and lead an expedition across Frontier-64."/>
+  <meta property="og:title" content="Alien Cosmic — Frontier-64 RTS"/>
+  <meta property="og:description" content="Choose a side and lead an expedition across an uncharted world. Campaign and quick battle at the edge of space."/>
+  <meta property="og:image" content="https://bestdeejay-design.github.io/alien-cosmic/assets/og-image.png"/>
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta property="og:image:alt" content="Alien Cosmic: teal and fire signals above a dark frontier world"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://bestdeejay-design.github.io/alien-cosmic/"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="Alien Cosmic — Frontier-64"/>
+  <meta name="twitter:description" content="A real-time strategy at the edge of space: choose a side, then enter the fight."/>
+  <meta name="twitter:image" content="https://bestdeejay-design.github.io/alien-cosmic/assets/og-image.png"/>
+  <!-- og-адреса абсолютные: Pages этого репозитория, подтверждено владельцем 2026-10-21. -->
+  <!-- Пакет V (Ф1): марка «сигнал-ромб» — SVG для современных браузеров,
+       PNG 32/48 фолбэк, apple-touch 180 (full-bleed, iOS маскирует сам),
+       theme-color — цвет космоса #071218. Генерация: scripts/make_favicons.mjs. -->
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="48x48" href="./assets/favicon-48.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png"/>
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png"/>
+  <meta name="theme-color" content="#071218"/>
+  <link rel="stylesheet" href="./style.css?v=10262517"/>
+</head>
+<body class="menu-active">
+  <div id="game-root">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="topbar">
+      <div class="brand">ALIEN <b>COSMIC</b><small>RTS</small></div>
+      <div class="res res-minerals"><span class="dot mineral"></span><span id="res-minerals">0</span></div>
+      <div class="res res-supply"><span class="dot supply" id="res-supply-dot"></span><span id="res-supply">0/0</span></div>
+      <div class="res res-time"><span id="res-time">00:00</span></div>
+      <div class="res objective" id="res-objective"></div>
+      <div class="spacer"></div>
+      <button id="btn-sound" class="tb-btn" type="button"></button>
+      <button id="btn-pause" class="tb-btn" type="button" data-i18n="ui.topbar.pause"></button>
+      <button id="btn-restart" class="tb-btn" type="button" data-i18n="ui.topbar.restart" data-i18n-title="ui.topbar.restart"></button>
+      <button id="btn-exit" class="tb-btn" type="button" data-i18n="ui.topbar.exit" data-i18n-title="ui.topbar.exit"></button>
+    </div>
+
+    <div id="bottom-panel">
+      <div id="minimap-box"><canvas id="minimap" aria-label="Minimap"></canvas></div>
+      <div id="sel-info"><div class="hint" data-i18n="ui.loading"></div></div>
+      <div id="cmd-grid"></div>
+      <div id="panel-ctl">
+        <button id="panel-compact-toggle" class="mini-btn" type="button" data-i18n-title="ui.panel.expandTitle"></button>
+        <button id="panel-pos" class="mini-btn" type="button" data-i18n="ui.panel.pos" data-i18n-title="ui.panel.posTitle"></button>
+        <button id="panel-hide" class="mini-btn" type="button" data-i18n="ui.panel.hide" data-i18n-title="ui.panel.hideTitle"></button>
+      </div>
+    </div>
+    <button id="panel-show" class="mini-btn" type="button" data-i18n="ui.panel.show" data-i18n-title="ui.panel.showTitle"></button>
+    <button id="placement-cancel" class="placement-cancel" type="button" hidden aria-label="Cancel placement" data-i18n-title="ui.placement.cancelTitle">×</button>
+    <div id="zoom-controls" role="group" aria-label="Zoom controls">
+      <button id="zoom-out" type="button" aria-label="Zoom out" data-i18n-title="ui.zoom.out">−</button>
+      <output id="zoom-value" aria-live="polite">100%</output>
+      <button id="zoom-in" type="button" aria-label="Zoom in" data-i18n-title="ui.zoom.in">+</button>
+    </div>
+
+    <div id="toasts"></div>
+
+    <!-- Campaign, briefing, lore, and in-game overlays stay in the game viewport. -->
+    <div id="mission-overlay" class="overlay hidden">
+      <div class="overlay-box wide">
+        <h1 data-i18n="ui.missionsScr.h1"></h1>
+        <p class="sub" data-i18n="ui.missionsScr.sub"></p>
+        <div id="mission-list"></div>
+        <button id="btn-missions-back" class="big-btn ghost-btn" data-i18n="ui.missionsScr.back"></button>
+      </div>
+    </div>
+
+    <div id="brief-overlay" class="overlay hidden">
+      <div class="overlay-box brief-box">
+        <div class="brief-head">
+          <span class="badge" id="brief-badge"></span>
+          <h1 id="brief-title" data-i18n="ui.brief.title"></h1>
+        </div>
+        <p class="sub" id="brief-place"></p>
+        <div id="brief-text"></div>
+        <div class="objective-line" id="brief-objective"></div>
+        <div class="menu-buttons">
+          <button id="btn-brief-go" class="big-btn" data-i18n="ui.brief.go"></button>
+          <button id="btn-brief-back" class="big-btn ghost-btn" data-i18n="ui.missionsScr.backToMissions"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="codex-overlay" class="overlay hidden">
+      <div class="overlay-box wide codex-box">
+        <h1 data-i18n="ui.codexScr.universeTitle"></h1>
+        <p class="sub" data-i18n="ui.codexScr.sub"></p>
+        <div id="codex-tabs"></div>
+        <div id="codex-body"></div>
+        <button id="btn-codex-back" class="big-btn ghost-btn" data-i18n="ui.codexScr.back"></button>
+      </div>
+    </div>
+
+    <div id="end-overlay" class="overlay hidden">
+      <div class="overlay-box">
+        <h1 id="end-title"></h1>
+        <div id="end-reason" class="end-reason"></div>
+        <div id="end-stats"></div>
+        <div id="end-epilogue" class="end-epilogue"></div>
+        <div id="end-actions" class="end-actions">
+          <button id="btn-end-home" class="big-btn ghost-btn" type="button" data-i18n="ui.end.home"></button>
+          <button id="btn-again" class="big-btn" type="button" data-i18n="ui.end.again"></button>
+          <button id="btn-next" class="big-btn" type="button" data-i18n="ui.end.next" hidden></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="raid-overlay" class="overlay hidden">
+      <div class="overlay-box wide raid-box">
+        <h1 data-i18n="ui.raid.modalTitle"></h1>
+        <p class="sub" id="raid-modal-sub"></p>
+
+        <div class="raid-section">
+          <div class="raid-section-head">
+            <h3 data-i18n="ui.raid.tierLabel"></h3>
+          </div>
+          <div id="raid-tier-grid" class="raid-tier-grid" role="group"></div>
+        </div>
+
+        <div class="raid-section">
+          <div class="raid-section-head">
+            <h3 data-i18n="ui.raid.squadLabel"></h3>
+            <span id="raid-squad-summary" class="raid-meta"></span>
+          </div>
+          <div id="raid-squad-list" class="raid-squad-list"></div>
+        </div>
+
+        <div class="raid-section raid-split-row">
+          <div class="raid-col">
+            <div class="raid-section-head">
+              <h3 data-i18n="ui.raid.budgetLabel"></h3>
+              <span id="raid-budget-summary" class="raid-meta"></span>
+            </div>
+            <div class="raid-budget-controls">
+              <button id="btn-raid-budget-zero" class="mini-btn" type="button" data-i18n="ui.raid.budgetZero"></button>
+              <button id="btn-raid-budget-minus" class="mini-btn" type="button" data-i18n="ui.raid.budgetMinus"></button>
+              <button id="btn-raid-budget-plus" class="mini-btn" type="button" data-i18n="ui.raid.budgetPlus"></button>
+              <button id="btn-raid-budget-max" class="mini-btn" type="button" data-i18n="ui.raid.budgetMax"></button>
+            </div>
+          </div>
+
+          <div class="raid-col">
+            <div class="raid-section-head">
+              <h3 data-i18n="ui.raid.seedLabel"></h3>
+            </div>
+            <div class="raid-seed-controls">
+              <input id="raid-seed-input" class="raid-seed-input" type="number" min="1" step="1" aria-label="Target seed"/>
+              <button id="btn-raid-seed-next" class="mini-btn" type="button" data-i18n="ui.raid.seedNext"></button>
+            </div>
+          </div>
+        </div>
+
+        <p id="raid-launch-status" class="raid-launch-status" role="status" aria-live="polite"></p>
+
+        <div class="menu-buttons">
+          <button id="btn-raid-launch" class="big-btn" type="button" data-i18n="ui.raid.launchBtn"></button>
+          <button id="btn-raid-cancel" class="big-btn ghost-btn" type="button" data-i18n="ui.raid.cancelBtn"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="pause-overlay" class="overlay thin hidden"><div class="pause-text" data-i18n="ui.pauseText"></div><button id="btn-pause-reload" class="big-btn ghost-btn" type="button" data-i18n="ui.menu.reload"></button></div>
+  </div>
+
+  <main id="landing-page" class="site-page">
+    <header class="site-header">
+      <div class="site-header-inner page-shell">
+        <a class="site-brand" href="#hero" aria-label="Alien Cosmic">
+          <span>ALIEN</span><b>COSMIC</b><small>FRONTIER 64</small>
+        </a>
+        <nav class="site-nav">
+          <a href="#quick-battle" data-i18n="ui.menu.quickBattleTitle"></a>
+          <a href="#campaign" data-i18n="ui.menu.campaignTitle"></a>
+          <a href="#universe" data-i18n="ui.menu.universe"></a>
+          <a href="#controls" data-i18n="ui.menu.controls"></a>
+          <a href="#more" data-i18n="ui.menu.more"></a>
+        </nav>
+        <div class="site-tools">
+          <div id="ver-badge" class="ver-badge"></div>
+          <div class="lang-row">
+            <label for="lang-select" data-i18n="ui.langLabel"></label>
+            <select id="lang-select"></select>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section id="hero" class="hero-section" aria-labelledby="hero-title">
+      <div class="hero-inner page-shell">
+        <div class="hero-copy">
+          <p class="hero-eyebrow"><span class="status-led" aria-hidden="true"></span><span data-i18n="ui.menu.heroEyebrow"></span></p>
+          <h1 id="hero-title" class="hero-title">ALIEN <span>COSMIC</span></h1>
+          <p class="hero-tagline" data-i18n="ui.menu.heroTagline"></p>
+          <p class="hero-description" data-i18n="ui.menu.heroDescription"></p>
+          <div class="hero-action">
+            <button id="btn-quick-primary" class="big-btn hero-cta" type="button" aria-controls="quick-battle" aria-describedby="hero-quick-status" data-i18n="ui.menu.heroQuickCta"></button>
+            <p id="hero-quick-status" class="hero-quick-status" role="status" aria-live="polite"></p>
+          </div>
+          <div class="hero-scroll-note"><span class="scan-mark" aria-hidden="true"></span><span data-i18n="ui.menu.heroScrollCue"></span></div>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-visual-grid"></div>
+          <div class="hero-art-frame">
+            <img class="hero-artwork" src="./assets/hero-art.svg" alt=""/>
+            <div class="hero-visual-label">
+              <span class="visual-label-kicker" data-i18n="ui.menu.heroVisualKicker"></span>
+              <span class="visual-label-main" data-i18n="ui.menu.heroVisualTitle"></span>
+            </div>
+            <div class="hero-coordinate"><span class="status-led warm"></span><span data-i18n="ui.menu.heroVisualStatus"></span></div>
+            <span class="hero-corner hero-corner-a"></span>
+            <span class="hero-corner hero-corner-b"></span>
+          </div>
+          <div class="hero-vertical-code">AC // 64.04</div>
+        </div>
+      </div>
+      <div class="hero-bottomline page-shell"><span data-i18n="ui.menu.heroBottomLine"></span><span class="bottomline-rule"></span><span>01 / 05</span></div>
+    </section>
+
+    <section id="quick-battle" class="page-section quick-section-page" aria-labelledby="quick-battle-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.quickBattleEyebrow"></p>
+            <h2 id="quick-battle-title" data-i18n="ui.menu.quickBattleTitle"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.quickBattleSub"></p>
+        </header>
+
+        <div class="quick-battle-card">
+          <div class="quick-battle-head">
+            <div class="quick-battle-copy-wrap">
+              <p class="quick-battle-copy" data-i18n="ui.menu.quickBattleChoiceHint"></p>
+            </div>
+          </div>
+
+          <div class="quick-section">
+            <h3 id="quick-map-label" data-i18n="ui.menu.quickBattleMapLabel"></h3>
+            <div id="quick-map-grid" class="quick-map-grid" role="group" aria-labelledby="quick-map-label">
+              <button id="quick-preset-square-48" class="quick-preset" type="button" data-preset-id="square-48" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.compact"></span><span class="preset-dims">48×48</span>
+              </button>
+              <button id="quick-preset-square-64" class="quick-preset is-selected" type="button" data-preset-id="square-64" aria-pressed="true">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.standard"></span><span class="preset-dims">64×64</span>
+                <span class="quick-recommended" data-i18n="ui.menu.quickBattleRecommended"></span>
+              </button>
+              <button id="quick-preset-square-80" class="quick-preset" type="button" data-preset-id="square-80" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.large"></span><span class="preset-dims">80×80</span>
+              </button>
+              <button id="quick-preset-square-96" class="quick-preset" type="button" data-preset-id="square-96" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.expanse"></span><span class="preset-dims">96×96</span>
+              </button>
+              <button id="quick-preset-wide-96x64" class="quick-preset" type="button" data-preset-id="wide-96x64" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.wide"></span><span class="preset-dims">96×64</span>
+              </button>
+              <button id="quick-preset-tall-64x96" class="quick-preset" type="button" data-preset-id="tall-64x96" aria-pressed="false">
+                <span class="preset-name" data-i18n="ui.menu.quickPresetNames.tall"></span><span class="preset-dims">64×96</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="quick-section">
+            <h3 id="quick-faction-label" data-i18n="ui.menu.quickBattleFactionLabel"></h3>
+            <div id="quick-faction-grid" class="fac-cards" role="group" aria-labelledby="quick-faction-label">
+              <button id="quick-faction-human" class="fac-card fac-human" type="button" aria-pressed="false">
+                <span class="fc-title" data-i18n="ui.skirmish.humanCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></span>
+              </button>
+              <button id="quick-faction-alien" class="fac-card fac-alien" type="button" aria-pressed="false">
+                <span class="fc-title" data-i18n="ui.skirmish.alienCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="quick-battle-actions">
+            <p id="quick-battle-status" class="quick-battle-status" role="status" aria-live="polite"></p>
+            <button id="btn-quick-battle-start" class="big-btn quick-start is-disabled" type="button" aria-disabled="true" aria-describedby="quick-battle-status" data-i18n="ui.menu.quickBattleNeedFaction"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="campaign" class="page-section campaign-section" aria-labelledby="campaign-section-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.campaignEyebrow"></p>
+            <h2 id="campaign-section-title" data-i18n="ui.menu.campaignTitle"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.campaignIntro"></p>
+        </header>
+        <div class="campaign-card">
+          <div class="campaign-card-copy">
+            <span class="campaign-mark" aria-hidden="true">01</span>
+            <h3 data-i18n="ui.menu.campaignTitle"></h3>
+            <p data-i18n="ui.menu.campaignSub"></p>
+          </div>
+          <div class="campaign-actions">
+            <button id="btn-start" class="big-btn campaign-start" type="button"></button>
+            <button id="btn-season1" class="big-btn ghost-btn campaign-browse" type="button" data-i18n="ui.menu.campaignBrowse"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="raids" class="page-section raids-section" aria-labelledby="raids-section-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.raidEyebrow"></p>
+            <h2 id="raids-section-title" data-i18n="ui.menu.raidTitle"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.raidIntro"></p>
+        </header>
+        <div class="raid-menu-card">
+          <div class="quick-section">
+            <h3 id="raid-faction-label" data-i18n="ui.menu.raidFactionLabel"></h3>
+            <div id="raid-faction-grid" class="fac-cards" role="group" aria-labelledby="raid-faction-label">
+              <button id="raid-faction-human" class="fac-card fac-human is-selected" type="button" aria-pressed="true">
+                <span class="fc-title" data-i18n="ui.skirmish.humanCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.humanCard.sub"></span>
+              </button>
+              <button id="raid-faction-alien" class="fac-card fac-alien" type="button" aria-pressed="false">
+                <span class="fc-title" data-i18n="ui.skirmish.alienCard.title"></span>
+                <span class="fc-sub" data-i18n="ui.skirmish.alienCard.sub"></span>
+              </button>
+            </div>
+          </div>
+          <div class="raid-menu-footer">
+            <p id="raid-menu-status" class="quick-battle-status" role="status" aria-live="polite"></p>
+            <div class="raid-menu-actions">
+              <button id="btn-raid-home" class="big-btn raid-home-btn" type="button"></button>
+              <button id="btn-raid-reset" class="big-btn ghost-btn" type="button" data-i18n="ui.menu.raidReset" hidden></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="universe" class="page-section universe-section" aria-labelledby="universe-title">
+      <div class="page-shell universe-layout">
+        <div class="universe-signal" aria-hidden="true">
+          <div class="universe-orbit orbit-a"></div><div class="universe-orbit orbit-b"></div>
+          <span class="universe-core"></span><span class="universe-signal-code">AC / LOG 01</span>
+        </div>
+        <div class="universe-copy">
+          <p class="menu-eyebrow" data-i18n="ui.menu.universeEyebrow"></p>
+          <h2 id="universe-title" data-i18n="ui.menu.universe"></h2>
+          <p class="section-summary" data-i18n="ui.menu.universeIntro"></p>
+          <button id="btn-codex" class="big-btn ghost-btn universe-open" type="button" data-i18n="ui.menu.universeOpen"></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="controls" class="page-section controls-section" aria-labelledby="controls-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.controlsEyebrow"></p>
+            <h2 id="controls-title" data-i18n="ui.menu.controls"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.controlsIntro"></p>
+        </header>
+        <details id="menu-controls" class="menu-disclosure">
+          <summary data-i18n="ui.menu.controlsSummary"></summary>
+          <div class="help">
+            <p data-i18n="ui.menu.help.0"></p>
+            <p data-i18n="ui.menu.help.1"></p>
+            <p data-i18n="ui.menu.help.2"></p>
+            <p data-i18n="ui.menu.help.3"></p>
+            <p data-i18n="ui.menu.help.4"></p>
+            <p data-i18n="ui.menu.help.5"></p>
+            <p data-i18n="ui.menu.help.6"></p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="more" class="page-section more-section" aria-labelledby="more-title">
+      <div class="page-shell">
+        <header class="section-heading">
+          <div>
+            <p class="menu-eyebrow" data-i18n="ui.menu.moreEyebrow"></p>
+            <h2 id="more-title" data-i18n="ui.menu.moreTitle"></h2>
+          </div>
+          <p class="section-summary" data-i18n="ui.menu.moreIntro"></p>
+        </header>
+        <details id="menu-more" class="menu-disclosure menu-more">
+          <summary data-i18n="ui.menu.more"></summary>
+          <div class="more-actions">
+            <div class="profile-row">
+              <label for="ui-profile-select" data-i18n="ui.menu.profileLabel"></label>
+              <select id="ui-profile-select">
+                <option value="auto" data-i18n="ui.menu.profileAuto"></option>
+                <option value="touch" data-i18n="ui.menu.profileTouch"></option>
+                <option value="desktop" data-i18n="ui.menu.profileDesktop"></option>
+              </select>
+            </div>
+            <button id="btn-season2" class="season-teaser" type="button" data-i18n="ui.menu.season2"></button>
+            <button id="btn-reload-screen" class="big-btn ghost-btn small-start" type="button" data-i18n="ui.menu.reload"></button>
+            <button id="btn-reset" class="big-btn ghost-btn small-start" type="button" data-i18n="ui.menu.reset"></button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="page-shell footer-inner">
+        <span class="footer-brand">ALIEN <b>COSMIC</b></span>
+        <span data-i18n="ui.menu.footerNote"></span>
+        <a href="#hero" data-i18n="ui.menu.backToTop"></a>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    window.__errs = [];
+    window.addEventListener('error', (e) => window.__errs.push(String(e.message || e)));
+    window.addEventListener('unhandledrejection', (e) => window.__errs.push('rej: ' + String(e.reason && e.reason.message || e.reason)));
+  </script>
+  <script type="module" src="./js/game.js?v=10262517"></script>
+  <script type="module" src="./save-client.js?v=10262517"></script>
+  <script type="module" src="./raid-boot.js?v=10262517"></script>
+</body>
+</html>

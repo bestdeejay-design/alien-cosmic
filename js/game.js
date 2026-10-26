@@ -22,7 +22,6 @@ import * as ui from './ui.js';
 import { createProfile } from './profile.js';
 import { attachInput, updateCamera } from './input.js';
 import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js';
-import { setupSeason2Mission, updateSeason2Mission, season2ObjectiveText, season2EndObjectives, drawSeason2Overlay, drawHeroAura } from './season2.js';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -211,7 +210,6 @@ export class Game {
     for (const side of ['player', 'enemy']) {
       const base = st.map.bases[side];
       if (side === 'player' && st.noBase) continue; // стелс-миссия — отряд вместо базы
-      if (side === 'enemy' && m.noEnemyBase) continue; // S2 M1: вместо базы — скриптовый патруль
       const cc = new B.Building(st, side, 'cc', base.cc.x, base.cc.y, true);
       st.map.markBuilding(cc);
       st.bcount[side]++;
@@ -268,7 +266,6 @@ export class Game {
       }
     }
     st.ai = new AIController({ ...m.ai, defense: m.defense });
-    if (m.season === 2 && m.scripted) setupSeason2Mission(st);
     calcSupply(st);
     st.fog.recompute(st);
 
@@ -1104,8 +1101,7 @@ export class Game {
     U.syncSelectionFlags(st); // кольца выделения видимы каждый тик
     U.updateProjectiles(st, LOGIC_DT);
     U.updateEffects(st, LOGIC_DT);
-    if (st.s2) updateSeason2Mission(this, st);
-    else st.ai.update(LOGIC_DT, st);
+    st.ai.update(LOGIC_DT, st);
     this.updateWin(st, LOGIC_DT);
 
     if (st.tick % 3 === 0) st.fog.recompute(st);
@@ -1176,7 +1172,6 @@ export class Game {
   objectiveText() {
     const st = this.state;
     if (!st) return '';
-    if (st.s2) return season2ObjectiveText(st);
     const m = this.mission;
     const def = m && m.defense;
     const w = st.win;
@@ -1211,7 +1206,6 @@ export class Game {
   checkEnd() {
     const st = this.state;
     if (st.gameOver) return;
-    if (st.s2) return; // сценарные победа/поражение решает updateSeason2Mission()
     const def = this.mission && this.mission.defense;
     const w = st.win;
     const fac = st.factions.player;
@@ -1322,14 +1316,13 @@ export class Game {
   endOpts(win, reason) {
     const m = this.mission;
     const opts = { faction: m.faction };
-    if (this.state && this.state.s2) opts.objectives = season2EndObjectives(this.state);
     if (reason) opts.reason = reason;
     const ni = missionIndex(m) + 1; // П8: следующая — по порядку массива (id бонусных идут с разрывом)
     if (win && m.id >= 0 && ni > 0 && ni < MISSIONS.length) {
       opts.next = MISSIONS[ni];
     }
     if (win && m.id === 14) opts.campaignDone = true; // П8: кампанию закрывает №14, не хвост массива
-    const epi = this.state && this.state.s2 && !this.state.s2.finale ? '' : missionText(m, 'epilogue');
+    const epi = missionText(m, 'epilogue');
     if (win && epi) opts.epilogue = epi;
     return opts;
   }
@@ -1384,9 +1377,6 @@ export class Game {
 
     const inView = (x, y, m) =>
       x > cam.x - m && x < cam.x + vw + m && y > cam.y - m && y < cam.y + vh + m;
-
-    if (st.s2) drawSeason2Overlay(ctx, st, cam, inView);
-    for (const u of st.units) if (u.type === 'hero' && u.side === 'player') drawHeroAura(ctx, st, cam, u, inView);
 
     // M0: пунктирные границы зоны стройки (всегда видны, в режиме
     // размещения — ярче). Своя земля подсвечена бирюзой Рубежа.
@@ -1745,17 +1735,29 @@ export class Game {
     const ty = Math.max(0, Math.min(st.map.h - cfg.h, pl.ty));
     let ok = st.minerals.player >= cfg.cost;
     if (ok && !B.zoneAllows(st, tx, ty, cfg.w, cfg.h)) ok = false;
-    for (let y = ty; y < ty + cfg.h && ok; y++)
-      for (let x = tx; x < tx + cfg.w && ok; x++)
-        if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) ok = false;
+    // V-5 (вопрос владельца «непонятно, можно строить тут или нет»): раньше
+    // фон футпринта был едва заметным (alpha 0.28) и не говорило, КАКОЙ
+    // именно тайл мешает. Теперь каждый недоступный тайл футпринта помечен
+    // крест-накрест — преграда видна точно, а не «где-то в области».
+    const bad = [];
+    for (let y = ty; y < ty + cfg.h; y++)
+      for (let x = tx; x < tx + cfg.w; x++)
+        if (st.map.blockedAt(x, y) || !st.fog.tileExplored(x, y)) bad.push([x, y]);
+    if (bad.length) ok = false;
 
-    ctx.globalAlpha = 0.28;
+    const gx = tx * TILE - cam.x, gy = ty * TILE - cam.y;
+    ctx.globalAlpha = 0.24;
     ctx.fillStyle = ok ? 'rgba(118,227,215,0.55)' : 'rgba(255,96,87,0.5)';
-    ctx.fillRect(tx * TILE - cam.x, ty * TILE - cam.y, cfg.w * TILE, cfg.h * TILE);
-    ctx.globalAlpha = 0.9;
-    ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(tx * TILE - cam.x + 1, ty * TILE - cam.y + 1, cfg.w * TILE - 2, cfg.h * TILE - 2);
+    ctx.fillRect(gx, gy, cfg.w * TILE, cfg.h * TILE);
+    // Недоступные тайлы — плотная красная заливка: читается и сама по себе,
+    // и как подложка под полупрозрачным спрайтом.
+    if (bad.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#ff5a4e';
+      for (const [bx, by] of bad) ctx.fillRect(bx * TILE - cam.x, by * TILE - cam.y, TILE, TILE);
+      ctx.restore();
+    }
     ctx.globalAlpha = 0.55;
     B.drawBuilding(ctx, {
       tx, ty, w: cfg.w, h: cfg.h, side: 'player', type: pl.type, cfg,
@@ -1763,6 +1765,25 @@ export class Game {
       angle: -Math.PI / 4, garrison: [],
       done: true, progress: 1, hp: 1, maxHp: 1, flashT: 0, selected: false,
     }, false, cam.x, cam.y);
+    // Кресты — ПОВЕРХ спрайта: иначе метка тонет под призраком здания и
+    // «непонятно, какой именно тайл мешает» (изначальный вопрос владельца).
+    if (bad.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = '#ffb3ab'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+      for (const [bx, by] of bad) {
+        const px = bx * TILE - cam.x + 3.5, py = by * TILE - cam.y + 3.5, s = TILE - 7;
+        ctx.beginPath();
+        ctx.moveTo(px, py); ctx.lineTo(px + s, py + s);
+        ctx.moveTo(px + s, py); ctx.lineTo(px, py + s);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(gx + 1, gy + 1, cfg.w * TILE - 2, cfg.h * TILE - 2);
     ctx.globalAlpha = 1;
   }
 
@@ -1773,9 +1794,22 @@ export class Game {
     for (const t of tiles) {
       const ok = st.fog.tileExplored(t.x, t.y) && B.canPlace(st.map, t.x, t.y, 1, 1) &&
         B.zoneAllows(st, t.x, t.y, 1, 1);
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = ok ? 'rgba(118,227,215,0.6)' : 'rgba(255,96,87,0.55)';
+      // V-5: как и у призрака здания, недоступный тайл помечен крестом —
+      // преграда видна точно, а не «красноватая подсветка где-то там».
+      ctx.globalAlpha = ok ? 0.3 : 0.5;
+      ctx.fillStyle = ok ? 'rgba(118,227,215,0.6)' : 'rgba(255,90,78,0.85)';
       ctx.fillRect(t.x * TILE - cam.x, t.y * TILE - cam.y, TILE, TILE);
+      if (!ok) {
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#ffb3ab'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        const px = t.x * TILE - cam.x + 4, py = t.y * TILE - cam.y + 4, s = TILE - 8;
+        ctx.beginPath();
+        ctx.moveTo(px, py); ctx.lineTo(px + s, py + s);
+        ctx.moveTo(px + s, py); ctx.lineTo(px, py + s);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.globalAlpha = 0.9;
       ctx.strokeStyle = ok ? '#a8fbe0' : '#ff8a7e';
       ctx.lineWidth = 1.5;

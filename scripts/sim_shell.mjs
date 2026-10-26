@@ -152,18 +152,16 @@ try {
   ticks(10);
   assert(game.state.gameOver === 'win', 'победы нет');
   assert(loadProgress() === 1, 'победа не записала прогресс: ' + loadProgress());
-  el('btn-season2').click(); // S2 M1: брифинг открывается, запуск — только по кнопке брифинга
-  assert(!el('brief-overlay').classList.contains('hidden'), 'брифинг Сезона 2 не открылся');
-  assert(game.mission.id === 0, 'Сезон 2 запустился без подтверждения брифинга');
-  el('btn-brief-back').click();
-  assert(el('brief-overlay').classList.contains('hidden'), 'возврат не закрыл брифинг Сезона 2');
-  assert(!el('landing-page').classList.contains('hidden'), 'возврат из брифинга С2 не вернул на лендинг');
+  el('btn-season2').click(); // заглушка: тост, запуска нет
+  const toasts = el('toasts').children.map((t) => t.textContent).join(' ');
+  assert(/Скоро/.test(toasts), 'тоста СКОРО нет: ' + toasts);
+  assert(game.mission.id === 0, 'Сезон 2 что-то запустил');
   el('btn-codex').click(); // Universe link on the main screen
   assert(!el('codex-overlay').classList.contains('hidden'), 'Вселенная не открылась');
   el('btn-codex-back').click();
   assert(el('codex-overlay').classList.contains('hidden'), 'Вселенная не закрылась');
   paint();
-  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — брифинг без запуска; Вселенная на месте');
+  pass('S4 seasons: S1 → миссия 0 → победа → прогресс 1; S2 — тост СКОРО без запуска; Вселенная на месте');
 } catch (e) { fail('S4 seasons', e); }
 
 console.log(failures.length ? `\nИТОГ SIM_SHELL: ${failures.length} ОШИБОК (${failures.join(', ')})` : '\nИТОГ SIM_SHELL: ВСЕ СЦЕНАРИИ ПРОШЛИ');
