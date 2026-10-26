@@ -33,6 +33,21 @@ const NICK_KEY = 'ac_save_nick';
 const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
 const PORT = 8790;
+// ---- Канал 3: GitHub Gist (работает с GitHub Pages) ----
+// Чтение: публичный raw гиста (HTTPS, CORS ok). Запись: gist-мост на :8791 (Mac владельца).
+// Файл профиля: ac_<sha256(nick:pin).slice32>_<key>.json — пин в URL не светит ничего,
+// файл без верного хеша не найти, запись защищена мостом.
+const GIST_ID = '69f6832c50a3715bb60c2a8ff896dca9';
+const GIST_RAW = `https://gist.githubusercontent.com/bestdeejay-design/${GIST_ID}/raw`;
+const BRIDGE_PORT = 8791;
+async function sha32(s) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+async function gistFileOf(key) {
+  const h = await sha32(`${identity.nick}:${identity.pin}`);
+  return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
+}
 
 import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262519';
 import { t } from './js/i18n.js?v=10262519';
@@ -54,6 +69,12 @@ async function resolveApi(manual = false) {
     const r = await fetch('/health', { cache: 'no-store' });
     if (r.ok || r.status === 401) { apiBase = ''; apiMode = 'прокси'; return apiBase; }
   } catch { /* прокси нет */ }
+  // Канал 3 (GitHub Pages): сервера рядом нет — читаем из публичного гиста,
+  // запись уходит на gist-мост (Mac владельца, :8791), если он включён.
+  if (location.protocol === 'https:') {
+    apiBase = 'gist'; apiMode = 'гист (чтение) + мост :8791 (запись)';
+    return apiBase;
+  }
   apiBase = `http://${location.hostname}:${PORT}`;
   apiMode = 'порт ' + PORT;
   return apiBase;
@@ -83,6 +104,42 @@ async function call(path, payload) {
   // не трогая сеть и не оставляя записей на сервере.
   if (!identity) return { j: { ok: false, error: 'нужен профиль' }, status: 0 };
   const base = apiBase === null ? await resolveApi() : apiBase;
+  // Канал 3 (гист): /api/load читаем публично из raw; /api/save — на мост :8791.
+  if (base === 'gist') {
+    const key = payload && payload.key;
+    if (path === '/api/load' && key) {
+      const f = await gistFileOf(key);
+      try {
+        const r = await fetch(`${GIST_RAW}/${f}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!r.ok) return { j: { ok: false, error: 'not found' }, status: r.status };
+        const j = await r.json();
+        if (j.pin !== await sha32(`${identity.nick}:${identity.pin}`)) {
+          status.online = true;
+          return { j: { ok: false, error: 'nick taken, wrong pin' }, status: 403 };
+        }
+        return { j: { ok: true, value: j.value, ts: j.ts }, status: 200 };
+      } catch { status.online = false; return { j: { ok: false, error: 'not found' }, status: 0 }; }
+    }
+    if (path === '/api/save' && payload) {
+      try {
+        const r = await fetch(`http://${location.hostname}:${BRIDGE_PORT}/api/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          cache: 'no-store',
+        });
+        const j = await r.json().catch(() => ({ ok: false, error: 'bad json' }));
+        if (!r.ok && !j.error) j.error = 'http ' + r.status;
+        status.online = r.ok;
+        return { j, status: r.status };
+      } catch {
+        status.online = false;
+        status.lastError = 'мост выключен (Mac): включи node server/gist-bridge.mjs';
+        return { j: { ok: false, error: status.lastError }, status: 0 };
+      }
+    }
+    return { j: { ok: false, error: 'канал гист: только save/load' }, status: 0 };
+  }
   const r = await fetch(base + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
