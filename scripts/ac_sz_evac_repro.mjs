@@ -48,8 +48,8 @@ const ensureDepotAndLaunch = async (seed) => {
   await backHome();
   const v = await page.evaluate(async (s) => {
     const g = window.game, st = g.state;
-    const U = await import('/r/js/units.js?v=10262518');
-    const B = await import('/r/js/buildings.js?v=10262518');
+    const U = await import('/r/js/units.js?v=10262519');
+    const B = await import('/r/js/buildings.js?v=10262519');
     if (!st.buildings.some((b) => !b.dead && b.type === 'depot' && b.side === 'player')) {
       const cc = st.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
       const d = new B.Building(st, 'player', 'depot', cc.tx + 3, cc.ty + 3, true);
@@ -225,7 +225,7 @@ try {
 try {
   await ensureDepotAndLaunch(4244);
   const t3 = await page.evaluate(async () => {
-    const E = await import('/r/js/economy.js?v=10262518');
+    const E = await import('/r/js/economy.js?v=10262519');
     const st = window.game.state;
     const tcfg = E.raidTierAt(st.raidTier || 1);
     return { shown: tcfg.yieldTotal, pool: st.raidLootPool || 0, left: st.raidLootLeft || 0, tier: st.raidTier };
@@ -239,6 +239,7 @@ try {
 // ПРОВЕРКА ФИКСА #36 (поставка P3). Шаги добавлены исполнителем:
 //   FIX-1b — весь отряд в отсеке: press1 флешит гарнизон в манифест, дальше
 //            авто-взлёт возвращает на базу (дедлока «Отход отменён» нет);
+//            press2 — ВСЕГДА взлёт (канон владельца «второй клик всегда взлёт»);
 //   FIX-1a — полевой в кольце с приказом добычи: press1 снимает приказ;
 //   FIX-2  — трюм 40/40: сборщики встают у челнока (u.evacWait), добыча стоит;
 //   FIX-3  — консоль вылазки: только доступные тиры + трюм Дома (не «эрг на карте»).
@@ -284,6 +285,30 @@ try {
   await shot(page, 'fix1b_autolift');
   await backHome();
 } catch (e) { bad('FIX-1b прогон', String((e && e.message) || e)); }
+
+// ---------- FIX-1b2: press2 всегда взлёт даже если отряд ещё бежит ----------
+try {
+  await ensureDepotAndLaunch(900104);
+  await page.evaluate(() => {
+    const st = window.game.state;
+    const pad = st.raidDrop;
+    for (const [i, u] of st.units.filter((x) => !x.dead && !x.garrison && x.side === 'player' && x.kind === 'unit').entries()) {
+      u.x = pad.x + 32 * (14 + i); u.y = pad.y + 32 * 14; u.path = null; u.moving = false;
+    }
+  });
+  await page.evaluate(() => window.game.triggerRaidEvac());  // press 1 — маяк
+  await page.waitForTimeout(300);
+  const mid = await fixState();
+  await page.evaluate(() => window.game.triggerRaidEvac());  // press 2 — взлёт
+  await page.waitForTimeout(1200);
+  const after = await fixState();
+  if (mid.mode === 'expedition' && after.mode === 'home' && after.lastReturn && after.lastReturn.outcome === 'evac') {
+    ok('FIX-1b2', `второй клик = взлёт при отряде вне кольца (${after.lastReturn.boardedCount}/${after.lastReturn.sentCount} на борту), дедлока нет`);
+  } else {
+    bad('FIX-1b2', 'второй клик не взлетел: ' + JSON.stringify({ mid, after }));
+  }
+  await backHome();
+} catch (e) { bad('FIX-1b2 прогон', String((e && e.message) || e)); }
 
 // ---------- FIX-1a ----------
 try {
@@ -346,7 +371,7 @@ try {
 try {
   await backHome();
   const console3 = await page.evaluate(async () => {
-    const ui = await import('/r/js/ui.js?v=10262518');
+    const ui = await import('/r/js/ui.js?v=10262519');
     const g = window.game;
     ui.showRaidLaunch(g);
     const grid = document.getElementById('raid-tier-grid');
@@ -358,7 +383,7 @@ try {
       unlocked: model.unlockedTier,
       cargoCap: model.cargoCap,
       loot: loot ? loot.textContent : '',
-      errTierRange: (await import('/r/locales/ru.js?v=10262518')).default.ui.raid.errTierRange,
+      errTierRange: (await import('/r/locales/ru.js?v=10262519')).default.ui.raid.errTierRange,
     };
     ui.hideRaidLaunch();
     return out;

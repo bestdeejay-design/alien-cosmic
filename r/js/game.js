@@ -6,44 +6,44 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10262518';
+import './storage-ns.js?v=10262519';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10262518';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262518';
-import { Fog } from './fog.js?v=10262518';
-import { Sound } from './audio.js?v=10262518';
-import * as U from './units.js?v=10262518';
-import * as B from './buildings.js?v=10262518';
-import { AIController } from './ai.js?v=10262518';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262518';
-import * as ui from './ui.js?v=10262518';
-import { drawRankMark } from './skins.js?v=10262518';
-import { openAdmin, isAdminProfile } from './admin.js?v=10262518';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262518';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262518';
-import { openCommander } from './commander-ui.js?v=10262518';
+} from './config.js?v=10262519';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10262519';
+import { Fog } from './fog.js?v=10262519';
+import { Sound } from './audio.js?v=10262519';
+import * as U from './units.js?v=10262519';
+import * as B from './buildings.js?v=10262519';
+import { AIController } from './ai.js?v=10262519';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10262519';
+import * as ui from './ui.js?v=10262519';
+import { drawRankMark } from './skins.js?v=10262519';
+import { openAdmin, isAdminProfile } from './admin.js?v=10262519';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10262519';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10262519';
+import { openCommander } from './commander-ui.js?v=10262519';
 import {
   issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
-} from './squad.js?v=10262518';
-import { showChests } from './chests-ui.js?v=10262518';
-import { createProfile } from './profile.js?v=10262518';
-import { attachInput, updateCamera } from './input.js?v=10262518';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262518';
+} from './squad.js?v=10262519';
+import { showChests } from './chests-ui.js?v=10262519';
+import { createProfile } from './profile.js?v=10262519';
+import { attachInput, updateCamera } from './input.js?v=10262519';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10262519';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10262518';
+} from './economy.js?v=10262519';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
   boardHouseGarrison, boardRingNow,
-} from './raid.js?v=10262518';
+} from './raid.js?v=10262519';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
@@ -593,14 +593,12 @@ export class Game {
     const st = this.state;
     if (!st || st.raidMode !== 'expedition' || st.gameOver) return;
     const pad = st.raidDrop;
-    const boarded = () => (st.raidBoarded ? st.raidBoarded.length : 0);
     if (!st.raidEvacuating) {
       // НАЖАТИЕ 1 — маяк. #36 З1: отсек Дома считается ДОСТАВЛЕННЫМ (владелец:
       // «все собрались внутри»), а приказ сбрасывается у ВСЕХ полевых, включая
       // стоящих в кольце с добычей (раньше movers-фильтр трогал только тех,
       // кто снаружи, и рабочий уходил бурить посреди эвакуации).
       st.raidEvacuating = true;
-      st.evacFinal = false;
       boardHouseGarrison(this, st);
       for (const u of U.fieldUnits(st)) U.orderEvacHold(st, u, pad);
       ui.update(this);
@@ -609,24 +607,12 @@ export class Game {
       this.sound.ping();
       return;
     }
-    // НАЖАТИЕ 2+ — ВЗЛЁТ, а не отмена (репро SZ BUG-1b: «Отход отменён» делал
-    // взлёт недостижимым). Кто уже в кольце — сразу на борт, без удержания 2 с.
+    // НАЖАТИЕ 2 — ВСЕГДА ВЗЛЁТ (слово владельца 26.10: «второй клик всегда
+    // взлёт», ровно п.4 спеки #36 З1). Ветки ОТМЕНЫ нет, «финального сбора»
+    // нет: сначала мгновенно сажаем всех, кто уже в кольце (без удержания 2 с),
+    // затем поднимаем челнок. Кто не успел — остаётся на планете, и это честно
+    // видно в отчёте возврата («на борту n/sent»). Дедлок невозможен.
     boardRingNow(this, st);
-    if (boarded() > 0) { this.finishRaidExpedition('evac'); return; }
-    const field = U.fieldUnits(st);
-    if (!field.length) { this.finishRaidExpedition('evac'); return; }
-    if (!st.evacFinal) {
-      // Финальный сбор: отряд ещё бежит к кольцу. Даём ему последний приказ и
-      // один раз честно говорим об этом — следующее нажатие поднимет челнок
-      // даже без опоздавших (дедлока нет: любое нажатие ведёт к взлёту).
-      st.evacFinal = true;
-      for (const u of field) U.orderEvacHold(st, u, pad);
-      ui.update(this);
-      ui.setObjective(this.objectiveText());
-      ui.toast(t('ui.raid.toastEvacWait'), 'warn', 3200);
-      this.sound.ping();
-      return;
-    }
     this.finishRaidExpedition('evac');
   }
 

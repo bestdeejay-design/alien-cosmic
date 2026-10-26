@@ -11,15 +11,15 @@
 // межсессионный локальный снапшот и одноразовый raid ticket — в R0-c.
 // ============================================================
 
-import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262518';
+import { TILE, UNITS, BUILDINGS, GRADES, HOUSE } from './config.js?v=10262519';
 import {
   RAID_TIERS, raidTierAt, MAX_LEVEL, HOUSE_LEVELS, ccLevel, unlockedRaidTierByCC,
-} from './economy.js?v=10262518';
-import * as U from './units.js?v=10262518';
-import { serializeCommander, hydrateCommander } from './commander.js?v=10262518';
-import * as B from './buildings.js?v=10262518';
-import { nearestFreeTileAround } from './pathfinding.js?v=10262518';
-import { t, message } from './i18n.js?v=10262518';
+} from './economy.js?v=10262519';
+import * as U from './units.js?v=10262519';
+import { serializeCommander, hydrateCommander } from './commander.js?v=10262519';
+import * as B from './buildings.js?v=10262519';
+import { nearestFreeTileAround } from './pathfinding.js?v=10262519';
+import { t, message } from './i18n.js?v=10262519';
 
 export const RAID_SCHEMA_VERSION = 1;
 
@@ -562,7 +562,6 @@ export function populateRaidState(game, st, m) {
     st.raidTripYield = tierCfg.tripYield;
     st.raidEvacuating = false;
     st.raidBoarded = [];
-    st.evacFinal = false;          // #36 З1: «финальный сбор» — второй нажим
     st.evacWaitToasted = false;    // #36 З2: тост «ждём эвакуации» — однократный
     st.raidTier = (exp && exp.tier) || m.raidTier || 1;
     // Э4: лут с обороны сектора. Пул = 120% добычи тира (канон: после сноса

@@ -34,8 +34,8 @@ const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
 const PORT = 8790;
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262518';
-import { t } from './js/i18n.js?v=10262518';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262519';
+import { t } from './js/i18n.js?v=10262519';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
