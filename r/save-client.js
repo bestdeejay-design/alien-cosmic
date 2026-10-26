@@ -33,6 +33,13 @@ const NICK_KEY = 'ac_save_nick';
 const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
 const PORT = 8790;
+// ---- Канал 2.5: ВНЕШНИЙ СЕРВЕР ВЛАДЕЛЬЦА (lovii + Cloudflare Tunnel) ----
+// Если адрес задан и жив — он главнее гиста: это постоянная БД на машине владельца.
+// Задаётся в localStorage 'ac_save_ext_api' (панель профиля) или константой ниже.
+const EXT_API_DEFAULT = ''; // например 'https://xxx.trycloudflare.com'
+const EXT_KEY = 'ac_save_ext_api';
+function readExtApi() { return readLS(EXT_KEY) || EXT_API_DEFAULT || ''; }
+
 // ---- Канал 3: GitHub Gist (работает с GitHub Pages) ----
 // Чтение: публичный raw гиста (HTTPS, CORS ok). Запись: gist-мост на :8791 (Mac владельца).
 // Файл профиля: ac_<sha256(nick:pin).slice32>_<key>.json — пин в URL не светит ничего,
@@ -73,6 +80,14 @@ async function resolveApi(manual = false) {
     const r = await fetch('/health', { cache: 'no-store' });
     if (r.ok || r.status === 401) { apiBase = ''; apiMode = 'прокси'; return apiBase; }
   } catch { /* прокси нет */ }
+  // Канал 2.5: внешний сервер владельца (lovii через туннель) — главнее гиста.
+  const ext = readExtApi();
+  if (ext) {
+    try {
+      const r = await fetch(ext + '/health', { cache: 'no-store' });
+      if (r.ok) { apiBase = ext; apiMode = 'внешний сервер (lovii)'; return apiBase; }
+    } catch { /* туннель лежит — падаем в гист */ }
+  }
   // Канал 3 (GitHub Pages): сервера рядом нет — читаем из публичного гиста,
   // запись уходит на gist-мост (Mac владельца, :8791), если он включён.
   if (location.protocol === 'https:') {
@@ -390,6 +405,8 @@ window.__saveApi = {
 // вход/сохранения только внутри КЦ, в хедере ничего нет).
 // ------------------------------------------------------------------
 window.__saveGetPat = readPAT;
+window.__saveGetExt = readExtApi;
+window.__saveSetExt = (u) => writeLS(EXT_KEY, String(u || '').trim());
 window.__saveSetPat = (t) => { writeLS(PAT_KEY, String(t || '').trim()); };
 window.showProfilePanel = function showProfilePanel() {
   const old = document.getElementById('sv-panel');
@@ -426,6 +443,14 @@ window.showProfilePanel = function showProfilePanel() {
     <div id="sv-list" style="margin-top:6px;font-size:12px;opacity:.85">на сервере: …</div>
     <div id="sv-msg" style="margin-top:6px;font-size:12px;color:#ff8d7a;min-height:14px"></div>
     <details style="margin-top:8px;font-size:12px;opacity:.85">
+      <summary style="cursor:pointer">сервер БД (lovii/туннель) — постоянное хранилище</summary>
+      <div style="margin-top:6px">Адрес вида https://….trycloudflare.com — все сохранения пойдут в БД на этой машине.</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="sv-ext" placeholder="https://…" style="flex:1 1 auto;min-width:0;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
+        <button id="sv-ext-ok" style="background:#1c2c33;border:1px solid #2a3a42;color:#cfe3e6;border-radius:6px;padding:6px 10px;cursor:pointer">OK</button>
+      </div>
+    </details>
+    <details style="margin-top:8px;font-size:12px;opacity:.85">
       <summary style="cursor:pointer">канал записи: PAT GitHub (для игры с Pages)</summary>
       <div style="margin-top:6px">Токен с правом «gist» хранится только в этом браузере и пишет ваш приватный гист напрямую.</div>
       <div style="display:flex;gap:6px;margin-top:6px">
@@ -439,6 +464,14 @@ window.showProfilePanel = function showProfilePanel() {
   document.body.append(panel);
   registerModal('profile', () => { unregisterModal('profile'); panel.remove(); });
   const $ = (id) => panel.querySelector(id);
+  // Поле внешнего сервера (lovii): текущее значение + сохранение
+  if ($('#sv-ext') && window.__saveGetExt) $('#sv-ext').value = window.__saveGetExt() || '';
+  if ($('#sv-ext-ok')) $('#sv-ext-ok').addEventListener('click', () => {
+    const v = ($('#sv-ext').value || '').trim().replace(/\/+$/, '');
+    window.__saveSetExt(v);
+    setMsg(v ? 'внешний сервер сохранён: ' + v : 'внешний сервер очищен', !v);
+    apiBase = null; // пересчитать канал
+  });
   // PAT-поле: текущее значение + сохранение
   if ($('#sv-pat') && window.__saveGetPat) $('#sv-pat').value = window.__saveGetPat() || '';
   if ($('#sv-pat-ok')) $('#sv-pat-ok').addEventListener('click', () => {
