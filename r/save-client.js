@@ -49,7 +49,7 @@ async function sha32(s) {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
 async function gistFileOf(key) {
-  const h = await sha32(`${identity.nick}:${identity.pin}`);
+  const h = await sha32(`${identity.nick.toLowerCase()}:${identity.pin}`);
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
@@ -149,7 +149,7 @@ async function call(path, payload) {
         try {
           const f = await gistFileOf(payload.key);
           const prev = await fetch(`${GIST_RAW}/${f}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-          const ph = await sha32(`${identity.nick}:${identity.pin}`);
+          const ph = await sha32(`${identity.nick.toLowerCase()}:${identity.pin}`);
           if (prev && prev.pin !== ph) {
             status.online = true;
             return { j: { ok: false, error: 'nick taken, wrong pin' }, status: 403 };
@@ -492,7 +492,7 @@ window.showProfilePanel = function showProfilePanel() {
     location.reload();
   });
   $('#sv-ok').addEventListener('click', async () => {
-    const nick = ($('#sv-nick').value || '').trim();
+    const nick = ($('#sv-nick').value || '').trim().toLowerCase();
     const pin = ($('#sv-pin').value || '').trim();
     if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick)) { setMsg('ник: 2–24 буквы/цифры/-/_'); return; }
     if (!/^\d{3,12}$/.test(pin)) { setMsg('пин: 3–12 цифр'); return; }
