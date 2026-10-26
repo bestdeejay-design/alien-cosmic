@@ -11,7 +11,8 @@
 //   G3  BUG-1a: полевой в кольце с приказом добычи теряет приказ при press1
 //       (и тот, что снаружи, тоже едет к площадке, а не бурит);
 //   G4  press2 при boarded=0, но отряд уже в кольце → мгновенная посадка + взлёт;
-//   G5  отряд далеко: press2 = «финальный сбор», press3 = взлёт (дедлока нет);
+//   G5  отряд далеко: press2 = ВЗЛЁТ СРАЗУ (слово владельца «второй клик всегда
+//       взлёт»), опоздавшие остаются на планете — дедлока нет;
 //   G6  BUG-2: трюм полон → рабочий бросает добычу, едет к площадке, u.evacWait,
 //       жила больше не убывает, тост ровно один раз;
 //   G7  авто-логика не выдёргивает ожидающего, явный приказ игрока — снимает флаг;
@@ -153,7 +154,7 @@ try {
   pass(`G4 press2 сажает стоящих в кольце без удержания и взлетает (${sent}/${sent})`);
 } catch (e) { fail('G4 press2 посадка из кольца', e); }
 
-// ---------- G5: отряд далеко — финальный сбор, затем взлёт ----------
+// ---------- G5: отряд далеко — press2 взлетает сразу (канон «второй клик») ----------
 try {
   const st = launch();
   const pad = st.raidDrop;
@@ -163,17 +164,15 @@ try {
     u.evacT = 0;
   }
   game.triggerRaidEvac();                      // press 1 — маяк
-  game.triggerRaidEvac();                      // press 2 — финальный сбор
-  assert(game.state.raidMode === 'expedition', 'press2 при опоздавших не должен молча бросать отряд');
-  assert(st.evacFinal === true, 'не включился финальный сбор');
-  assert(st.raidEvacuating === true, 'эвакуация слетела (это была бы отмена-дедлок)');
-  game.triggerRaidEvac();                      // press 3 — взлёт
+  assert(game.state.raidMode === 'expedition', 'press1 не должен взлетать');
+  game.triggerRaidEvac();                      // press 2 — ВСЕГДА взлёт
   const lr = game.raidSession && game.raidSession.lastReturn;
-  assert(game.state.raidMode === 'home', 'press3 не взлетел');
-  assert(lr && lr.outcome === 'evac', 'press3 дал не взлёт: ' + JSON.stringify(lr));
+  assert(game.state.raidMode === 'home', 'press2 при опоздавших не взлетел (дедлок вернулся)');
+  assert(lr && lr.outcome === 'evac', 'press2 дал не взлёт: ' + JSON.stringify(lr));
+  assert(lr.boardedCount === 0, 'опоздавших посадили? борт ' + lr.boardedCount);
   assert(lr.sentCount === sent, 'в отчёте не то число отправленных: ' + lr.sentCount);
-  pass(`G5 опоздавшие: press2 = финальный сбор, press3 = взлёт (${lr.boardedCount}/${sent} на борту)`);
-} catch (e) { fail('G5 финальный сбор', e); }
+  pass(`G5 второй клик всегда взлёт: отряд вне кольца остался (0/${sent} на борту), дедлока нет`);
+} catch (e) { fail('G5 второй клик = взлёт', e); }
 
 // ---------- G6: BUG-2 — полный трюм останавливает добычу ----------
 try {
