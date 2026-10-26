@@ -1,2 +1,3 @@
 .tmpcheck/
 node_modules/
+server/saves.db
