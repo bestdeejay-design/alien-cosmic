@@ -40,6 +40,10 @@ const PORT = 8790;
 const GIST_ID = '69f6832c50a3715bb60c2a8ff896dca9';
 const GIST_RAW = `https://gist.githubusercontent.com/bestdeejay-design/${GIST_ID}/raw`;
 const BRIDGE_PORT = 8791;
+// Канал 4: PAT владельца (вводится один раз в профиле, хранится в localStorage,
+// в репо/клиентский код не попадает) — прямой GitHub API PATCH гиста из браузера.
+const PAT_KEY = 'ac_save_pat';
+const readPAT = () => readLS(PAT_KEY);
 async function sha32(s) {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
@@ -135,7 +139,36 @@ async function call(path, payload) {
       } catch {
         status.online = false;
         status.lastError = 'мост выключен (Mac): включи node server/gist-bridge.mjs';
-        return { j: { ok: false, error: status.lastError }, status: 0 };
+                // Мост выключен → канал 4: прямой GitHub API с PAT владельца.
+        const pat = readPAT();
+        if (!pat) {
+          status.online = false;
+          status.lastError = 'мост выключен (Mac) и PAT не введён — введите PAT в профиле';
+          return { j: { ok: false, error: status.lastError }, status: 0 };
+        }
+        try {
+          const f = await gistFileOf(payload.key);
+          const prev = await fetch(`${GIST_RAW}/${f}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+          const ph = await sha32(`${identity.nick}:${identity.pin}`);
+          if (prev && prev.pin !== ph) {
+            status.online = true;
+            return { j: { ok: false, error: 'nick taken, wrong pin' }, status: 403 };
+          }
+          const record = JSON.stringify({ pin: ph, key: payload.key, value: payload.value, ts: Date.now() });
+          const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pat}`, Accept: 'application/vnd.github+json' },
+            body: JSON.stringify({ files: { [f]: { content: record } } }),
+          });
+          const j = await r.json().catch(() => ({ ok: false, error: 'bad json' }));
+          if (!r.ok) { j.ok = false; j.error = j.message || ('github ' + r.status); } else j.ok = true;
+          status.online = r.ok;
+          return { j, status: r.ok ? 200 : r.status };
+        } catch (e2) {
+          status.online = false;
+          status.lastError = 'PAT-канал: ' + String(e2.message || e2).slice(0, 80);
+          return { j: { ok: false, error: status.lastError }, status: 0 };
+        }
       }
     }
     return { j: { ok: false, error: 'канал гист: только save/load' }, status: 0 };
@@ -356,6 +389,8 @@ window.__saveApi = {
 // Панель профиля — открывается командой КЦ «Профиль» (канон владельца:
 // вход/сохранения только внутри КЦ, в хедере ничего нет).
 // ------------------------------------------------------------------
+window.__saveGetPat = readPAT;
+window.__saveSetPat = (t) => { writeLS(PAT_KEY, String(t || '').trim()); };
 window.showProfilePanel = function showProfilePanel() {
   const old = document.getElementById('sv-panel');
   // Только РЕАЛЬНО прикреплённая панель считается открытой: отсоединённый
@@ -390,11 +425,26 @@ window.showProfilePanel = function showProfilePanel() {
     </div>
     <div id="sv-list" style="margin-top:6px;font-size:12px;opacity:.85">на сервере: …</div>
     <div id="sv-msg" style="margin-top:6px;font-size:12px;color:#ff8d7a;min-height:14px"></div>
+    <details style="margin-top:8px;font-size:12px;opacity:.85">
+      <summary style="cursor:pointer">канал записи: PAT GitHub (для игры с Pages)</summary>
+      <div style="margin-top:6px">Токен с правом «gist» хранится только в этом браузере и пишет ваш приватный гист напрямую.</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="sv-pat" placeholder="ghp_…" type="password"
+          style="flex:1 1 auto;min-width:0;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
+        <button id="sv-pat-ok" style="background:#1c2c33;border:1px solid #2a3a42;color:#cfe3e6;border-radius:6px;padding:6px 10px;cursor:pointer">OK</button>
+      </div>
+    </details>
     <div style="opacity:.55;font-size:11px;margin-top:6px">Ник запоминается без регистра: первый вход с пином закрепляет его за вами.</div>
     <button id="sv-close" style="margin-top:8px;background:none;border:0;color:#8fa6ae;cursor:pointer">закрыть</button>`;
   document.body.append(panel);
   registerModal('profile', () => { unregisterModal('profile'); panel.remove(); });
   const $ = (id) => panel.querySelector(id);
+  // PAT-поле: текущее значение + сохранение
+  if ($('#sv-pat') && window.__saveGetPat) $('#sv-pat').value = window.__saveGetPat() || '';
+  if ($('#sv-pat-ok')) $('#sv-pat-ok').addEventListener('click', () => {
+    window.__saveSetPat($('#sv-pat').value);
+    setMsg(window.__saveGetPat() ? 'PAT сохранён в этом браузере' : 'PAT удалён', !window.__saveGetPat());
+  });
   const msg = $('#sv-msg');
   const setMsg = (text, bad = true) => { if (msg) { msg.textContent = text; msg.style.color = bad ? '#ff8d7a' : '#9be29e'; } };
 
