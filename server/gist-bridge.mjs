@@ -5,6 +5,7 @@
 // Гист: AC_SAVE_GIST_ID (по умолчанию 69f6832c50a3715bb60c2a8ff896dca9, приватный).
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
 const PORT = Number(process.env.PORT || 8791);
@@ -68,6 +69,21 @@ const server = createServer(async (req, res) => {
       if (prev && prev.pin !== pinHash(player, pin)) return json(res, 403, { ok: false, error: 'nick taken, wrong pin' });
       const record = JSON.stringify({ pin: pinHash(player, pin), key, value, ts: Date.now() });
       files[file] = record;
+      // СТРАХОВКА владельца 26.10: каждое сохранение дублируется файлом на диск Mac
+      // (server/backups/<player>.json — один файл, последнее состояние, гист может подвести).
+      try {
+        const { mkdir, writeFile } = await import('node:fs/promises');
+        const path = await import('node:path');
+        const dir = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'backups');
+        await mkdir(dir, { recursive: true });
+        const safe = String(player).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+        const accPath = path.join(dir, safe + '.json');
+        let acc = {};
+        try { acc = JSON.parse(await (await import('node:fs/promises')).readFile(accPath, 'utf8')); } catch { /* первый сейв */ }
+        acc[player] = acc[player] || {};
+        acc[player][key] = { value, ts: Date.now() };
+        await writeFile(accPath, JSON.stringify(acc, null, 1));
+      } catch (be) { console.error('[bridge] disk backup failed:', be.message); }
       await gistPatch({ [file]: { content: record } });
       return json(res, 200, { ok: true });
     } catch (e) {
