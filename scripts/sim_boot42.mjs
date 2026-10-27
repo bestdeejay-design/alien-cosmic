@@ -22,6 +22,10 @@ const SEEDS = {
   badjson: '{"homeDto":{"minerals":',
   garbage: '{"homeDto":123,"faction":42,"raidSeq":"x","activeExpedition":{},"pendingReturn":[]}',
   truncated: '{}',
+  // SZ #42: единственный сид, реально бросающий исключение в hydrate
+  // (iterating числа) — через него проверяется сам safe-mode catch,
+  // а не терпимый путь «свежая база без исключения».
+  throwing: '{"starterGiftClaimed":true,"homeDto":{"crystals":5,"units":[]},"faction":"human","raidSeq":3}',
 };
 if (!SEEDS[scenario]) throw new Error('неизвестный сценарий: ' + scenario);
 globalThis.localStorage.setItem(KEY, SEEDS[scenario]);
