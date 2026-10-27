@@ -23,6 +23,10 @@
 // иначе у владельца «пропадёт» уже накопленная база.
 const SYNC_KEYS = ['terranrts.progress', 'terranrts.quickBattle', 'ac_raid_session_v1'];
 const STATS_KEY = 'ac_stats';
+// Итерация 3 (#45): raidSeq облачной базы, полученной при входе. Push сессии
+// с меньшим seq ЗАПРЕЩЁН — иначе стартовая база после «пустого облака»
+// перетирает серверную каноническую (класс «вошёл — потерял базу»).
+let cloudRaidSeq = 0;
 const SRV_KEY = {
   'terranrts.progress': 'r.progress',
   'terranrts.quickBattle': 'r.quickBattle',
@@ -60,16 +64,16 @@ async function gistFileOf(key) {
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271845';
-import { t } from './js/i18n.js?v=10271845';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271846';
+import { t } from './js/i18n.js?v=10271846';
 // P1 (#45): пинпад и «выход = полная очистка» живут в отдельных модулях.
 // Сети они не касаются — единственный сетевой клиент остаётся здесь
 // (гейт check_r.mjs [4]).
 import {
   PIN_MIN, PIN_MAX, normalizeNick, openAuth, authGate, confirmSignOut,
   applySnapshotToGame, auth as authState,
-} from './js/auth-ui.js?v=10271845';
-import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271845';
+} from './js/auth-ui.js?v=10271846';
+import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271846';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
@@ -301,6 +305,18 @@ async function push(key, { force = false } = {}) {
   const value = readLS(key);
   if (value == null) return false;
   if (!force && lastSynced[key] === value) return false;
+  // Итерация 3 (#45): защита от затирания — сессия со СТАРЫМ raidSeq не пушится.
+  // Свежепосчитанная стартовая база (seq=0) не может перезаписать каноническую
+  // (seq=N с сервера). Когда игрок реально играет, seq растёт — пуш открывается.
+  if (key === 'ac_raid_session_v1') {
+    try {
+      const seq = (JSON.parse(value).raidSeq) || 0;
+      if (seq < cloudRaidSeq) {
+        console.warn(`[save] пуш базы заблокирован: raidSeq ${seq} < облачного ${cloudRaidSeq} (защита от затирания)`);
+        return false;
+      }
+    } catch { /* битый JSON — пушим как есть */ }
+  }
   try {
     const { j, status: code } = await call('/api/save', {
       player: identity ? identity.nick : player,
@@ -436,6 +452,9 @@ async function pullSnapshot() {
     } catch { netFails++; continue; }
     if (!r || r.status === 0) { netFails++; continue; }
     if (r.j && r.j.ok && typeof r.j.value === 'string') {
+      if (key === 'ac_raid_session_v1') {
+        try { cloudRaidSeq = (JSON.parse(r.j.value).raidSeq) || 0; } catch { /* */ }
+      }
       writeLS(key, r.j.value);
       lastSynced[key] = r.j.value;
       if (r.j.ts) writeLS(TS_PREFIX + key, String(r.j.ts));

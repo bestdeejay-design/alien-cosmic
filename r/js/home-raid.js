@@ -15,11 +15,11 @@
 // МОДЕЛЬ: st.homeRaid = { t, nextAt, wave, active, warned, lastAlive }
 //   active: { wave, training, spawned, startedAt, buff }
 // ============================================================
-import { spawnUnit, orderAttack } from './units.js?v=10271845';
-import { nearestFreeTileAround } from './pathfinding.js?v=10271845';
-import { TILE } from './config.js?v=10271845';
-import { t } from './i18n.js?v=10271845';
-import { ensureCommander, addXp, bonuses, logEvent } from './commander.js?v=10271845';
+import { spawnUnit, orderAttack } from './units.js?v=10271846';
+import { nearestFreeTileAround } from './pathfinding.js?v=10271846';
+import { TILE } from './config.js?v=10271846';
+import { t } from './i18n.js?v=10271846';
+import { ensureCommander, addXp, bonuses, logEvent } from './commander.js?v=10271846';
 
 export const HOME_RAID = Object.freeze({
   first: 240,        // первый входящий рейд — через 4 минуты игры (не сразу)
