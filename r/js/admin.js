@@ -17,15 +17,15 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10271840';
-import { t } from './i18n.js?v=10271840';
-import { ECON_SCALE } from './economy.js?v=10271840';
-import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10271840';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10271841';
+import { t } from './i18n.js?v=10271841';
+import { ECON_SCALE } from './economy.js?v=10271841';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10271841';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10271840';
+} from './chests.js?v=10271841';
 
 // A3 (аудит владельца 26.10.2026): «админка — только профиль владельца best,
 // без учёта регистра; другим на этапе разработки недоступна».
