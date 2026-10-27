@@ -660,7 +660,9 @@ body.panel-left #minimap-box, body.panel-right #minimap-box { border-bottom-left
 .overlay.thin { background: rgba(3, 12, 17, .45); }
 /* Pause blocks the playfield only: panel/topbar remain live and readable. */
 #pause-overlay.overlay { z-index: 8; }
-.overlay.hidden { display: none; }
+.overlay.hidden { display: none; pointer-events: none; }
+/* P1-фоллоуап (жалоба владельца 27.10): скрытый оверлей не имеет права ловить
+   ввод, даже если display по какой-то причине не применился (гонка классов). */
 
 /* Campaign/briefing/codex screens do not leave live-looking HUD chrome around them.
    visibility keeps measured panel dimensions intact for the M2 inset observer. */
@@ -1405,8 +1407,25 @@ body.menu-active #zoom-controls { display: none; }
 }
 .raid-menu-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
-.raid-box { max-width: 720px; text-align: left; }
-.raid-box h1, .raid-box .sub { text-align: center; }
+/* Аудит-2 (27.10.2026): консоль вылазки — как блок капсул: колонка flex,
+   тело (.raid-body) скроллится, кнопки «Старт»/«Назад» закреплены в подвале
+   и всегда в кадре; бокс не растягивается на всю ширину телефона, подложка
+   остаётся доступной для тапа «мимо». */
+.raid-box {
+  max-width: 720px; text-align: left;
+  width: min(720px, calc(100vw - 12px));
+  display: flex; flex-direction: column;
+  max-height: min(88vh, 760px);
+  max-height: min(100dvh - 12px, 760px);
+  overflow: hidden;
+}
+.raid-box h1, .raid-box .sub { text-align: center; flex: 0 0 auto; }
+.raid-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.raid-box .menu-buttons { flex: 0 0 auto; margin-bottom: max(4px, env(safe-area-inset-bottom)); }
 .raid-section {
   margin-top: 14px; padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -1522,16 +1541,28 @@ body.menu-active #zoom-controls { display: none; }
    ============================================================ */
 .chest-box {
   max-width: 780px;
-  /* Телефон-first: длинный список + экран награды не должны уезжать за край,
-     иначе кнопка «Забрать и продолжить» оказывается вне области нажатия. */
-  max-height: min(88vh, 760px); overflow-y: auto; scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
+  /* P1-фоллоуап (жалоба владельца 27.10, «переделать блок капсул»):
+     телефон-first — панель обязана целиком влезать в экран БЕЗ вертикальной
+     прокрутки страницы. Строим box как колонку flex: шапка и подвал (кнопка
+     «На базу») закреплены, скроллится только СПИСОК карточек. Раньше box
+     скроллился целиком (max-height + overflow-y), и кнопка закрытия уходила
+     за нижнюю кромку — со стороны это выглядело как «невидимый слой, ничего
+     не нажимается». 100dvh — реальная высота телефона с адресной строкой;
+     88vh оставлен как фолбэк для старых браузеров. */
+  width: min(780px, calc(100vw - 12px));
+  max-height: min(88vh, 760px);
+  max-height: min(100dvh - 12px, 760px);
+  display: flex; flex-direction: column;
+  overflow: hidden; scrollbar-width: thin;
 }
+.chest-head { flex: 0 0 auto; }
 .chest-head h1 { letter-spacing: .08em; }
 .chest-grid {
+  flex: 1 1 auto; min-height: 0;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 10px; margin: 12px 0 max(12px, env(safe-area-inset-bottom));
-  max-height: 58vh; overflow-y: auto; padding: 2px;
+  gap: 10px; margin: 12px 0 10px;
+  overflow-y: auto; padding: 2px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin;
 }
 .chest-card {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -1551,8 +1582,15 @@ body.menu-active #zoom-controls { display: none; }
 .chest-desc { font-size: 11px; opacity: .72; line-height: 1.3; }
 .chest-state { margin-top: auto; font-size: 10.5px; letter-spacing: .04em; opacity: .85; color: var(--rar, #9fe8de); }
 .chest-empty { grid-column: 1 / -1; padding: 22px; text-align: center; opacity: .7; font-size: 13px; }
-.chest-foot { display: flex; justify-content: flex-end; }
-.chest-open { position: relative; text-align: center; padding: 18px 12px 8px; }
+.chest-foot {
+  flex: 0 0 auto; display: flex; justify-content: flex-end;
+  padding-top: 4px; margin-bottom: max(0px, env(safe-area-inset-bottom));
+}
+.chest-open {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  position: relative; text-align: center; padding: 18px 12px 8px;
+  -webkit-overflow-scrolling: touch;
+}
 .chest-reward-rar { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--rar, #f3c579); }
 .chest-reward-text { font-size: 26px; font-weight: 800; margin: 8px 0 2px; color: #fff; text-shadow: 0 0 18px var(--rar, #f3c579); }
 .chest-reward-sub { font-size: 12px; opacity: .7; margin-bottom: 18px; }
@@ -1566,8 +1604,17 @@ body.menu-active #zoom-controls { display: none; }
   100% { transform: scale(1.35); opacity: 0; }
 }
 @media (max-width: 560px) {
-  .chest-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 62vh; }
-  .chest-card { min-height: 158px; padding: 12px 8px 8px; }
+  /* P1-фоллоуап: компактная шапка — на 390×844 панель видна ЦЕЛИКОМ,
+     без прокрутки, кнопка «На базу» всегда в кадре. */
+  .chest-box { padding: 14px 12px 10px; border-radius: 12px; }
+  .chest-box h1 { font-size: 21px; letter-spacing: .05em; }
+  .chest-head .sub { font-size: 11.5px; margin: 6px 0 8px; }
+  .chest-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0 8px; }
+  .chest-card { min-height: 132px; padding: 8px 6px 6px; gap: 3px; }
+  .chest-icon svg { width: 26px; height: 26px; }
+  .chest-desc { display: none; }            /* детали — во вскрытии, место дороже */
+  .chest-foot { flex-direction: column; }
+  .chest-foot .big-btn { width: 100%; }
   .chest-reward-text { font-size: 22px; }
 }
 
@@ -1644,7 +1691,26 @@ body.menu-active #zoom-controls { display: none; }
 .cm-salvage { min-height: 16px; font-size: 11.5px; color: #ffd98a; margin-top: 4px; }
 .cm-salvage.is-hot { text-shadow: 0 0 10px rgba(255,217,138,.45); }
 .cm-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+/* Аудит-2 (27.10.2026): карточка командира — колонка flex: шапка и кнопка
+   «Закрыть» закреплены, скроллится только колонки контента. На телефоне и в
+   узком ландшафте (844×390) кнопка закрытия больше не уезжает за кромку
+   (тот же класс, что и блок капсул). */
+.cm-box {
+  width: min(760px, calc(100vw - 12px));
+  max-height: min(88vh, 760px);
+  max-height: min(100dvh - 12px, 760px);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.cm-head { flex: 0 0 auto; }
+.cm-cols {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  margin-right: -4px; padding-right: 4px;
+}
+.cm-foot { flex: 0 0 auto; }
 @media (max-width: 620px) {
   .cm-cols { grid-template-columns: 1fr; gap: 6px; }
-  .cm-box { max-height: 82vh; overflow-y: auto; }
 }

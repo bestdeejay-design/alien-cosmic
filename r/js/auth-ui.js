@@ -24,8 +24,8 @@
 // Модуль не ходит в сеть сам: единственный сетевой клиент полигона —
 // save-client.js (гейт check_r [4]); здесь только его публичные ручки.
 // ============================================================
-import { t } from './i18n.js?v=10271830';
-import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271830';
+import { t } from './i18n.js?v=10271841';
+import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271841';
 
 export const AUTH_MODAL_ID = 'auth';
 export const PIN_MIN = 3;
@@ -112,8 +112,11 @@ export function pressKey(key) {
 }
 
 // Escape на пинпаде: сначала чистим точки (канон §A), панель остаётся открытой.
+// Аудит-2 (27.10.2026): state чистился, но render() не вызывался — точки на
+// экране оставались «набранными», хотя пин уже пуст; игрок видел ложное
+// состояние (а второй Escape закрывал панель с «нарисованными» точками).
 export function escapeOnPin() {
-  if (auth.step === 'pin' && auth.pin.length) { auth.pin = ''; auth.error = ''; return true; }
+  if (auth.step === 'pin' && auth.pin.length) { auth.pin = ''; auth.error = ''; render(); return true; }
   return false;
 }
 

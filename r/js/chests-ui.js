@@ -12,15 +12,15 @@
 //
 // Никаких новых кнопок в топбаре: точка входа — карточки при заходе и команда КЦ.
 // ============================================================
-import { t } from './i18n.js?v=10271830';
+import { t } from './i18n.js?v=10271841';
 // З2 (#33): единая политика модалок — капсулы не открываются поверх
 // командира/админки/профиля и сами закрывают то, что было открыто.
-import { closeOthers, registerModal, unregisterModal, anyModalOpen } from './modals.js?v=10271830';
+import { closeOthers, registerModal, unregisterModal, anyModalOpen } from './modals.js?v=10271841';
 import {
   availableChests, buildContext, claimChest, loadConfig, RARITY,
   loadState, isClaimed, getBirthday, setBirthday, pullGrants, fetchTop,
   applyReward, pickReward,
-} from './chests.js?v=10271830';
+} from './chests.js?v=10271841';
 
 let overlay = null;
 let shownThisSession = false;
@@ -73,6 +73,9 @@ function hide() {
   unregisterModal('chests');
   if (!overlay) return;
   overlay.classList.add('hidden');
+  // P1-фоллоуап (жалоба владельца 27.10): страховка поверх CSS — скрытый
+  // оверлей не должен иметь НИКАКОГО шанса перехватить ввод (клики «в никуда»).
+  overlay.style.pointerEvents = 'none';
   const game = window.game;
   // Паузу снимаем только если её поставили мы (как в raid-launch оверлее).
   if (game && game.state) {
@@ -88,6 +91,14 @@ export function showChests(game) {
   // З2: открытие капсул закрывает любую другую модалку (и наоборот).
   closeOthers('chests');
   const ov = ensureOverlay();
+  // Аудит-2 (27.10.2026): «Забрать и продолжить» перерисовывает панель через
+  // showChests ПОВЕРХ уже открытого оверлея. Старый код в этом повторном входе
+  // видел game.paused === true (поставленный первым открытием) и записывал его
+  // в chestPausedBefore, затирая честный «false». Дальше hide() «восстанавливал»
+  // паузу навсегда — игра на базе не отвечала на тапы («ничего не нажимается»),
+  // тот же класс жалобы владельца, что и P1-фоллоуап. Паузу трогаем ТОЛЬКО при
+  // реальном открытии из скрытого состояния.
+  const wasHidden = ov.classList.contains('hidden');
   registerModal('chests', hide);
   const grid = ov.querySelector('#chest-grid');
   const openBox = ov.querySelector('#chest-open');
@@ -138,8 +149,11 @@ export function showChests(game) {
   });
 
   ov.classList.remove('hidden');
-  if (!game.chestPausedBefore) game.chestPausedBefore = !!game.paused;
-  game.paused = true;
+  ov.style.pointerEvents = '';
+  if (wasHidden) {
+    if (!game.chestPausedBefore) game.chestPausedBefore = !!game.paused;
+    game.paused = true;
+  }
 }
 
 function flashCard(card) {
@@ -242,7 +256,7 @@ export async function hydrateFromServer(game) {
       }
       if (changed) {
         // сохраняем локально, чтобы подарок не выдавался повторно
-        const { saveConfig } = await import('./chests.js?v=10271830');
+        const { saveConfig } = await import('./chests.js?v=10271841');
         saveConfig(cfg);
       }
     }

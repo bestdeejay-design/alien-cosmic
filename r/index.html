@@ -29,7 +29,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png"/>
   <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png"/>
   <meta name="theme-color" content="#071218"/>
-  <link rel="stylesheet" href="./style.css?v=10271830"/>
+  <link rel="stylesheet" href="./style.css?v=10271841"/>
 </head>
 <body class="menu-active">
   <div id="game-root">
@@ -123,6 +123,10 @@
         <h1 data-i18n="ui.raid.modalTitle"></h1>
         <p class="sub" id="raid-modal-sub"></p>
 
+        <!-- Аудит-2 (27.10.2026): тело консоли скроллится, кнопки «Старт»/«Назад»
+             закреплены в подвале — на телефоне (390×844 и узкий ландшафт 844×390)
+             «Назад» больше не уезжает за нижнюю кромку (тот же класс, что и блок капсул). -->
+        <div class="raid-body">
         <div class="raid-section">
           <div class="raid-section-head">
             <h3 data-i18n="ui.raid.tierLabel"></h3>
@@ -164,6 +168,7 @@
         </div>
 
         <p id="raid-launch-status" class="raid-launch-status" role="status" aria-live="polite"></p>
+        </div>
 
         <div class="menu-buttons">
           <button id="btn-raid-launch" class="big-btn" type="button" data-i18n="ui.raid.launchBtn"></button>
@@ -432,8 +437,8 @@
     window.addEventListener('error', (e) => window.__errs.push(String(e.message || e)));
     window.addEventListener('unhandledrejection', (e) => window.__errs.push('rej: ' + String(e.reason && e.reason.message || e.reason)));
   </script>
-  <script type="module" src="./js/game.js?v=10271830"></script>
-  <script type="module" src="./save-client.js?v=10271830"></script>
-  <script type="module" src="./raid-boot.js?v=10271830"></script>
+  <script type="module" src="./js/game.js?v=10271841"></script>
+  <script type="module" src="./save-client.js?v=10271841"></script>
+  <script type="module" src="./raid-boot.js?v=10271841"></script>
 </body>
 </html>
