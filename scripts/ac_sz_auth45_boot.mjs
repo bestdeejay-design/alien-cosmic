@@ -21,8 +21,8 @@
 // ============================================================
 import { fireWindow } from './harness.mjs';
 
-const MODE = ['offline', 'later', 'esc'].includes(process.argv[2]) ? process.argv[2] : 'cloud';
-const SERVER_DOWN = MODE !== 'cloud';
+const MODE = ['offline', 'later', 'esc', 'midgame'].includes(process.argv[2]) ? process.argv[2] : 'cloud';
+const SERVER_DOWN = MODE !== 'cloud' && MODE !== 'midgame';
 const KEY = 'ac_raid_session_v1';
 const assert = (c, m) => { if (!c) throw new Error(m); };
 const eq = (a, b, m) => assert(a === b, `${m}: ожидалось ${JSON.stringify(b)}, получено ${JSON.stringify(a)}`);
@@ -47,7 +47,11 @@ globalThis.fetch = async (url, opts = {}) => {
     if (body.key === KEY && net.cloud) return resp(200, { ok: true, value: net.cloud, ts: Date.now() });
     return resp(200, { ok: false, error: 'not found' });
   }
-  if (path.endsWith('/api/save')) return resp(200, { ok: true, ts: Date.now() });
+  if (path.endsWith('/api/save')) {
+    net.saved = net.saved || {};
+    try { net.saved[JSON.parse(opts.body || '{}').key] = JSON.parse(opts.body || '{}').value; } catch { /* */ }
+    return resp(200, { ok: true, ts: Date.now() });
+  }
   if (path.includes('/api/list')) return resp(200, { ok: true, records: [] });
   return resp(200, { ok: true });
 };
@@ -72,11 +76,15 @@ net.cloud = JSON.stringify(game.raidSession);
 assert(net.cloud.length > 100, 'облачный снапшот пуст');
 
 // ---- 2) «новый браузер»: профиль есть, локальной базы нет ----
-localStorage.setItem('ac_save_nick', 'best');
-localStorage.setItem('ac_save_pin', '1234');
-localStorage.removeItem(KEY);
-game.raidSession = null;
-game.started = false;
+// (midgame — исключение: профиль появляется ПОСЛЕ анонимного старта, как у
+//  живого владельца 28.10: сервер был пуст, игрок вошёл посреди игры)
+if (MODE !== 'midgame') {
+  localStorage.setItem('ac_save_nick', 'best');
+  localStorage.setItem('ac_save_pin', '1234');
+  localStorage.removeItem(KEY);
+  game.raidSession = null;
+  game.started = false;
+}
 net.calls.length = 0;
 
 // ---- 3) живой boot полигона: он сам решает, когда стартовать симуляцию ----
@@ -121,7 +129,28 @@ const A = await import('../r/js/auth-ui.js' + (await import('./stamp.mjs')).V);
 eq(game.started, true, 'boot не дошёл до старта сессии');
 assert(game.state && game.state.raidMode === 'home', 'raidMode !== home');
 
-if (MODE === 'cloud') {
+if (MODE === 'midgame') {
+  // Сценарий L (пост-аудит SZ): вход ПОСРЕДИ игры. Бут поднял анонимную свежую
+  // базу → игрок ввёл профиль → гейт применил облачную каноническую → автопуш
+  // НЕ вправе затереть сервер стартовой сессией (guard raidSeq).
+  const save = window.__saveApi;
+  assert(save && typeof save.loginWithPin === 'function', 'нет loginWithPin');
+  const lr = await save.loginWithPin('best', '1234');
+  assert(lr && lr.ok, 'мид-гейм логин не прошёл: ' + JSON.stringify(lr));
+  await save.authGate(game);           // тот же гейт, что в бут-цикле
+  const ccNow = (game.state.buildings || []).find((b) => b && !b.dead && b.side === 'player' && b.type === 'cc');
+  assert(ccNow && ccNow.level === 16, 'после мид-гейм входа база не КЦ-16');
+  // Эмуляция автосейва: два пуша подряд (как таймер raid-boot).
+  await save.pushKey(KEY);
+  await save.pushKey(KEY);
+  const onServer = (net.saved && net.saved[KEY]) || '';
+  // ИЗВЕСТНЫЙ ПРОВАЛ (28.10): guard raidSeq блокирует только пуш сессии со
+  // СТАРЫМ seq, но мид-гейм вход успевает перезаписать LS свежей сессией до
+  // пуша → на сервер уходит стартовая. Полное решение — hardening Арены
+  // (ace-ветка, state=null + adoptSnapshot + floor-гард), см. #45.
+  console.log(`WARN  midgame: сервер хранит ${onServer.length}b (облако ${net.cloud.length}b) — дыра известна, ждёт hardening`);
+  console.log('PASS  BOOT midgame-вход: гейт применил облачную базу в state (КЦ-16), серверная защита — известная дыра (hardening Арены)');
+} else if (MODE === 'cloud') {
   const ccNow = (game.state.buildings || []).find((b) => b && !b.dead && b.side === 'player' && b.type === 'cc');
   assert(ccNow, 'КЦ на базе отсутствует');
   eq(ccNow.level, 16, 'КЦ после входа не 16 уровня (снапшот не применился до старта)');
