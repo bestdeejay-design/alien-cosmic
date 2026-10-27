@@ -60,8 +60,8 @@ async function gistFileOf(key) {
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262519';
-import { t } from './js/i18n.js?v=10262519';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10272742';
+import { t } from './js/i18n.js?v=10272742';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
@@ -208,7 +208,7 @@ const SAVE_TOAST_MS = 5 * 60 * 1000;
 let lastSaveToastTs = 0;
 let lastSaveErrorShown = '';
 
-function notifySaveError(text) {
+function notifySaveError(text, isAuth = false) {
   const now = Date.now();
   if (lastSaveErrorShown === text && now - lastSaveToastTs < SAVE_TOAST_MS) return;
   if (now - lastSaveToastTs < SAVE_TOAST_MS && lastSaveErrorShown === text) return;
@@ -217,8 +217,10 @@ function notifySaveError(text) {
   try {
     const g = window.game;
     if (g && g.ui && typeof g.ui.toast === 'function' && g.state) {
-      // Локаль — единый ключ (RU/EN симметрично), текст ошибки подставляется.
-      g.ui.toast(t('ui.save.failed', { err: text }), 'warn', 4200);
+      // Локаль — единый ключ (RU/EN симметрично). З2 (#42): при сетевом сбое
+      // успокаиваем — прогресс жив в браузере; 403 «чужой пин» без хвоста
+      // (там потеря реальная, успокаивать нельзя).
+      g.ui.toast(t(isAuth ? 'ui.save.failedAuth' : 'ui.save.failed', { err: text }), 'warn', 4200);
     }
   } catch { /* офлайн-стенд без UI */ }
 }
@@ -305,7 +307,7 @@ async function push(key, { force = false } = {}) {
     }
     status.lastError = j.error === 'nick taken, wrong pin' ? '403: чужой пин' : String(j.error || 'ошибка');
     if (code === 403) status.online = true;
-    notifySaveError(status.lastError);   // З3: игрок видит, что сейв не ушёл
+    notifySaveError(status.lastError, code === 403);   // З3: игрок видит, что сейв не ушёл
     return false;
   } catch (e) {
     status.online = false;
