@@ -30,7 +30,9 @@
 //       честный тост тихой неудачи сохранения.
 //  [21] Вход поэтапно (issue #45): модалка-пинпад 3×4 (12 клавиш ≥48px,
 //       touch-action: manipulation), «С» чистит всё, Escape сначала чистит
-//       точки, pull снапшота ДО старта симуляции, выход чистит все ключи.
+//       точки, pull снапшота ДО старта симуляции, выход чистит все ключи,
+//       закрытие панели завершает гейт (дедлок ревью №2), один pull на старт,
+//       rate-limit по нику, тост «Профиль создан», подтверждение выхода.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -398,14 +400,31 @@ try {
   if (!nsSrc.includes("'ac_raid_session_v1'")) bad('в списке очистки нет ac_raid_session_v1');
   else ok('минимум §4: ac_raid_session_v1 в списке очистки');
 
-  // 7) автоприёмка «вход → пинпад → pull → КЦ-16» + кулдаун сервера
+  // 7) БЛОКЕР ревью №2: закрытие панели обязано завершать гейт
+  if (!/gateSettle/.test(authSrc)) bad('гейт не имеет единой точки завершения (дедлок при закрытии панели)');
+  else ok('гейт завершается любым закрытием панели («Позже», Escape, подложка)');
+  if (!/close\(reason\s*=\s*'user'\)/.test(authSrc)) bad('close() не сообщает гейту о закрытии');
+  else ok('close() резолвит ожидающий гейт (без «тихого» зависания boot)');
+
+  // 8) итерация 2: один pull на старт, rate-limit по нику, тост, выход с подтверждением
+  if (!/RAID_KEY\)\s*continue|key\s*===\s*RAID_KEY\)\s*continue/.test(saveSrc)) bad('reconcile не исключает базу рейда — двойной pull на старте');
+  else ok('один pull базы на старт (reconcile не дублирует гейт)');
+  if (!/gateTriedNet/.test(bootSrc)) bad('raid-boot делает повторный сетевой pullKey после гейта');
+  else ok('raid-boot не ходит в сеть второй раз после гейта');
+  if (/rlKey\s*=\s*\(nick,\s*ip\)/.test(readFileSync(path.join(ROOT, 'server', 'save-server.mjs'), 'utf8'))) {
+    bad('rate-limit всё ещё считает по паре ник+адрес (обход сменой адреса)');
+  } else ok('rate-limit сервера считается по нику (адрес — только в лог)');
+  if (!/profileCreated/.test(authSrc) || !/logoutTitle/.test(authSrc)) bad('нет тоста «Профиль создан» / подтверждения выхода');
+  else ok('тост «Профиль создан» + подтверждение выхода (одна модалка [18])');
+
+  // 9) автоприёмка «вход → пинпад → pull → КЦ-16» + кулдаун сервера
   const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ac_sz_auth45.mjs')], { stdio: 'pipe' }).toString();
   const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
-  if (lines.length < 10) throw new Error('ac_sz_auth45: ожидались 10 PASS, пришло ' + lines.length);
+  if (lines.length < 12) throw new Error('ac_sz_auth45: ожидались 12 PASS, пришло ' + lines.length);
   for (const l of lines) ok('auth45 · ' + l.replace(/^PASS\s+/, ''));
 
-  // 8) сквозной boot: страница загружается с профилем → pull → КЦ-16 (и офлайн)
-  for (const mode of ['cloud', 'offline']) {
+  // 10) сквозной boot: профиль → pull → КЦ-16, офлайн-фолбэк, «Позже», Escape-Escape
+  for (const mode of ['cloud', 'offline', 'later', 'esc']) {
     const b = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ac_sz_auth45_boot.mjs'), mode], { stdio: 'pipe' }).toString();
     const pass = b.split('\n').filter((l) => l.startsWith('PASS'));
     if (pass.length !== 1) throw new Error('ac_sz_auth45_boot ' + mode + ': ' + b.slice(-400));

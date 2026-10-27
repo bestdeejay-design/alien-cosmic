@@ -24,8 +24,8 @@
 // Модуль не ходит в сеть сам: единственный сетевой клиент полигона —
 // save-client.js (гейт check_r [4]); здесь только его публичные ручки.
 // ============================================================
-import { t } from './i18n.js?v=10271800';
-import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271800';
+import { t } from './i18n.js?v=10271830';
+import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271830';
 
 export const AUTH_MODAL_ID = 'auth';
 export const PIN_MIN = 3;
@@ -49,6 +49,7 @@ export const auth = {
   shakeCount: 0,      // сколько раз панель дёргалась (счётчик для проверок)
   progress: '',       // ключ локали для индикатора pull
   pullState: 'idle',  // idle | loading | ok | empty | offline
+  registered: false,  // сервер только что создал профиль (тост «Профиль создан»)
 };
 
 export function authReset(step = 'login') {
@@ -61,6 +62,7 @@ export function authReset(step = 'login') {
   auth.shakeCount = 0;
   auth.progress = '';
   auth.pullState = 'idle';
+  auth.registered = false;
   return auth;
 }
 
@@ -151,6 +153,7 @@ export async function submitPin(rawPin) {
   auth.busy = false;
   if (res && res.ok) {
     auth.attempts = 0;
+    auth.registered = !!res.registered;   // первый сохранение закрепило пин за ником
     auth.step = 'pull';
     // Сразу тянем снапшот: симуляция не должна стартовать до базы (§A).
     void runPull();
@@ -241,6 +244,11 @@ export function applySnapshotToGame(game = (typeof window !== 'undefined' ? wind
 // ------------------------------------------------------------
 let overlay = null;
 let keyBound = false;
+// gateSettle — функция «гейт входа получил решение». Живёт только пока
+// authGate() ждёт: успешный pull, кнопки офлайн-экрана и ЛЮБОЕ закрытие панели
+// («Позже», Escape, клик по подложке) обязаны её вызвать. Иначе boot висел
+// молча — это и был блокер ревью №2.
+let gateSettle = null;
 
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
@@ -315,7 +323,8 @@ function render() {
   bind();
 }
 
-function close() {
+// reason: 'user' (игрок закрыл сам) | 'gate' (гейт уже принял решение сам)
+function close(reason = 'user') {
   unregisterModal(AUTH_MODAL_ID);
   if (overlay) {
     overlay.classList.add('hidden');
@@ -326,6 +335,14 @@ function close() {
     }
   }
   overlay = null;
+  // БЛОКЕР РЕВЬЮ №2: закрытие панели — это ТОЖЕ решение гейта. Офлайн-сервер,
+  // игрок нажал «Позже»/Escape → играем на локальном прогрессе, boot идёт
+  // дальше. Раньше промис гейта ждал только две кнопки и висел навсегда.
+  const settle = gateSettle;
+  if (settle && reason !== 'gate') {
+    gateSettle = null;
+    settle({ ready: true, source: 'local', dismissed: true });
+  }
 }
 
 function ensureOverlay() {
@@ -407,11 +424,31 @@ function bind() {
   if (retry) retry.addEventListener('click', () => { void runPull(); });
   const offlineBtn = q('#auth-offline');
   if (offlineBtn) offlineBtn.addEventListener('click', () => {
-    // Явный офлайн-фолбэк: играем на локальных данных, панель закрываем.
+    // Явный офлайн-фолбэк: сначала решение для гейта, потом закрытие панели
+    // (порядок важен: close() сам резолвит гейт как «закрыто игроком»).
     console.log('[auth] выбран офлайн-фолбэк: играем на локальном прогрессе');
-    close();
-    if (typeof window !== 'undefined' && window.__authOffline) window.__authOffline();
+    const off = typeof window !== 'undefined' ? window.__authOffline : null;
+    if (typeof off === 'function') { off(); close('gate'); } else close('user');
   });
+}
+
+// Тост после входа: «Профиль создан» (сервер закрепил пин за новым ником)
+// либо «База загружена: КЦ N». Второй тост не нужен — иначе два всплывающих.
+function toastAfterLogin(applied) {
+  const g = typeof window !== 'undefined' ? window.game : null;
+  // __authToastHook — шов для headless-симов: namespace ui.js в node неизменяем,
+  // поэтому тост нельзя перехватить подменой game.ui.toast.
+  const hook = typeof window !== 'undefined' ? window.__authToastHook : null;
+  if (typeof hook === 'function') {
+    hook(auth.registered ? 'registered' : 'pulled', { nick: auth.nick, ccLevel: applied && applied.ccLevel });
+  }
+  if (!g || !g.ui || typeof g.ui.toast !== 'function') return;
+  if (auth.registered) {
+    g.ui.toast(t('ui.auth.profileCreated', { nick: auth.nick }), 'ok', 4200);
+    auth.registered = false;
+    return;
+  }
+  if (applied) g.ui.toast(t('ui.auth.pullOk', { n: applied.ccLevel || 1 }), 'ok', 3000);
 }
 
 async function runPull() {
@@ -420,13 +457,16 @@ async function runPull() {
   render();
   const res = await pullSnapshot();
   if (res && res.ok) {
-    close();
     // Применяем снапшот к живой игре: база КЦ-16 должна стоять в state
     // сразу после входа, без перезагрузки и без «новой базы».
     const applied = applySnapshotToGame(typeof window !== 'undefined' ? window.game : null);
-    if (typeof window !== 'undefined' && typeof window.__authDone === 'function') window.__authDone(res, applied);
-    else if (typeof window !== 'undefined' && window.game && window.game.ui && window.game.ui.toast) {
-      window.game.ui.toast(t('ui.auth.pullOk', { n: applied && applied.ccLevel ? applied.ccLevel : 1 }), 'ok', 3000);
+    const done = typeof window !== 'undefined' ? window.__authDone : null;
+    if (typeof done === 'function') {
+      done(res, applied);      // сначала решение гейта…
+      close('gate');           // …потом закрытие панели (иначе гейт решит «локально»)
+    } else {
+      close('user');
+      toastAfterLogin(applied);
     }
     return;
   }
@@ -463,38 +503,83 @@ export function isAuthOpen() {
 export async function authGate(game = (typeof window !== 'undefined' ? window.game : null), opts = {}) {
   const save = api();
   if (!save || !save.identity) return { ready: true, source: 'anon' };
-  // Хуки ставим ДО открытия панели: иначе быстрый успех pull потеряет сигнал.
-  const waiting = new Promise((resolve) => {
-    window.__authDone = (res, applied) => {
-      window.__authDone = null;
-      window.__authOffline = null;
-      resolve({ ready: true, source: res && res.found > 0 ? 'cloud' : 'empty', applied });
+
+  // Гейт ОБЯЗАН завершиться при любом исходе:
+  //   cloud | empty        — снапшот получен (и применён к игре);
+  //   offline              — игрок выбрал «Играть офлайн»;
+  //   local (dismissed)    — панель закрыта «Позже»/Escape/тапом по подложке;
+  //   cloud/empty (retry)  — «Повторить» со второй попытки.
+  // Раньше закрытие панели не резолвило промис → boot висел молча (блокер #2).
+  const result = await new Promise((resolve) => {
+    let done = false;
+    const finishGate = (v) => {
+      if (done) return;
+      done = true;
+      gateSettle = null;
+      if (typeof window !== 'undefined') { window.__authDone = null; window.__authOffline = null; }
+      resolve(v);
     };
-    window.__authOffline = () => {
-      window.__authOffline = null;
-      window.__authDone = null;
-      resolve({ ready: true, source: 'offline' });
-    };
+    gateSettle = finishGate;
+    if (typeof window !== 'undefined') {
+      window.__authDone = (res, applied) => finishGate({
+        ready: true, source: res && res.found > 0 ? 'cloud' : 'empty', applied, viaRetry: true,
+      });
+      window.__authOffline = () => finishGate({ ready: true, source: 'offline' });
+    }
+
+    openAuth(game, { step: 'pull' });
+    render();
+    // Собственный pull гейта. Неудача сама по себе гейт НЕ завершает: панель
+    // показывает «Повторить»/«Играть офлайн», и ждём решения игрока.
+    (async () => {
+      const res = await pullSnapshot(opts);
+      if (!(res && res.ok)) return;
+      const applied = applySnapshotToGame(game);
+      finishGate({ ready: true, source: res.found > 0 ? 'cloud' : 'empty', applied });
+    })().catch(() => { /* остаёмся на экране выбора */ });
   });
-  openAuth(game, { step: 'pull' });
-  render();
-  const res = await pullSnapshot(opts);
-  if (res && res.ok) {
-    close();
-    // Пустое облако = новая база (локальный сейв при этом не сносим: он может
-    // быть ещё не отправленным — расхождение с §A зафиксировано в MAIL.md).
-    const applied = applySnapshotToGame(game);
-    window.__authDone = null;
-    window.__authOffline = null;
-    return { ready: true, source: res.found > 0 ? 'cloud' : 'empty', applied };
-  }
-  // Офлайн: панель уже показывает «Повторить»/«Играть офлайн» — ждём выбора.
-  return waiting;
+
+  if (result.source === 'cloud' || result.source === 'empty') toastAfterLogin(result.applied);
+  if (isAuthOpen()) close('gate');
+  return result;
+}
+
+// ------------------------------------------------------------
+// Подтверждение выхода (канон модалок [18]): выход стирает профиль И базу
+// в этом браузере — спрашиваем один раз, одной модалкой.
+// ------------------------------------------------------------
+export const CONFIRM_MODAL_ID = 'auth-confirm';
+
+export function confirmSignOut(onConfirm) {
+  closeOthers(CONFIRM_MODAL_ID);
+  const box = document.createElement('div');
+  box.id = 'auth-confirm';
+  box.className = 'overlay auth-overlay';
+  box.innerHTML = `
+    <div class="overlay-box auth-box" role="dialog" aria-modal="true" aria-labelledby="auth-confirm-title">
+      <h1 id="auth-confirm-title">${esc(t('ui.auth.logoutTitle'))}</h1>
+      <p class="auth-sub">${esc(t('ui.auth.logoutText', { nick: auth.nick || '—' }))}</p>
+      <button id="auth-confirm-yes" class="auth-main" type="button">${esc(t('ui.auth.logoutYes'))}</button>
+      <button id="auth-confirm-no" class="auth-link" type="button">${esc(t('ui.auth.logoutCancel'))}</button>
+    </div>`;
+  document.body.append(box);
+  const closeConfirm = () => {
+    unregisterModal(CONFIRM_MODAL_ID);
+    if (box.parentNode && typeof box.parentNode.removeChild === 'function') box.parentNode.removeChild(box);
+    else if (typeof box.remove === 'function') box.remove();
+  };
+  registerModal(CONFIRM_MODAL_ID, closeConfirm);
+  const yes = box.querySelector('#auth-confirm-yes');
+  if (yes) yes.addEventListener('click', () => { closeConfirm(); onConfirm(); });
+  const no = box.querySelector('#auth-confirm-no');
+  if (no) no.addEventListener('click', closeConfirm);
+  return box;
 }
 
 // Для проверок: доступ к панели без DOM-событий.
 export const _debug = {
   get overlay() { return overlay; },
+  get gatePending() { return typeof gateSettle === 'function'; },
   render,
   close,
   PAD_KEYS,

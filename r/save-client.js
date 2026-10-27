@@ -60,16 +60,16 @@ async function gistFileOf(key) {
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271800';
-import { t } from './js/i18n.js?v=10271800';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271830';
+import { t } from './js/i18n.js?v=10271830';
 // P1 (#45): пинпад и «выход = полная очистка» живут в отдельных модулях.
 // Сети они не касаются — единственный сетевой клиент остаётся здесь
 // (гейт check_r.mjs [4]).
 import {
-  PIN_MIN, PIN_MAX, normalizeNick, openAuth, authGate,
+  PIN_MIN, PIN_MAX, normalizeNick, openAuth, authGate, confirmSignOut,
   applySnapshotToGame, auth as authState,
-} from './js/auth-ui.js?v=10271800';
-import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271800';
+} from './js/auth-ui.js?v=10271830';
+import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271830';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
@@ -272,10 +272,16 @@ async function pushStats() {
   } catch { /* офлайн */ }
 }
 
+// Ключ базы рейда: на старте его тянет гейт входа (raid-boot → authGate).
+// reconcile читает только кампанию и быстрый бой — иначе на каждый вход
+// уходило два одинаковых /api/load (итерация 2 ревью #45).
+const RAID_KEY = 'ac_raid_session_v1';
+
 async function reconcile() {
   if (!identity) return;
   const list = await window.__saveApi.list();
   for (const key of SYNC_KEYS) {
+    if (key === RAID_KEY) continue;
     const local = readLS(key);
     const localTs = Number(readLS(TS_PREFIX + key) || 0);
     const rec = list && list.ok && Array.isArray(list.records)
@@ -374,7 +380,7 @@ async function loginWithPin(nickRaw, pinRaw) {
     // Гист не умеет «проверить пин» отдельно от данных: входим локально,
     // расхождение пина поймает первый save/load (403 'nick taken, wrong pin').
     window.__saveApi.setIdentity(nick, pin);
-    return { ok: true, code: 200, player: nick, verified: false };
+    return { ok: true, code: 200, player: nick, verified: false, registered: false };
   }
   let r;
   try {
@@ -403,7 +409,12 @@ async function loginWithPin(nickRaw, pinRaw) {
   status.online = true;
   status.lastError = '';
   window.__saveApi.setIdentity((j && j.player) || nick, pin);
-  return { ok: true, code: r.status, player: (j && j.player) || nick, verified: true };
+  // registered: сервер только что создал профиль → пинпад покажет тост
+  // «Профиль создан» (итерация 2 ревью #45).
+  return {
+    ok: true, code: r.status, player: (j && j.player) || nick,
+    verified: true, registered: !!(j && j.registered),
+  };
 }
 
 // ------------------------------------------------------------------
@@ -636,8 +647,12 @@ window.showProfilePanel = function showProfilePanel() {
   });
   const outBtn = $('#sv-out');
   if (outBtn) outBtn.addEventListener('click', () => {
-    window.__saveApi.clearIdentity();
-    location.reload();
+    // Выход стирает профиль и локальную базу — сначала подтверждение
+    // (одна модалка, канон [18]); после него чистим и перезагружаемся.
+    confirmSignOut(() => {
+      window.__saveApi.clearIdentity();
+      location.reload();
+    });
   });
   // P1 (#45): ШАГ 1 (ник) живёт в панели, ШАГ 2 (пинпад) — отдельная модалка
   // auth-ui: текстового поля для пина больше нет ни на телефоне, ни на десктопе.

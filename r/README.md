@@ -191,6 +191,11 @@ POLYGON=1 PORT=8806 node server/static.mjs # стенд, который сраз
   ник/пин и все локальные ключи профиля (минимум `ac_raid_session_v1`)
   удаляются, страница перезагружается. Панель — модалка по канону одна-за-раз,
   Escape сначала чистит точки, второй Escape закрывает. Модуль — `js/auth-ui.js`.
+  **Любое закрытие панели** («Позже», Escape, тап по подложке) завершает входной
+  гейт — игра стартует на локальной базе; без этого boot висел молча (блокер
+  ревью №2). На старте база тянется **один раз** (гейт; `reconcile` её не
+  дублирует). Новый ник сервер помечает `registered` → тост «Профиль создан»;
+  выход спрашивает подтверждение (одна модалка) и только потом чистит.
 
 Подробности — [`design/COMMANDER.md`](../design/COMMANDER.md).
 Аудит и чек-лист «как поиграть» — [`design/QA_AND_PLAY.md`](../design/QA_AND_PLAY.md).
@@ -207,7 +212,7 @@ node scripts/sim_commander.mjs  # C1–C8: звания, рейды, автоз�
 node scripts/sim_squad.mjs      # Q1–Q9: посты, отход к КЦ, трофеи, настройки рейдов
 node scripts/sim_raid_field.mjs # F1–F9: сдача эрга в Дом-шаттл и хедер вылазки
 node scripts/ac_sz_auth45.mjs   # AUTH-45: пинпад, pull до старта (КЦ-16), выход, кулдаун
-node scripts/ac_sz_auth45_boot.mjs cloud   # AUTH-45 сквозной boot: профиль → pull → КЦ-16
+node scripts/ac_sz_auth45_boot.mjs cloud|offline|later|esc  # сквозной boot: pull → КЦ-16, офлайн, «Позже», Escape
 node scripts/check_i18n_keys.mjs # каждый литеральный t('…') есть в RU и EN
 # стемп версии один на весь r/ (scripts/stamp.mjs) — иначе node делает
 # двойные инстансы модулей и симы падают «на пустом месте»

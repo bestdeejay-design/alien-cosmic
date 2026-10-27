@@ -51,23 +51,24 @@ const NICK_RE = /^[a-zA-Zа-яА-Я0-9_-]{2,24}$/;
 
 // ---- П-5 (#45): защита от перебора пина -------------------------------
 // 5 неудачных попыток → кулдаун 60 с; каждая следующая серия удваивает
-// ожидание (60 → 120 → 240 … до 1 часа). Считаем по паре «ник + адрес»:
-// чужой человек за тем же роутером не блокирует владельца, а смена адреса
-// не обнуляет счёт по нику. Успешный вход сбрасывает серию.
+// ожидание (60 → 120 → 240 … до 1 часа). Считаем ТОЛЬКО по нику (итерация 2
+// ревью #45): за туннелем/прокси адрес общий, и счёт «ник + адрес» давал
+// обход — новый адрес обнулял серию. Адрес остаётся в логе для диагностики.
+// Успешный вход серию сбрасывает.
 const RL_LIMIT = 5;
 const RL_BASE_MS = 60 * 1000;
 const RL_MAX_MS = 60 * 60 * 1000;
-const rl = new Map(); // 'ник|адрес' → { fails, until, strikes }
-const rlKey = (nick, ip) => `${String(nick || '').toLowerCase()}|${ip || '-'}`;
-function rlCheck(nick, ip) {
-  const e = rl.get(rlKey(nick, ip));
+const rl = new Map(); // 'ник' → { fails, until, strikes }
+const rlKey = (nick) => String(nick || '').trim().toLowerCase();
+function rlCheck(nick) {
+  const e = rl.get(rlKey(nick));
   if (e && e.until > Date.now()) {
     return { blocked: true, retryAfter: Math.max(1, Math.ceil((e.until - Date.now()) / 1000)) };
   }
   return { blocked: false };
 }
 function rlFail(nick, ip) {
-  const k = rlKey(nick, ip);
+  const k = rlKey(nick);
   const e = rl.get(k) || { fails: 0, until: 0, strikes: 0 };
   e.fails++;
   if (e.fails >= RL_LIMIT) {
@@ -79,7 +80,7 @@ function rlFail(nick, ip) {
   }
   rl.set(k, e);
 }
-function rlOk(nick, ip) { rl.delete(rlKey(nick, ip)); }
+function rlOk(nick) { rl.delete(rlKey(nick)); }
 const clientIp = (req) => String((req && req.socket && req.socket.remoteAddress) || '-');
 
 // Ник + пин → канонический профиль. Регистронезависимо.
@@ -87,7 +88,7 @@ function authPlayer(nick, pin, ip) {
   const raw = String(nick || '').trim();
   if (!raw || !pin) return { ok: false, code: 400, error: 'need nick & pin' };
   if (!NICK_RE.test(raw)) return { ok: false, code: 400, error: 'bad nick' };
-  const gate = rlCheck(raw, ip);
+  const gate = rlCheck(raw);
   if (gate.blocked) {
     return { ok: false, code: 429, error: 'too many attempts', retryAfter: gate.retryAfter };
   }
@@ -102,7 +103,7 @@ function authPlayer(nick, pin, ip) {
     rlFail(raw, ip);
     return { ok: false, code: 403, error: 'nick taken, wrong pin', nick: row.nick };
   }
-  rlOk(raw, ip);
+  rlOk(raw);
   return { ok: true, nick: row.nick };
 }
 
@@ -182,9 +183,12 @@ const server = createServer(async (req, res) => {
       if (!body.key) return json(res, 400, { ok: false, error: 'need key' });
       const row = db.prepare('SELECT value, ts FROM saves WHERE player = ? AND key = ?')
         .get(auth.nick, String(body.key));
+      // registered: сервер только что закрепил пин за ником — клиент показывает
+      // «Профиль создан» (итерация 2 ревью #45).
+      const registered = !!auth.registered;
       return row
-        ? json(res, 200, { ok: true, value: row.value, ts: row.ts, player: auth.nick })
-        : json(res, 200, { ok: false, error: 'not found', player: auth.nick });
+        ? json(res, 200, { ok: true, value: row.value, ts: row.ts, player: auth.nick, registered })
+        : json(res, 200, { ok: false, error: 'not found', player: auth.nick, registered });
     } catch (e) {
       return json(res, 400, { ok: false, error: String(e.message) });
     }

@@ -66,15 +66,20 @@ if (!game) {
     // потом поднимаем симуляцию. Раньше boot стартовал «новую базу» и первым
     // сейвом затирал серверный прогресс — это и был баг №1 «вход не даёт КЦ-16».
     let gateStarted = false;
+    let gateTriedNet = false;
     if (saveApi && saveApi.identity && typeof saveApi.authGate === 'function' && !game.started) {
       try {
         const gate = await saveApi.authGate(game);
         gateStarted = !!(gate && gate.applied && gate.applied.applied);
+        // Гейт уже сходил в сеть (успешно или нет). Повторный pullKey ниже —
+        // второй такой же запрос; при офлайне он ещё и висит до таймаута,
+        // поэтому сеть второй раз не трогаем (итерация 2 ревью #45).
+        gateTriedNet = gate && gate.source !== 'anon';
         console.log('[r] гейт входа: источник=' + (gate && gate.source) + ', применил снапшот=' + gateStarted);
       } catch (e) { console.warn('[r] гейт входа не отработал — падаем на локальный сейв', e); }
     }
     let saved = (() => { try { return localStorage.getItem(RAID_SAVE_KEY); } catch { return null; } })();
-    if (!saved && saveApi && saveApi.identity) {
+    if (!saved && saveApi && saveApi.identity && !gateTriedNet) {
       saved = await saveApi.pullKey(RAID_SAVE_KEY);
       if (saved) console.log('[r] сессия рейда восстановлена с сервера');
     }
@@ -98,7 +103,7 @@ if (!game) {
         game.raidSession = null;
         try { localStorage.removeItem(RAID_SAVE_KEY); } catch { /* */ }
         try {
-          const { t } = await import('./js/i18n.js?v=10271800');
+          const { t } = await import('./js/i18n.js?v=10271830');
           if (game.ui && typeof game.ui.toast === 'function') {
             game.ui.toast(t('ui.boot.saveCorrupted'), 'warn', 5200);
           }
@@ -110,7 +115,7 @@ if (!game) {
       // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
       // карточки при входе (не кнопка в топбаре, а карточки на экране).
       try {
-        const chestsUi = await import('./js/chests-ui.js?v=10271800');
+        const chestsUi = await import('./js/chests-ui.js?v=10271830');
         chestsUi.registerChestCommand(game);
         await chestsUi.hydrateFromServer(game);
         chestsUi.maybeShowOnEntry(game);

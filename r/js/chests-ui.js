@@ -12,15 +12,15 @@
 //
 // Никаких новых кнопок в топбаре: точка входа — карточки при заходе и команда КЦ.
 // ============================================================
-import { t } from './i18n.js?v=10271800';
+import { t } from './i18n.js?v=10271830';
 // З2 (#33): единая политика модалок — капсулы не открываются поверх
 // командира/админки/профиля и сами закрывают то, что было открыто.
-import { closeOthers, registerModal, unregisterModal, anyModalOpen } from './modals.js?v=10271800';
+import { closeOthers, registerModal, unregisterModal, anyModalOpen } from './modals.js?v=10271830';
 import {
   availableChests, buildContext, claimChest, loadConfig, RARITY,
   loadState, isClaimed, getBirthday, setBirthday, pullGrants, fetchTop,
   applyReward, pickReward,
-} from './chests.js?v=10271800';
+} from './chests.js?v=10271830';
 
 let overlay = null;
 let shownThisSession = false;
@@ -242,7 +242,7 @@ export async function hydrateFromServer(game) {
       }
       if (changed) {
         // сохраняем локально, чтобы подарок не выдавался повторно
-        const { saveConfig } = await import('./chests.js?v=10271800');
+        const { saveConfig } = await import('./chests.js?v=10271830');
         saveConfig(cfg);
       }
     }
