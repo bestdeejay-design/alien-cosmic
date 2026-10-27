@@ -10,11 +10,11 @@
 // здесь только баланс, ID и стабильные ключи (I18N.md §5.2).
 // ============================================================
 
-import { entityText } from './i18n.js?v=10271830';
+import { entityText } from './i18n.js?v=10271840';
 import {
   GRADE_TABLE, TECH, TECH_KEYS, MAX_LEVEL, HOUSE_LEVELS,
   ECON_SCALE, gradeEntry, ccGate, ccGateProgress,
-} from './economy.js?v=10271830';
+} from './economy.js?v=10271840';
 
 // --- Версия (V): буква последнего контентного пакета; поставка обновляет её и дату в бейдже ---
 export const GAME_VERSION = 'Y';

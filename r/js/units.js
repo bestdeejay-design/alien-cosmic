@@ -8,13 +8,13 @@
 import {
   TILE, UNITS, BULLET_SPEED, SHELL_SPEED, MINERAL_PER_TRIP, MINE_TIME, WORKERS_PER_CRYSTAL, gradeDmg, gradeRange, gradeGar, REPAIRERS_PER_TARGET, REPAIR_SPREAD_PX,
   HOUSE,
-} from './config.js?v=10271830';
-import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10271830';
+} from './config.js?v=10271840';
+import { HOUSE_LEVELS, raidTierAt, attackMul, armorFrac, MAX_LEVEL } from './economy.js?v=10271840';
 import {
-  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, AUTOHEAL_RADIUS, AUTOHEAL_TICK, AUTOHEAL_HEALERS_PER_SIDE, HEALERS_PER_TARGET, HEAL_SPREAD_PX, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10271830';
-import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10271830';
-import { t, message } from './i18n.js?v=10271830';
-import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10271830';
+  REPAIR_HP_PER_MINERAL, COLORS, fname, BUILDERS_PER_SITE, AUTOREPAIR_RADIUS, AUTOREPAIR_TICK, AUTOREPAIR_WORKERS_PER_SIDE, AUTOHEAL_RADIUS, AUTOHEAL_TICK, AUTOHEAL_HEALERS_PER_SIDE, HEALERS_PER_TARGET, HEAL_SPREAD_PX, ALARM_BASE_RADIUS, RECON_TICK, RECON_FLEE_TILES, RECON_SAMPLES, CONTACT_COOLDOWN} from './config.js?v=10271840';
+import { pathToPoint, pathToRect, distToRectPx, nearestFreeTileAround, hasLos, hasLosClear, nearestFreeFrom } from './pathfinding.js?v=10271840';
+import { t, message } from './i18n.js?v=10271840';
+import { drawUnitGrade, unitScale as skinUnitScale } from './skins.js?v=10271840';
 
 let nextId = 1;
 

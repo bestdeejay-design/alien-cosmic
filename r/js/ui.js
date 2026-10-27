@@ -7,15 +7,15 @@
 import {
   TILE, UNITS, BUILDINGS, UPGRADES, GRADES, GRADE_ROMAN, gradeQueue, gradeGar, HOUSE,
   WORLD_W, WORLD_H, SUPPLY_MAX, COLORS, fname, fdesc,
-} from './config.js?v=10271830';
-import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10271830';
-import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10271830';
-import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10271830';
-import { crystalAt, unitCapOf } from './units.js?v=10271830'; // F.1: тултип кристалла + вместимость отсека
-import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10271830';
-import { levelColor, levelStyle } from './skins.js?v=10271830';
+} from './config.js?v=10271840';
+import { MISSIONS, loadProgress, resetProgress, objectiveLabel, missionText } from './missions.js?v=10271840';
+import { CODEX, codexTabLabel, codexEntryParts } from './lore.js?v=10271840';
+import { t, message, fmtNum, setRich, getLocale, setLocale, SUPPORTED_LOCALES, applyStaticDOM } from './i18n.js?v=10271840';
+import { crystalAt, unitCapOf } from './units.js?v=10271840'; // F.1: тултип кристалла + вместимость отсека
+import { attackMul, MAX_LEVEL, HOUSE_LEVELS, raidTierAt } from './economy.js?v=10271840';
+import { levelColor, levelStyle } from './skins.js?v=10271840';
 // З2 (#33): консоль вылазки — тоже модалка: одна за раз + Escape.
-import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10271830';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10271840';
 
 const $ = (id) => document.getElementById(id);
 
