@@ -60,16 +60,16 @@ async function gistFileOf(key) {
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271841';
-import { t } from './js/i18n.js?v=10271841';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271845';
+import { t } from './js/i18n.js?v=10271845';
 // P1 (#45): пинпад и «выход = полная очистка» живут в отдельных модулях.
 // Сети они не касаются — единственный сетевой клиент остаётся здесь
 // (гейт check_r.mjs [4]).
 import {
   PIN_MIN, PIN_MAX, normalizeNick, openAuth, authGate, confirmSignOut,
   applySnapshotToGame, auth as authState,
-} from './js/auth-ui.js?v=10271841';
-import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271841';
+} from './js/auth-ui.js?v=10271845';
+import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271845';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };

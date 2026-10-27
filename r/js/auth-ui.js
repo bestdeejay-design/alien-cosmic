@@ -24,8 +24,8 @@
 // Модуль не ходит в сеть сам: единственный сетевой клиент полигона —
 // save-client.js (гейт check_r [4]); здесь только его публичные ручки.
 // ============================================================
-import { t } from './i18n.js?v=10271841';
-import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271841';
+import { t } from './i18n.js?v=10271845';
+import { closeOthers, registerModal, unregisterModal, isModalOpen } from './modals.js?v=10271845';
 
 export const AUTH_MODAL_ID = 'auth';
 export const PIN_MIN = 3;

@@ -3,14 +3,14 @@
 // очереди производства, население (supply), оборона (турели),
 // гарнизоны (бункеры), отрисовка.
 // ============================================================
-import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10271841';
-import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10271841';
-import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10271841';
-import { nearestFreeTileAround } from './pathfinding.js?v=10271841';
-import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10271841';
-import { icon } from './ui.js?v=10271841'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
-import { distToRectPx } from './pathfinding.js?v=10271841';
-import { message } from './i18n.js?v=10271841';
+import { TILE, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, BULLET_SPEED, COLORS, UPGRADES, fname, glevel, gradeRange, gradeRate, gradeQueue, gradeGar, GRADE_ROMAN } from './config.js?v=10271845';
+import { canGradeBuilding, MAX_LEVEL, ccGate, ccGateProgress } from './economy.js?v=10271845';
+import { drawGradeTrim, drawCommanderMark } from './skins.js?v=10271845';
+import { nearestFreeTileAround } from './pathfinding.js?v=10271845';
+import { orderBuild, orderGather, orderMove, spawnUnit, addEffect, shoot, acquireTarget, releaseGarrison, atkBonus } from './units.js?v=10271845';
+import { icon } from './ui.js?v=10271845'; // Пакет E.2: иконки для бейджей (циклов нет: ui не импортирует buildings)
+import { distToRectPx } from './pathfinding.js?v=10271845';
+import { message } from './i18n.js?v=10271845';
 
 let nextBId = 1;
 
@@ -825,22 +825,11 @@ function drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse) {
     if (alien) { poly(ctx, [s * 5, 7, s * 9, 4, s * 8, -6, s * 6, -3]); ctx.fill(); }
     else ctx.fillRect(s * 7 - 1, -6, 2, 12);
   }
-  if (tier >= 2) {
-    ctx.strokeStyle = glow; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(0, 0, 8.5, .5, 2.6); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, 0, 8.5, 3.65, 5.75); ctx.stroke();
-  }
-  if (tier >= 3) for (const s of [-1, 1]) {
-    ctx.fillStyle = light;
-    poly(ctx, [s * 3, -7, s * 5, -10, s * 7, -5]); ctx.fill();
-  }
-  if (tier === 4) for (const s of [-1, 1]) {
-    circle(s * 4, 8, 1.3, glow); circle(s * 4, -8, 1.3, glow);
-  }
+  // Tier details live on the weapon, never form an enclosing ring/frame.
   // Sublevels increase internal density, not outer dimensions.
   for (let i = 0; i < step; i++) {
-    ctx.fillStyle = alien ? light : '#f3c579';
-    ctx.fillRect(-4.5 + i * 2.5, 7.5, 1.2, 2);
+    ctx.fillStyle = light;
+    ctx.fillRect(-4.5 + i * 2.5, 5, 1.2, 1.5);
   }
   ctx.save(); ctx.rotate(ang);
   const barrels = alien ? (tier >= 2 ? [-4, 0, 4] : [0]) : (tier >= 3 ? [-4.5, -1.5, 1.5, 4.5] : [-3, 3]);
@@ -858,27 +847,39 @@ function drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse) {
     ctx.save(); ctx.translate(-kick * 1.5, 0);
     if (alien) {
       ctx.fillStyle = plate;
-      ctx.beginPath(); ctx.ellipse(5, y, 4, 1.25 + tier * .12, 0, 0, Math.PI * 2); ctx.fill();
-      circle(8, y, 1 + tier * .08, glow);
+      ctx.beginPath(); ctx.ellipse(5, y, 4, 1.6 + tier * .06, 0, 0, Math.PI * 2); ctx.fill();
+      circle(8, y, 1.35 + tier * .08, glow);
     } else {
-      const width = 1.5 + tier * .22 + step * .045;
+      const width = 2 + tier * .17 + step * .03;
       ctx.fillStyle = ink; ctx.fillRect(-2, y - width / 2, 11, width);
       ctx.fillStyle = light; ctx.fillRect(0, y - width / 2, 7, .55);
       ctx.fillStyle = tier >= 2 ? glow : '#596777'; ctx.fillRect(7, y - width / 2, 2, width);
       for (let j = 0; j < step; j++) {
-        ctx.fillStyle = '#f3c579'; ctx.fillRect(j * 1.7, y - width / 2, .65, width);
+        ctx.fillStyle = light; ctx.fillRect(j * 1.7, y - width / 2, .65, width);
       }
     }
     ctx.restore();
     // One flash per actual muzzle, staggered; the barrel moves along local X.
     if (kick > 0) {
       ctx.fillStyle = alien ? `rgba(179,255,135,${kick})` : `rgba(255,230,160,${kick})`;
-      poly(ctx, [muzzle, y - .8, muzzle + 1.5 + kick, y, muzzle, y + .8]); ctx.fill();
+      poly(ctx, [muzzle, y - 1.2, muzzle + 2 + kick * 1.5, y, muzzle, y + 1.2]); ctx.fill();
     }
   });
   if (!alien) {
-    ctx.fillStyle = plate; rr(ctx, -7, -4, 9, 8, 2); ctx.fill();
+    ctx.fillStyle = plate;
+    const casing = tier >= 1 ? 9 : 7;
+    rr(ctx, -7, -casing / 2, tier >= 2 ? 11 : 9, casing, 2); ctx.fill();
+    if (tier >= 2) {
+      ctx.fillStyle = ink;
+      for (let i = 0; i < 2 + tier; i++) ctx.fillRect(-5 + i * 1.5, -3, .7, 2);
+    }
+    if (tier === 4) {
+      ctx.fillStyle = glow; ctx.fillRect(-5, 2, 6, 1);
+    }
     circle(-3, 0, 2, '#3c5364'); circle(-3, 0, 1, glow);
+  }
+  if (alien && tier === 4) {
+    circle(-4, -2, 1, glow); circle(-4, 2, 1, glow);
   }
   ctx.restore();
   if (alien) for (const s of [-1, 1]) {
@@ -886,7 +887,7 @@ function drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse) {
     ctx.beginPath(); ctx.moveTo(s * 4, -5); ctx.lineTo(s * 6, -8); ctx.stroke();
     circle(s * 6, -8, 1.5, ink); circle(s * 6, -8, .8, glow);
   }
-  else circle(-5, -7, 1.1, '#f3c579');
+  else circle(-5, -6, 1, glow);
   ctx.restore();
 }
 
