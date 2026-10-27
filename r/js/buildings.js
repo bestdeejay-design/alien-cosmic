@@ -785,6 +785,121 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
   drawGradeMarks(ctx, b, px, py, w);
 }
 
+// Render-only evolution: no game state writes, no combat/footprint changes.
+function drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse) {
+  const level = Math.max(1, Math.min(20, Math.floor(Number(b.level) || 1)));
+  const tier = level === 20 ? 4 : Math.floor(level / 5);
+  const start = [1, 5, 10, 15, 20][tier];
+  const step = level - start;
+  const alien = b.faction === 'alien' || (!b.faction && b.side === 'enemy');
+  const ink = alien ? '#240e20' : '#202a35';
+  const plate = alien ? '#934968' : '#8796a6';
+  const light = alien ? '#e6a4c0' : '#e0e9ef';
+  const glow = alien ? '#b3ff87' : '#7df3e2';
+  const radius = 11 + tier * 1.25 + step * 0.22;
+  const length = 15 + tier * 1.65 + step * 0.45;
+  const circle = (x, y, r, color) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  };
+  ctx.save(); ctx.translate(cx, cy + 2);
+  ctx.fillStyle = 'rgba(0,0,0,.38)';
+  ctx.beginPath(); ctx.ellipse(2, 9, radius + 2, 6, 0, 0, Math.PI * 2); ctx.fill();
+  // Tier silhouette: mechanical outriggers versus rooted chitin spines.
+  if (tier >= 1) {
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = plate;
+      if (alien) {
+        poly(ctx, [side * 6, 7, side * (radius + 3), 11,
+          side * (radius + 1), -7 - tier * 2, side * 7, -2]); ctx.fill();
+      } else {
+        rr(ctx, side * (radius - 2) - 3, -10 - tier, 6, 23 + tier, 2); ctx.fill();
+        ctx.fillStyle = '#f3c579'; ctx.fillRect(side * (radius - 2) - 2, 8, 4, 3);
+      }
+    }
+  }
+  ctx.fillStyle = plate; ctx.strokeStyle = ink; ctx.lineWidth = 2;
+  if (alien) {
+    ctx.beginPath(); ctx.ellipse(0, 1, radius, radius * .85, 0, 0, Math.PI * 2);
+  } else {
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + i * Math.PI / 3;
+      points.push(Math.cos(a) * radius, Math.sin(a) * radius);
+    }
+    poly(ctx, points);
+  }
+  ctx.fill(); ctx.stroke();
+  // One added collar per sublevel, retained at the next tier as heavier armour.
+  ctx.strokeStyle = light; ctx.lineWidth = 1.3;
+  for (let i = 0; i < step; i++) {
+    const x = -6 + i * 3;
+    ctx.beginPath(); ctx.moveTo(x, 7); ctx.lineTo(x, 10 + tier * .4); ctx.stroke();
+  }
+  if (tier >= 2) {
+    ctx.strokeStyle = glow; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, radius - 2, radius * .65, 0, .2, Math.PI * 1.8); ctx.stroke();
+  }
+  if (tier >= 3) {
+    for (const s of [-1, 1]) {
+      ctx.fillStyle = light;
+      poly(ctx, [s * 5, -9, s * 9, -19 - (level === 20 ? 3 : 0), s * 12, -7]); ctx.fill();
+      circle(s * 9, -16, 1.7, glow);
+    }
+  }
+  if (tier === 4) {
+    ctx.strokeStyle = glow; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, 18, 14, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  // Rotating weapon retains faction identity: twin steel fangs / toothed maw.
+  ctx.save(); ctx.rotate(ang); ctx.translate(-Math.min(1, Math.max(0, recoil)) * 2, 0);
+  if (alien) {
+    ctx.fillStyle = ink;
+    ctx.beginPath(); ctx.ellipse(4, 0, length * .7, 7 + tier * .8, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3 + tier; i++) {
+      const x = -2 + i * 3;
+      for (const s of [-1, 1]) {
+        ctx.fillStyle = '#ead8c7';
+        poly(ctx, [x, s * (7 + tier * .65), x + 2.5, s * (7 + tier * .65), x + 1, s * 3]); ctx.fill();
+      }
+    }
+    circle(length * .65, 0, 3 + tier * .45, glow);
+    if (tier >= 2) {
+      for (const s of [-1, 1]) {
+        ctx.fillStyle = plate;
+        poly(ctx, [0, s * 7, length - 2, s * 10, length + 1, s * 5]); ctx.fill();
+        circle(length - 1, s * 7, 1.8, glow);
+      }
+    }
+  } else {
+    const barrels = tier >= 3 ? [-7, -2.4, 2.4, 7] : [-4, 4];
+    for (const y of barrels) {
+      ctx.fillStyle = ink; ctx.fillRect(-3, y - 2, length + 3, 4);
+      ctx.fillStyle = light; ctx.fillRect(1, y - 2, length - 3, 1.2);
+      ctx.fillStyle = tier >= 2 ? glow : '#596777';
+      ctx.fillRect(length - 3, y - 2.5, 3, 5);
+      for (let i = 0; i < step; i++) {
+        ctx.fillStyle = '#f3c579'; ctx.fillRect(2 + i * 2.5, y - 2, 1, 4);
+      }
+    }
+    if (tier >= 1) {
+      ctx.fillStyle = plate; rr(ctx, -7, -8 - tier, 13, 16 + tier * 2, 3); ctx.fill();
+      ctx.strokeStyle = light; ctx.lineWidth = 1; ctx.stroke();
+    }
+    circle(-2, 0, 4, '#3c5364'); circle(-2, 0, 1.8, glow);
+  }
+  if (recoil > .75) circle(length + 2, 0, 2 + recoil * 2, alien ? glow : '#ffe6a0');
+  ctx.restore();
+  // Fixed eyes/targeting sensor remain recognisable, independent of gun rotation.
+  if (alien) {
+    for (const s of [-1, 1]) {
+      ctx.strokeStyle = plate; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(s * 5, -5); ctx.lineTo(s * 7, -12); ctx.stroke();
+      circle(s * 7, -12, 2.6, ink); circle(s * 7, -12, 1.5, glow);
+    }
+  } else circle(-6, -7, 1.8, '#f3c579');
+  ctx.restore();
+}
+
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = null) {
   const TILE_W = TILE;
   const px = b.tx * TILE_W - camX + (b.visX || 0), py = b.ty * TILE_W - camY + (b.visY || 0);
@@ -1001,61 +1116,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillStyle = 'rgba(255,243,196,0.18)';
       poly(ctx, [R.rx + 4, R.fy - 15, R.rx - 12, R.fy + 12, R.rx + 18, R.fy + 12]); ctx.fill();
     } else if (b.type === 'turret') {
-      // «Гадюка» 1×1: бетонный шестигранник + спаренная пушка-клыки.
-      const bx = cx, by = cy + 3;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(bx + 3, by + 9, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
-      // Основание-шестигранник.
-      ctx.fillStyle = STEEL;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = Math.PI / 6 + i * Math.PI / 3;
-        const vx = bx + Math.cos(a) * 13, vy = by + Math.sin(a) * 13;
-        if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
-      }
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2; ctx.stroke();
-      // Кромка света по верхней грани + teal-огонь по основанию.
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillRect(bx - 11, by - 12, 22, 1.5);
-      ctx.save();
-      ctx.shadowColor = WIN; ctx.shadowBlur = 6;
-      ctx.globalAlpha = 0.5 + 0.3 * pulse;
-      ctx.fillStyle = WIN;
-      ctx.fillRect(bx - 9, by + 8, 18, 2);
-      ctx.restore();
-      ctx.fillStyle = '#a7aeb6';
-      ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, 0, Math.PI * 2); ctx.stroke();
-      // Башня со спаренными стволами — явно пушка.
-      ctx.save();
-      ctx.translate(bx, by); ctx.rotate(ang);
-      const rec = recoil * 3;
-      ctx.fillStyle = FACED;
-      ctx.fillRect(-4 - rec, -6.5, 21, 4);
-      ctx.fillRect(-4 - rec, 2.5, 21, 4);
-      ctx.fillStyle = '#22252a';
-      ctx.fillRect(14 - rec, -7.5, 4, 6);
-      ctx.fillRect(14 - rec, 1.5, 4, 6);
-      ctx.fillStyle = STEEL_D;
-      ctx.fillRect(-4 - rec, -6.5, 21, 1.2);
-      ctx.fillRect(-4 - rec, 2.5, 21, 1.2);
-      // Вспышка выстрела.
-      if (recoil > 0.75) {
-        ctx.fillStyle = 'rgba(255,220,140,' + (0.9 * recoil).toFixed(2) + ')';
-        poly(ctx, [19 - rec, 0, 26 - rec, -4, 26 - rec, 4]); ctx.fill();
-      }
-      ctx.fillStyle = '#596069';
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#22252a'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-      // Барабан и прицел.
-      ctx.fillStyle = '#2e7d8c';
-      ctx.beginPath(); ctx.arc(bx - Math.cos(ang) * 7, by - Math.sin(ang) * 7, 2.4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = blink ? '#ff5f57' : '#7a2a24';
-      ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, Math.PI * 2); ctx.fill();
+      drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse);
     } else if (b.type === 'wall') {
       // Стена 1×1 во весь тайл: броневой сегмент стыкуется с соседями.
       ctx.fillStyle = '#4a4f57';
@@ -1419,35 +1480,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.restore();
       }
     } else if (b.type === 'turret') {
-      // Жвала 1×1: стреляющая пасть с зубами, наводится на цель.
-      mound(ctx, cx, cy + 2, 14, 12, FD, FM, FL);
-      veins(ctx, cx, cy + 2, 12, 10, 5, bid * 0.6);
-      // Глаза на стебельках.
-      for (const sx of [-1, 1]) {
-        ctx.strokeStyle = FM; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(cx + sx * 5, cy - 4); ctx.lineTo(cx + sx * 7, cy - 10); ctx.stroke();
-        aeye(ctx, cx + sx * 7, cy - 11, 3.2);
-      }
-      // Пасть: тёмное жерло + зубы + огонь глотки.
-      const mx = cx + Math.cos(ang) * 4, my = cy + 2 + Math.sin(ang) * 4;
-      const squash = 1 - recoil * 0.35;
-      ctx.fillStyle = '#160a0e';
-      ctx.beginPath(); ctx.ellipse(mx, my, 11, 9 * squash, ang, 0, Math.PI * 2); ctx.fill();
-      teethRing(ctx, mx, my, 10, 6, ang, 1.25, 8, '#d9cfc0');
-      ctx.save();
-      ctx.shadowColor = '#a8ff9e'; ctx.shadowBlur = 8;
-      ctx.fillStyle = 'rgba(140,255,150,' + (0.7 + 0.3 * Math.max(pulse, recoil)).toFixed(2) + ')';
-      ctx.beginPath(); ctx.ellipse(mx + Math.cos(ang) * 2, my + Math.sin(ang) * 2, 6, 4.5 * squash, ang, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      // Плевок в полёте сразу после выстрела.
-      if (recoil > 0.55) {
-        const px2 = mx + Math.cos(ang) * (12 + (1 - recoil) * 14);
-        const py2 = my + Math.sin(ang) * (12 + (1 - recoil) * 14);
-        ctx.fillStyle = 'rgba(168,255,158,' + (recoil * 0.9).toFixed(2) + ')';
-        ctx.beginPath(); ctx.arc(px2, py2, 3, 0, Math.PI * 2); ctx.fill();
-      }
-      // Слизь на жерлах.
-      slime(ctx, cx - 12, cy + 12, 1.8, t, bid);
+      drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse);
     } else if (b.type === 'wall') {
       // Хитиновая стена 1×1 во весь тайл: крупная чешуя, живая жила.
       ctx.fillStyle = '#401f2a';
