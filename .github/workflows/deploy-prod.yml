@@ -1,0 +1,30 @@
+name: deploy-prod
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Коммит/ветка для прода (обычно main после приёмки)'
+        required: false
+        default: main
+
+permissions:
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
