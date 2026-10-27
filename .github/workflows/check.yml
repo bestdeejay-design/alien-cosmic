@@ -1,0 +1,32 @@
+name: check
+on:
+  pull_request:
+    branches: [main, test]
+  push:
+    branches: [main, test]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Гейт check.mjs
+        run: node scripts/check.mjs
+      - name: Smoke
+        run: node scripts/smoke.mjs
+      - name: Симы (канонический список)
+        run: |
+          for s in build codex edge_reach gather grade hq i18n menu move \
+                   p1 panel repair shell touch traffic ux wins; do
+            f="scripts/sim_${s}.mjs"
+            [ -f "$f" ] || { echo "sim missing: $f"; exit 1; }
+            node "$f" || exit 1
+          done
+      - name: Аудиты карты
+        run: |
+          node scripts/audit_move.mjs
+          node scripts/check_minimap_view.mjs

@@ -17,14 +17,15 @@
 //
 // Модель данных и идеи развития — design/ADMIN_AND_CHESTS.md.
 // ============================================================
-import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10262519';
-import { t } from './i18n.js?v=10262519';
-import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10262519';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10272743';
+import { t } from './i18n.js?v=10272743';
+import { ECON_SCALE } from './economy.js?v=10272743';
+import { loadRaidConfig, saveRaidConfig, resetRaidConfig } from './home-raid.js?v=10272743';
 import {
   CONDITIONS, REWARD_KINDS, RARITY, loadConfig, saveConfig, resetConfig,
   loadState, availableChests, buildContext, fetchTop, publishConfigToServer,
   pullConfigFromServer,
-} from './chests.js?v=10262519';
+} from './chests.js?v=10272743';
 
 // A3 (аудит владельца 26.10.2026): «админка — только профиль владельца best,
 // без учёта регистра; другим на этапе разработки недоступна».
@@ -490,7 +491,16 @@ export function openAdmin(game) {
         <tr><td>Забрано капсул</td><td>${claimed.length ? esc(claimed.join(', ')) : '—'}</td></tr>
         <tr><td>Профиль</td><td>${ident ? esc(ident.nick) : 'аноним'}</td></tr>
         <tr><td>Сейв-канал</td><td>${saveStatus ? `${saveStatus.online ? 'на связи' : 'нет связи'} · ${esc(saveStatus.api)}` : '—'}</td></tr>
-        <tr><td>Масштаб цен</td><td>${(() => { try { return Number(localStorage.getItem(ECON_KEY)) || 1; } catch { return 1; } })()}×</td></tr>
+        <tr><td>Масштаб цен</td><td>${(() => {
+          // П-1 (#43): показываем ФАКТИЧЕСКИ действующий масштаб (ECON_SCALE из economy.js),
+          // а не сохранённое значение LS — иначе таблица врёт при ?econ=-override.
+          let src = '';
+          try {
+            const u = Number(new URLSearchParams(location.search).get('econ'));
+            if (Number.isFinite(u) && u > 0) src = ' (из адреса)';
+          } catch { /* */ }
+          return ECON_SCALE + src;
+        })()}×</td></tr>
       </tbody></table>
       <div class="adm-row" style="margin-top:10px">
         <button class="adm-btn" id="adm-reset-claims" type="button">Сбросить «забрано»</button>

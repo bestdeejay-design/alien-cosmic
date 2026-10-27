@@ -33,9 +33,35 @@ const NICK_KEY = 'ac_save_nick';
 const PIN_KEY = 'ac_save_pin';
 const ANON_KEY = 'ac_save_player_id';
 const PORT = 8790;
+// ---- Канал 2.5: ВНЕШНИЙ СЕРВЕР ВЛАДЕЛЬЦА (lovii + Cloudflare Tunnel) ----
+// Если адрес задан и жив — он главнее гиста: это постоянная БД на машине владельца.
+// Задаётся в localStorage 'ac_save_ext_api' (панель профиля) или константой ниже.
+const EXT_API_DEFAULT = ''; // например 'https://xxx.trycloudflare.com'
+const EXT_KEY = 'ac_save_ext_api';
+function readExtApi() { return readLS(EXT_KEY) || EXT_API_DEFAULT || ''; }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10262519';
-import { t } from './js/i18n.js?v=10262519';
+// ---- Канал 3: GitHub Gist (работает с GitHub Pages) ----
+// Чтение: публичный raw гиста (HTTPS, CORS ok). Запись: gist-мост на :8791 (Mac владельца).
+// Файл профиля: ac_<sha256(nick:pin).slice32>_<key>.json — пин в URL не светит ничего,
+// файл без верного хеша не найти, запись защищена мостом.
+const GIST_ID = '69f6832c50a3715bb60c2a8ff896dca9';
+const GIST_RAW = `https://gist.githubusercontent.com/bestdeejay-design/${GIST_ID}/raw`;
+const BRIDGE_PORT = 8791;
+// Канал 4: PAT владельца (вводится один раз в профиле, хранится в localStorage,
+// в репо/клиентский код не попадает) — прямой GitHub API PATCH гиста из браузера.
+const PAT_KEY = 'ac_save_pat';
+const readPAT = () => readLS(PAT_KEY);
+async function sha32(s) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+async function gistFileOf(key) {
+  const h = await sha32(`${identity.nick.toLowerCase()}:${identity.pin}`);
+  return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
+}
+
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10272743';
+import { t } from './js/i18n.js?v=10272743';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
@@ -54,6 +80,20 @@ async function resolveApi(manual = false) {
     const r = await fetch('/health', { cache: 'no-store' });
     if (r.ok || r.status === 401) { apiBase = ''; apiMode = 'прокси'; return apiBase; }
   } catch { /* прокси нет */ }
+  // Канал 2.5: внешний сервер владельца (lovii через туннель) — главнее гиста.
+  const ext = readExtApi();
+  if (ext) {
+    try {
+      const r = await fetch(ext + '/health', { cache: 'no-store' });
+      if (r.ok) { apiBase = ext; apiMode = 'внешний сервер (lovii)'; return apiBase; }
+    } catch { /* туннель лежит — падаем в гист */ }
+  }
+  // Канал 3 (GitHub Pages): сервера рядом нет — читаем из публичного гиста,
+  // запись уходит на gist-мост (Mac владельца, :8791), если он включён.
+  if (location.protocol === 'https:') {
+    apiBase = 'gist'; apiMode = 'гист (чтение) + мост :8791 (запись)';
+    return apiBase;
+  }
   apiBase = `http://${location.hostname}:${PORT}`;
   apiMode = 'порт ' + PORT;
   return apiBase;
@@ -83,6 +123,71 @@ async function call(path, payload) {
   // не трогая сеть и не оставляя записей на сервере.
   if (!identity) return { j: { ok: false, error: 'нужен профиль' }, status: 0 };
   const base = apiBase === null ? await resolveApi() : apiBase;
+  // Канал 3 (гист): /api/load читаем публично из raw; /api/save — на мост :8791.
+  if (base === 'gist') {
+    const key = payload && payload.key;
+    if (path === '/api/load' && key) {
+      const f = await gistFileOf(key);
+      try {
+        const r = await fetch(`${GIST_RAW}/${f}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!r.ok) return { j: { ok: false, error: 'not found' }, status: r.status };
+        const j = await r.json();
+        if (j.pin !== await sha32(`${identity.nick}:${identity.pin}`)) {
+          status.online = true;
+          return { j: { ok: false, error: 'nick taken, wrong pin' }, status: 403 };
+        }
+        return { j: { ok: true, value: j.value, ts: j.ts }, status: 200 };
+      } catch { status.online = false; return { j: { ok: false, error: 'not found' }, status: 0 }; }
+    }
+    if (path === '/api/save' && payload) {
+      try {
+        const r = await fetch(`http://${location.hostname}:${BRIDGE_PORT}/api/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          cache: 'no-store',
+        });
+        const j = await r.json().catch(() => ({ ok: false, error: 'bad json' }));
+        if (!r.ok && !j.error) j.error = 'http ' + r.status;
+        status.online = r.ok;
+        return { j, status: r.status };
+      } catch {
+        status.online = false;
+        status.lastError = 'мост выключен (Mac): включи node server/gist-bridge.mjs';
+                // Мост выключен → канал 4: прямой GitHub API с PAT владельца.
+        const pat = readPAT();
+        if (!pat) {
+          status.online = false;
+          status.lastError = 'мост выключен (Mac) и PAT не введён — введите PAT в профиле';
+          return { j: { ok: false, error: status.lastError }, status: 0 };
+        }
+        try {
+          const f = await gistFileOf(payload.key);
+          const prev = await fetch(`${GIST_RAW}/${f}?t=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+          const ph = await sha32(`${identity.nick.toLowerCase()}:${identity.pin}`);
+          if (prev && prev.pin !== ph) {
+            status.online = true;
+            return { j: { ok: false, error: 'nick taken, wrong pin' }, status: 403 };
+          }
+          const record = JSON.stringify({ pin: ph, key: payload.key, value: payload.value, ts: Date.now() });
+          const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pat}`, Accept: 'application/vnd.github+json' },
+            body: JSON.stringify({ files: { [f]: { content: record } } }),
+          });
+          const j = await r.json().catch(() => ({ ok: false, error: 'bad json' }));
+          if (!r.ok) { j.ok = false; j.error = j.message || ('github ' + r.status); } else j.ok = true;
+          status.online = r.ok;
+          return { j, status: r.ok ? 200 : r.status };
+        } catch (e2) {
+          status.online = false;
+          status.lastError = 'PAT-канал: ' + String(e2.message || e2).slice(0, 80);
+          return { j: { ok: false, error: status.lastError }, status: 0 };
+        }
+      }
+    }
+    return { j: { ok: false, error: 'канал гист: только save/load' }, status: 0 };
+  }
   const r = await fetch(base + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -103,7 +208,7 @@ const SAVE_TOAST_MS = 5 * 60 * 1000;
 let lastSaveToastTs = 0;
 let lastSaveErrorShown = '';
 
-function notifySaveError(text) {
+function notifySaveError(text, isAuth = false) {
   const now = Date.now();
   if (lastSaveErrorShown === text && now - lastSaveToastTs < SAVE_TOAST_MS) return;
   if (now - lastSaveToastTs < SAVE_TOAST_MS && lastSaveErrorShown === text) return;
@@ -112,8 +217,10 @@ function notifySaveError(text) {
   try {
     const g = window.game;
     if (g && g.ui && typeof g.ui.toast === 'function' && g.state) {
-      // Локаль — единый ключ (RU/EN симметрично), текст ошибки подставляется.
-      g.ui.toast(t('ui.save.failed', { err: text }), 'warn', 4200);
+      // Локаль — единый ключ (RU/EN симметрично). З2 (#42): при сетевом сбое
+      // успокаиваем — прогресс жив в браузере; 403 «чужой пин» без хвоста
+      // (там потеря реальная, успокаивать нельзя).
+      g.ui.toast(t(isAuth ? 'ui.save.failedAuth' : 'ui.save.failed', { err: text }), 'warn', 4200);
     }
   } catch { /* офлайн-стенд без UI */ }
 }
@@ -200,7 +307,7 @@ async function push(key, { force = false } = {}) {
     }
     status.lastError = j.error === 'nick taken, wrong pin' ? '403: чужой пин' : String(j.error || 'ошибка');
     if (code === 403) status.online = true;
-    notifySaveError(status.lastError);   // З3: игрок видит, что сейв не ушёл
+    notifySaveError(status.lastError, code === 403);   // З3: игрок видит, что сейв не ушёл
     return false;
   } catch (e) {
     status.online = false;
@@ -299,6 +406,10 @@ window.__saveApi = {
 // Панель профиля — открывается командой КЦ «Профиль» (канон владельца:
 // вход/сохранения только внутри КЦ, в хедере ничего нет).
 // ------------------------------------------------------------------
+window.__saveGetPat = readPAT;
+window.__saveGetExt = readExtApi;
+window.__saveSetExt = (u) => writeLS(EXT_KEY, String(u || '').trim());
+window.__saveSetPat = (t) => { writeLS(PAT_KEY, String(t || '').trim()); };
 window.showProfilePanel = function showProfilePanel() {
   const old = document.getElementById('sv-panel');
   // Только РЕАЛЬНО прикреплённая панель считается открытой: отсоединённый
@@ -333,11 +444,42 @@ window.showProfilePanel = function showProfilePanel() {
     </div>
     <div id="sv-list" style="margin-top:6px;font-size:12px;opacity:.85">на сервере: …</div>
     <div id="sv-msg" style="margin-top:6px;font-size:12px;color:#ff8d7a;min-height:14px"></div>
+    <details style="margin-top:8px;font-size:12px;opacity:.85">
+      <summary style="cursor:pointer">сервер БД (lovii/туннель) — постоянное хранилище</summary>
+      <div style="margin-top:6px">Адрес вида https://….trycloudflare.com — все сохранения пойдут в БД на этой машине.</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="sv-ext" placeholder="https://…" style="flex:1 1 auto;min-width:0;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
+        <button id="sv-ext-ok" style="background:#1c2c33;border:1px solid #2a3a42;color:#cfe3e6;border-radius:6px;padding:6px 10px;cursor:pointer">OK</button>
+      </div>
+    </details>
+    <details style="margin-top:8px;font-size:12px;opacity:.85">
+      <summary style="cursor:pointer">канал записи: PAT GitHub (для игры с Pages)</summary>
+      <div style="margin-top:6px">Токен с правом «gist» хранится только в этом браузере и пишет ваш приватный гист напрямую.</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="sv-pat" placeholder="ghp_…" type="password"
+          style="flex:1 1 auto;min-width:0;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
+        <button id="sv-pat-ok" style="background:#1c2c33;border:1px solid #2a3a42;color:#cfe3e6;border-radius:6px;padding:6px 10px;cursor:pointer">OK</button>
+      </div>
+    </details>
     <div style="opacity:.55;font-size:11px;margin-top:6px">Ник запоминается без регистра: первый вход с пином закрепляет его за вами.</div>
     <button id="sv-close" style="margin-top:8px;background:none;border:0;color:#8fa6ae;cursor:pointer">закрыть</button>`;
   document.body.append(panel);
   registerModal('profile', () => { unregisterModal('profile'); panel.remove(); });
   const $ = (id) => panel.querySelector(id);
+  // Поле внешнего сервера (lovii): текущее значение + сохранение
+  if ($('#sv-ext') && window.__saveGetExt) $('#sv-ext').value = window.__saveGetExt() || '';
+  if ($('#sv-ext-ok')) $('#sv-ext-ok').addEventListener('click', () => {
+    const v = ($('#sv-ext').value || '').trim().replace(/\/+$/, '');
+    window.__saveSetExt(v);
+    setMsg(v ? 'внешний сервер сохранён: ' + v : 'внешний сервер очищен', !v);
+    apiBase = null; // пересчитать канал
+  });
+  // PAT-поле: текущее значение + сохранение
+  if ($('#sv-pat') && window.__saveGetPat) $('#sv-pat').value = window.__saveGetPat() || '';
+  if ($('#sv-pat-ok')) $('#sv-pat-ok').addEventListener('click', () => {
+    window.__saveSetPat($('#sv-pat').value);
+    setMsg(window.__saveGetPat() ? 'PAT сохранён в этом браузере' : 'PAT удалён', !window.__saveGetPat());
+  });
   const msg = $('#sv-msg');
   const setMsg = (text, bad = true) => { if (msg) { msg.textContent = text; msg.style.color = bad ? '#ff8d7a' : '#9be29e'; } };
 
@@ -385,7 +527,7 @@ window.showProfilePanel = function showProfilePanel() {
     location.reload();
   });
   $('#sv-ok').addEventListener('click', async () => {
-    const nick = ($('#sv-nick').value || '').trim();
+    const nick = ($('#sv-nick').value || '').trim().toLowerCase();
     const pin = ($('#sv-pin').value || '').trim();
     if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick)) { setMsg('ник: 2–24 буквы/цифры/-/_'); return; }
     if (!/^\d{3,12}$/.test(pin)) { setMsg('пин: 3–12 цифр'); return; }

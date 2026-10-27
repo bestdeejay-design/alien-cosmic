@@ -25,8 +25,15 @@ export default {
     },
 
     // З3 (#33): a silent save failure is no longer silent — the player sees a toast.
+    // З2 (#42): a network hiccup gets reassurance; 403 "wrong pin" — no tail.
     save: {
-      failed: 'Save failed: {err}. Progress is only in this browser for now.',
+      failed: 'Save failed: {err}. Progress is safe in this browser — it will sync to the server once the connection is back.',
+      failedAuth: 'Save failed: {err}.',
+    },
+
+    // З1 (#42, safe-mode boot): a corrupted session no longer means a dark screen.
+    boot: {
+      saveCorrupted: 'Save is corrupted — a new base has been started. Previous progress could not be restored.',
     },
 
     menu: {

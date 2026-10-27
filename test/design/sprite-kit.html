@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alien Cosmic — showcase-вьюер юнитов и зданий (#31)</title>
+<style>
+  :root {
+    --bg: #071218;
+    --panel: rgba(10, 26, 33, 0.72);
+    --line: rgba(118, 227, 215, 0.18);
+    --text: #cfe8e2;
+    --muted: #7fa39b;
+    --helios: #76e3d7;
+    --kharid: #ff9d7a;
+    --amber: #f3c579;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { padding: 18px clamp(12px, 3vw, 40px) 60px; }
+  header { max-width: 1560px; margin: 0 auto 14px; }
+  h1 { font-size: clamp(18px, 2.4vw, 26px); letter-spacing: .04em; margin: 0 0 6px; }
+  h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted);
+    letter-spacing: .02em; margin-top: 4px; }
+  .lede { color: var(--muted); max-width: 1000px; margin: 0 0 14px; }
+  .lede b { color: var(--text); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 16px; }
+  .controls label { display: flex; align-items: center; gap: 8px; font-size: 13px;
+    color: var(--muted); cursor: pointer; user-select: none; }
+  .controls input[type=range] { width: 130px; accent-color: var(--helios); }
+  .controls .val { color: var(--amber); font-variant-numeric: tabular-nums; min-width: 30px; }
+  .controls output { color: var(--amber); font-variant-numeric: tabular-nums; min-width: 30px; }
+  .wrap { max-width: 1560px; margin: 0 auto; }
+  section { margin: 0 0 22px; }
+  h2 { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 8px;
+    color: var(--muted); font-weight: 700; }
+  h2 .tag { color: var(--amber); letter-spacing: .04em; text-transform: none; font-weight: 400; }
+  canvas { display: block; width: 100%; height: auto; background: #0a1a21;
+    border: 1px solid var(--line); border-radius: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px;
+    margin-top: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: .06em; }
+  .card.h h3 { color: var(--helios); }
+  .card.k h3 { color: var(--kharid); }
+  .card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; }
+  .card li { margin: 2px 0; }
+  footer { max-width: 1560px; margin: 26px auto 0; color: var(--muted); font-size: 12px; }
+  code { color: var(--amber); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ALIEN COSMIC — showcase-вьюер юнитов и зданий
+    <small>#31 «Шлифовка зданий и юнитов обеих рас до концепта» · рендер настоящих
+      <code>drawUnit</code> / <code>drawBuilding</code> из <code>js/</code> — приёмка идёт по тому,
+      что в игре</small>
+  </h1>
+  <p class="lede">
+    Источник стиля — <b>design/s2-vault/</b> (концепты, спрайты, финальные скрины).
+    <b>Гелиос</b> — гранёная техника: шестигранники, панели, кромка света сверху-слева,
+    teal-окна «Рубежа», янтарные акценты, ховер-подиум. <b>Кхарид</b> — органика:
+    курганы плоти, жилы, мембраны-мешки, костяные шипы, глаза-стражи, сердце-пульс.
+    Сторона читается по цвету (бирюза ↔ огонь), раса — по геометрии (углы ↔ эллипсы),
+    без подписей. Одно свечение на сущность, <code>shadowBlur ≤ 9</code>.
+  </p>
+  <div class="controls">
+    <label>Крупность
+      <input id="zoom" type="range" min="1" max="4" step="1" value="3">
+      <output id="zoomv">3×</output>
+    </label>
+    <label><input id="anim" type="checkbox" checked> живая анимация</label>
+    <label><input id="foe" type="checkbox" checked> вторая раса — цветом врага (огонь)</label>
+    <label><input id="tile" type="checkbox" checked> сетка тайлов 32 px</label>
+    <span style="color:var(--muted);font-size:12px">8 юнитов × 2 расы · 8 зданий × 2 расы</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <section>
+    <h2>Юниты <span class="tag">— 8 типов, обе расы, состояния: покой / ход / откат ствола</span></h2>
+    <canvas id="cv-units" width="1520" height="620"></canvas>
+  </section>
+
+  <section>
+    <h2>Здания <span class="tag">— 8 типов, обе расы; грейды, гарнизон, стройка, турель в бою</span></h2>
+    <canvas id="cv-build" width="1520" height="760"></canvas>
+  </section>
+
+  <section>
+    <h2>Игровой масштаб <span class="tag">— зум 1.0, тайл 32 px: так это выглядит в бою</span></h2>
+    <canvas id="cv-game" width="1408" height="420"></canvas>
+  </section>
+
+  <section>
+    <h2>Как читать <span class="tag">— правила семейств (DESIGN_SYSTEM.md §6–10)</span></h2>
+    <div class="legend">
+      <div class="card h">
+        <h3>ГЕЛИОС — «угловая техника на подушке»</h3>
+        <ul>
+          <li>Шестигранники, трапеции, клинья, панели, заклёпки.</li>
+          <li>Кромка света сверху-слева, тёмный низ и правая грань.</li>
+          <li>Одно светящееся ядро (бирюза) + янтарные приборы.</li>
+          <li>Ховер-подиум со струями тяги — техника «висит».</li>
+          <li>Состояние видно без панели: откат ствола по <code>cd</code>,
+            мерцание дюз на ходу, груз-кристалл на спине.</li>
+        </ul>
+      </div>
+      <div class="card k">
+        <h3>КХАРИД — «круглая органика с сердцем»</h3>
+        <ul>
+          <li>Эллипсы, сегменты-кольца, хитин-складки, шипы, лапы.</li>
+          <li>Влажный блик сверху, глубокая фиолетовая тень снизу.</li>
+          <li>Жилы и поры на кургане — никаких гладких шаров.</li>
+          <li>Сердце <code>#c43a54</code> пульсирует, слизь <code>#a8ff9e</code> каплями.</li>
+          <li>Глаза-стражи и пасть с клыками вместо «башни».</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Чек-лист приёмки</h3>
+        <ul>
+          <li>Сторона — за 0.2 с: бирюза ↔ огонь.</li>
+          <li>Раса — геометрией, не подписью.</li>
+          <li>Свет сверху-слева, тень есть у всего объёмного.</li>
+          <li><code>shadowBlur ≤ 9</code>, один на сущность.</li>
+          <li>Состояние видно без панели.</li>
+          <li>Силуэт читается на игровом масштабе (тайл 32 px).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  Alien Cosmic · issue #31 · поставка Арены в ветке <code>arena/df2e6fd6-alien-cosmic</code>.
+  Правки — только функции отрисовки в <code>js/units.js</code>, <code>js/buildings.js</code>,
+  <code>style.css</code>; игровая логика и баланс не тронуты (полный регресс зелёный).
+</footer>
+
+<script type="module">
+import { UNITS, BUILDINGS, TILE, COLORS } from '../js/config.js';
+import { drawUnit } from '../js/units.js';
+import { drawBuilding } from '../js/buildings.js';
+
+// Имена — только для стенда (в игре они из locales/*.js).
+const NAMES = {
+  worker: ['Дрон-техник', 'Собиратель'],
+  marine: ['Рейнджер', 'Кристожал'],
+  buggy:  ['Скиф', 'Скользень'],
+  tank:   ['Бастион', 'Громила'],
+  medic:  ['Нанит', 'Цветень'],
+  flamer: ['Плазмер', 'Кислотник'],
+  arty:   ['Мортира «Нова»', 'Спогром'],
+  scout:  ['Следопыт', 'Слухач'],
+};
+const UORDER = ['worker', 'marine', 'medic', 'flamer', 'buggy', 'tank', 'arty', 'scout'];
+const BORDER = ['cc', 'depot', 'barracks', 'turret', 'wall', 'bunker', 'factory', 'lab'];
+
+const ui = {
+  zoom: document.getElementById('zoom'),
+  zoomv: document.getElementById('zoomv'),
+  anim: document.getElementById('anim'),
+  foe: document.getElementById('foe'),
+  tile: document.getElementById('tile'),
+};
+
+// ---- фон: тёмный биом + пыль (как в игре) ----
+function backdrop(ctx, W, H) {
+  ctx.fillStyle = '#0a1a21';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = Math.random() < 0.5 ? 'rgba(30,60,70,0.25)' : 'rgba(12,30,38,0.5)';
+    ctx.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+  }
+}
+function label(ctx, x, y, txt, color, size, align) {
+  ctx.font = `bold ${size}px system-ui, sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textAlign = align || 'center';
+  ctx.fillText(txt, x, y);
+  ctx.textAlign = 'left';
+}
+function tileGrid(ctx, x0, y0, w, h) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(118,227,215,0.09)';
+  ctx.lineWidth = 1;
+  for (let x = x0; x <= x0 + w; x += TILE) { ctx.beginPath(); ctx.moveTo(x + .5, y0); ctx.lineTo(x + .5, y0 + h); ctx.stroke(); }
+  for (let y = y0; y <= y0 + h; y += TILE) { ctx.beginPath(); ctx.moveTo(x0, y + .5); ctx.lineTo(x0 + w, y + .5); ctx.stroke(); }
+  ctx.restore();
+}
+
+// ============================ ЮНИТЫ ============================
+const cvU = document.getElementById('cv-units');
+const ctxU = cvU.getContext('2d');
+function drawUnits() {
+  const Z = Number(ui.zoom.value);
+  ui.zoomv.textContent = Z + '×';
+  const cols = UORDER.length;
+  const cell = 108 * Z, rowH = 250;
+  cvU.width = 48 + cols * cell;
+  cvU.height = 54 + 2 * rowH + 24;
+  const W = cvU.width, H = cvU.height;
+  backdrop(ctxU, W, H);
+  const x0 = 24, y0 = 54;
+  if (ui.tile.checked) tileGrid(ctxU, x0, y0, W - 48, H - y0 - 20);
+  label(ctxU, x0, 30, 'ЮНИТЫ — 8 типов × 2 расы', '#cfe8e2', 17, 'left');
+  label(ctxU, W - 24, 30, 'крупность ' + Z + '× · тайл ' + TILE + ' px', '#7fa39b', 12, 'right');
+
+  UORDER.forEach((type, i) => {
+    const cfg = UNITS[type];
+    const fx = x0 + i * cell + cell / 2;
+    for (let row = 0; row < 2; row++) {
+      const fac = row === 0 ? 'human' : 'alien';
+      const side = row === 0 ? 'player' : (ui.foe.checked ? 'enemy' : 'player');
+      const fy = y0 + row * rowH + rowH / 2;
+      const u = {
+        type, faction: fac, side, x: 0, y: 0, r: cfg.r,
+        angle: 0, id: i + row * 5,
+        hp: cfg.hp, maxHp: cfg.hp,
+        cd: 0, moving: true, selected: false, dead: false, flashT: 0,
+        carrying: type === 'worker' ? 8 : 0, cfg,
+      };
+      ctxU.save();
+      ctxU.translate(fx, fy);
+      ctxU.scale(Z, Z);
+      drawUnit(ctxU, u, 0, 0);
+      ctxU.restore();
+      // Имя — только для стенда: в мире имён нет, сторону и расу читает форма.
+      const name = NAMES[type][row];
+      label(ctxU, fx, fy + 64, name, row === 0 ? COLORS.playerBright : COLORS.enemyBright, 12);
+      label(ctxU, fx, fy + 80, fac === 'human' ? 'ГЕЛИОС · грани' : 'КХАРИД · органика', '#5d847e', 10);
+    }
+  });
+}
+
+// ============================ ЗДАНИЯ ============================
+const cvB = document.getElementById('cv-build');
+const ctxB = cvB.getContext('2d');
+function drawBuildings() {
+  cvB.width = 48 + 4 * 340;
+  cvB.height = 54 + 2 * 360 + 2 * 150 + 40;
+  const W = cvB.width, H = cvB.height;
+  backdrop(ctxB, W, H);
+  const x0 = 24, y0 = 54;
+  if (ui.tile.checked) tileGrid(ctxB, x0, y0, W - 48, H - y0 - 26);
+  label(ctxB, x0, 30, 'ЗДАНИЯ — 8 типов × 2 расы (масштаб 1:1, тайл 32 px)', '#cfe8e2', 17, 'left');
+  label(ctxB, W - 24, 30, 'грид — реальный футпринт', '#7fa39b', 12, 'right');
+
+  BORDER.forEach((type, i) => {
+    const cfg = BUILDINGS[type];
+    const bw = cfg.w * TILE, bh = cfg.h * TILE;
+    for (let row = 0; row < 2; row++) {
+      const fac = row === 0 ? 'human' : 'alien';
+      const side = row === 0 ? 'player' : (ui.foe.checked ? 'enemy' : 'player');
+      // Ячейка сетки: по 3 здания в ряд на расу.
+      const col = i % 4, band = Math.floor(i / 4);
+      const cx = x0 + 130 + col * 340;
+      const cy = y0 + 110 + row * 360 + band * 150;
+      const tx = Math.round(cx / TILE), ty = Math.round(cy / TILE);
+      const camX = tx * TILE - cx, camY = ty * TILE - cy;
+      const b = {
+        type, faction: fac, side, tx, ty, w: cfg.w, h: cfg.h,
+        hp: cfg.hp, maxHp: cfg.hp, done: true, id: 1 + i + row * 9, level: 1,
+        cfg, angle: -Math.PI / 4, cd: 0, garrison: [],
+      };
+      // Живые состояния на стенде: очередь у казармы/завода, гарнизон у бункера,
+      // откат у турели — ровно те признаки, по которым в игре читается здание.
+      if (type === 'barracks') b.queue = [{ type: 'marine', t: 6.5, total: 13 }];
+      if (type === 'factory') b.queue = [{ type: 'tank', t: 12, total: 28 }];
+      if (type === 'lab') b.res = { key: 'infAtk', t: 4, total: 12 };
+      if (type === 'bunker') b.garrison = [{}, {}, {}];
+      if (type === 'turret') b.cd = cfg.cooldown * 0.5;
+      drawBuilding(ctxB, b, false, camX, camY, null);
+      const name = (type + ' ' + cfg.w + '×' + cfg.h);
+      label(ctxB, cx, cy + bh / 2 + 20, name, row === 0 ? COLORS.playerBright : COLORS.enemyBright, 12);
+      label(ctxB, cx, cy + bh / 2 + 34, fac === 'human' ? 'ГЕЛИОС' : 'КХАРИД', '#5d847e', 10);
+    }
+  });
+  // Пояснение к состояниям.
+  label(ctxB, W - 24, H - 12, 'на стенде: очередь production, исследование, гарнизон 3/4, откат турели',
+    '#7fa39b', 12, 'right');
+}
+
+// ===================== ИГРОВОЙ МАСШТАБ (зум 1.0) =====================
+const cvG = document.getElementById('cv-game');
+const ctxG = cvG.getContext('2d');
+function drawGameScale() {
+  cvG.width = 1408; cvG.height = 420;
+  const W = cvG.width, H = cvG.height;
+  backdrop(ctxG, W, H);
+  tileGrid(ctxG, 0, 0, W, H);
+  label(ctxG, 16, 26, 'ИГРОВОЙ МАСШТАБ — зум 1.0 (как в бою): база Гелиос слева, отряд кхарид справа',
+    '#cfe8e2', 15, 'left');
+
+  // --- база Гелиос: реальные футпринты, стена стыкуется с соседями ---
+  const put = (type, fac, side, tx, ty, extra) => {
+    const cfg = BUILDINGS[type];
+    const b = Object.assign({
+      type, faction: fac, side, tx, ty, w: cfg.w, h: cfg.h,
+      hp: cfg.hp, maxHp: cfg.hp, done: true, id: 1 + tx + ty * 7, level: 1,
+      cfg, angle: -Math.PI / 4, cd: 0, garrison: [],
+    }, extra || {});
+    drawBuilding(ctxG, b, false, 0, 0, null);
+  };
+  put('cc', 'human', 'player', 2, 2);
+  put('depot', 'human', 'player', 7, 2);
+  put('lab', 'human', 'player', 10, 2);
+  for (let i = 0; i < 4; i++) put('wall', 'human', 'player', 6 + i, 4);
+  put('barracks', 'human', 'player', 2, 5);
+  put('turret', 'human', 'player', 7, 5);
+  put('factory', 'human', 'player', 10, 5);
+  put('bunker', 'human', 'player', 2, 8, { garrison: [{}, {}] });
+
+  // --- отряд кхарид: свой и враг рядом — сторону видно по цвету и форме ---
+  const squad = [
+    ['worker', 20, 8, 'enemy'], ['marine', 21, 9, 'enemy'], ['buggy', 22, 10, 'enemy'],
+    ['tank', 23, 11, 'enemy'], ['medic', 24, 9, 'enemy'], ['flamer', 25, 10, 'enemy'],
+    ['arty', 26, 11, 'enemy'], ['scout', 27, 8, 'enemy'],
+    ['worker', 20, 12, 'player'], ['marine', 21, 12, 'player'], ['buggy', 22, 12, 'player'],
+    ['medic', 24, 12, 'player'], ['tank', 26, 12, 'player'],
+  ];
+  squad.forEach(([type, tx, ty, side], i) => {
+    const cfg = UNITS[type];
+    const u = {
+      type, faction: 'alien', side, x: tx * TILE, y: ty * TILE, r: cfg.r,
+      angle: 0, id: i, hp: cfg.hp, maxHp: cfg.hp,
+      cd: 0, moving: true, selected: false, dead: false, flashT: 0,
+      carrying: type === 'worker' ? 8 : 0, cfg,
+    };
+    drawUnit(ctxG, u, u.x, u.y);
+  });
+  label(ctxG, 16, H - 14, 'тайл 32 px · силуэт читается без подписей · одно свечение на сущность',
+    '#5d847e', 12, 'left');
+}
+
+function renderAll() { drawUnits(); drawBuildings(); drawGameScale(); }
+for (const k of ['zoom', 'anim', 'foe', 'tile']) {
+  ui[k].addEventListener('input', renderAll);
+  ui[k].addEventListener('change', renderAll);
+}
+renderAll();
+
+// Живая анимация: drawUnit/drawBuilding берут время из performance.now(),
+// поэтому достаточно перерисовывать кадр — симуляцию это не трогает.
+let raf = 0;
+function loop() {
+  if (ui.anim.checked) { drawUnits(); drawBuildings(); }
+  raf = requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

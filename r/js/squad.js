@@ -13,8 +13,8 @@
 //     освободится (u.order.kind === 'idle').
 // Приказы снимаются «Снять удержание» или при уходе с базы (вылазка/бой).
 // ============================================================
-import { TILE } from './config.js?v=10262519';
-import { orderAttack, orderMove } from './units.js?v=10262519';
+import { TILE } from './config.js?v=10272743';
+import { orderAttack, orderMove } from './units.js?v=10272743';
 
 export const HOLD_RADIUS = TILE * 5;
 export const CC_RADIUS = TILE * 4;
