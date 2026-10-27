@@ -22,9 +22,13 @@ let seq = 0;
 let escapeBound = false;
 
 // Зарегистрировать открытую модалку. `close` — её собственный закрыватель.
-export function registerModal(id, close) {
+// opts.onEscape — необязательный обработчик «первого Escape»: если он вернёт
+// true, модалка СЧИТАЕТ СОБЫТИЕ СВОИМ и остаётся открытой (так работает пинпад
+// авторизации: Escape сначала стирает введённые точки, и только следующий
+// Escape закрывает панель).
+export function registerModal(id, close, opts = {}) {
   if (!id) return;
-  registry.set(String(id), { close, seq: ++seq });
+  registry.set(String(id), { close, seq: ++seq, onEscape: opts && opts.onEscape });
 }
 
 export function unregisterModal(id) {
@@ -66,10 +70,16 @@ export function closeOthers(exceptId) {
 }
 
 // Верхняя = последняя открытая. Escape закрывает именно её.
-export function closeTop() {
+// Верхняя модалка может САМА обработать Escape (onEscape вернул true) —
+// тогда она остаётся открытой. Возврат: id закрытой модалки, либо null.
+export function closeTop(ev) {
   let top = null, topSeq = -1;
   for (const [id, e] of registry) if (e.seq > topSeq) { top = id; topSeq = e.seq; }
   if (!top) return null;
+  const entry = registry.get(top);
+  if (entry && typeof entry.onEscape === 'function') {
+    try { if (entry.onEscape(ev) === true) return null; } catch { /* падение обработчика не блокирует закрытие */ }
+  }
   closeModal(top);
   return top;
 }
@@ -83,8 +93,10 @@ export function installEscape() {
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' && e.code !== 'Escape') return;
     if (!registry.size) return;
-    const closed = closeTop();
-    if (!closed) return;
+    // Если верхняя модалка «съела» Escape сама (пинпад: стереть точки) — событие
+    // всё равно не должно дойти до игры, иначе Esc заодно снял бы паузу.
+    const closed = closeTop(e);
+    if (!closed) { if (typeof e.preventDefault === 'function') e.preventDefault(); return; }
     if (typeof e.preventDefault === 'function') e.preventDefault();
     if (typeof e.stopPropagation === 'function') e.stopPropagation();
     if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();

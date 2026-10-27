@@ -60,8 +60,16 @@ async function gistFileOf(key) {
   return `ac_${h}_${key.replace(/[^a-z0-9._-]/gi, '_')}.json`;
 }
 
-import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10272743';
-import { t } from './js/i18n.js?v=10272743';
+import { closeOthers, registerModal, unregisterModal } from './js/modals.js?v=10271830';
+import { t } from './js/i18n.js?v=10271830';
+// P1 (#45): пинпад и «выход = полная очистка» живут в отдельных модулях.
+// Сети они не касаются — единственный сетевой клиент остаётся здесь
+// (гейт check_r.mjs [4]).
+import {
+  PIN_MIN, PIN_MAX, normalizeNick, openAuth, authGate, confirmSignOut,
+  applySnapshotToGame, auth as authState,
+} from './js/auth-ui.js?v=10271830';
+import { purgeProfileKeys, PROFILE_KEYS } from './js/storage-ns.js?v=10271830';
 
 const readLS = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLS = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
@@ -264,10 +272,16 @@ async function pushStats() {
   } catch { /* офлайн */ }
 }
 
+// Ключ базы рейда: на старте его тянет гейт входа (raid-boot → authGate).
+// reconcile читает только кампанию и быстрый бой — иначе на каждый вход
+// уходило два одинаковых /api/load (итерация 2 ревью #45).
+const RAID_KEY = 'ac_raid_session_v1';
+
 async function reconcile() {
   if (!identity) return;
   const list = await window.__saveApi.list();
   for (const key of SYNC_KEYS) {
+    if (key === RAID_KEY) continue;
     const local = readLS(key);
     const localTs = Number(readLS(TS_PREFIX + key) || 0);
     const rec = list && list.ok && Array.isArray(list.records)
@@ -347,11 +361,111 @@ async function pullAll() {
   for (const key of SYNC_KEYS) await pull(key);
 }
 
+// ------------------------------------------------------------------
+// P1 (#45): ВХОД ПОЭТАПНО. Шаг 1 (ник) — в auth-ui, шаг 2 (пинпад) —
+// здесь: проверка ника+пина на сервере без перезагрузки страницы.
+// Возвращаем КОД (403 чужой пин / 429 кулдаун), чтобы пинпад мог отличить
+// «неверный пин» от «сервера нет»: шейк панели — только на 403/429.
+// ------------------------------------------------------------------
+const NICK_RE = /^[a-zA-Zа-яА-Я0-9_-]{2,24}$/;
+async function loginWithPin(nickRaw, pinRaw) {
+  const nick = normalizeNick(nickRaw);
+  const pin = String(pinRaw == null ? '' : pinRaw).trim();
+  if (!NICK_RE.test(nick)) return { ok: false, code: 0, error: 'nick' };
+  // Пин 3–12 цифр (§4 «Итоги аудита» приоритетнее старого 4–8 в тексте issue).
+  if (!new RegExp('^[0-9]{' + PIN_MIN + ',' + PIN_MAX + '}$').test(pin)) return { ok: false, code: 0, error: 'pin' };
+  // Ручной вход — единственное место, где сеть разрешена без профиля.
+  const base = apiBase === null ? await resolveApi(true) : apiBase;
+  if (base === 'gist') {
+    // Гист не умеет «проверить пин» отдельно от данных: входим локально,
+    // расхождение пина поймает первый save/load (403 'nick taken, wrong pin').
+    window.__saveApi.setIdentity(nick, pin);
+    return { ok: true, code: 200, player: nick, verified: false, registered: false };
+  }
+  let r;
+  try {
+    r = await fetch(`${base}/api/load`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: nick, pin, key: '__check__' }),
+      cache: 'no-store',
+    });
+  } catch {
+    status.online = false;
+    status.lastError = 'сервер недоступен';
+    return { ok: false, code: 0, offline: true, error: 'offline' };
+  }
+  let j = null;
+  try { j = await r.json(); } catch { j = null; }
+  const retryAfter = Number((j && j.retryAfter) || (r.headers && r.headers.get && r.headers.get('Retry-After')) || 0) || 0;
+  if (r.status === 403) { status.online = true; return { ok: false, code: 403, error: 'pin' }; }
+  if (r.status === 429) { status.online = true; return { ok: false, code: 429, retryAfter: retryAfter || 60, error: 'cooldown' }; }
+  if (r.status >= 500 || r.status === 0) { status.online = false; return { ok: false, code: r.status, offline: true, error: 'offline' }; }
+  if (r.ok && j && j.ok === false && j.error && j.error !== 'not found') {
+    // Прочие отказы сервера (битый ник и т.п.) — не шейк, а текст ошибки.
+    status.online = true;
+    return { ok: false, code: r.status, error: String(j.error) };
+  }
+  status.online = true;
+  status.lastError = '';
+  window.__saveApi.setIdentity((j && j.player) || nick, pin);
+  // registered: сервер только что создал профиль → пинпад покажет тост
+  // «Профиль создан» (итерация 2 ревью #45).
+  return {
+    ok: true, code: r.status, player: (j && j.player) || nick,
+    verified: true, registered: !!(j && j.registered),
+  };
+}
+
+// ------------------------------------------------------------------
+// P1 (#45): PULL СНАПШОТА ДО СТАРТА СИМУЛЯЦИИ (закрывает гонку входа —
+// раньше симуляция стартовала с пустым localStorage, и человек видел
+// «новую базу» вместо своей КЦ-16). Пустое облако = новая база законна.
+// «Облако приоритетнее локала»: серверное значение перезаписывает локальное
+// без сравнения времени — снапшот на сервере и есть истина входа.
+// ------------------------------------------------------------------
+async function pullSnapshot() {
+  if (!identity) return { ok: false, offline: true, error: 'нужен профиль', found: 0 };
+  let found = 0;
+  let netFails = 0;
+  const got = [];
+  for (const key of SYNC_KEYS) {
+    let r;
+    try {
+      r = await call('/api/load', { player: identity.nick, key: srvOf(key), pin: identity.pin });
+    } catch { netFails++; continue; }
+    if (!r || r.status === 0) { netFails++; continue; }
+    if (r.j && r.j.ok && typeof r.j.value === 'string') {
+      writeLS(key, r.j.value);
+      lastSynced[key] = r.j.value;
+      if (r.j.ts) writeLS(TS_PREFIX + key, String(r.j.ts));
+      found++; got.push(key);
+    }
+  }
+  if (!got.length && netFails === SYNC_KEYS.length) {
+    status.online = false;
+    status.lastError = 'сервер недоступен';
+    return { ok: false, offline: true, found: 0 };
+  }
+  status.online = true;
+  status.lastPullTs = Date.now();
+  return { ok: true, found, keys: got };
+}
+
 // Публичный API для остальных модулей полигона (raid-boot).
 window.__saveApi = {
   keys: SYNC_KEYS,
   get identity() { return identity; },
   get status() { return { ...status, api: apiMode }; },
+  // P1 (#45): вход поэтапно и pull до старта симуляции.
+  loginWithPin,
+  pullSnapshot,
+  purgeProfileKeys,
+  profileKeys: PROFILE_KEYS,
+  // Пинпад панели профиля берёт отсюда состояние мастера (нужен гейту/sim).
+  get auth() { return authState; },
+  // Гейт «pull до старта симуляции» — его ждёт raid-boot.js.
+  authGate: (game, opts) => authGate(game || window.game, opts),
   pullKey: (key) => pull(key),
   pullAll,
   pushKey: (key) => push(key, { force: true }),
@@ -360,9 +474,20 @@ window.__saveApi = {
     writeLS(NICK_KEY, nick); writeLS(PIN_KEY, pin);
     identity = { nick, pin }; window.__saveIdentity = identity;
   },
+  // P1 (#45, §4): выход = полная очистка. Мало забыть ник и пин: прогресс
+  // рейда (минимум ac_raid_session_v1) не должен оставаться в браузере —
+  // иначе следующий человек увидит чужую базу. Ключи S1 (без namespace) и
+  // «мягкие» настройки (язык/звук) не трогаем.
   clearIdentity: () => {
-    try { localStorage.removeItem(NICK_KEY); localStorage.removeItem(PIN_KEY); } catch { /* */ }
+    const purged = purgeProfileKeys();
+    for (const k of Object.keys(lastSynced)) delete lastSynced[k];
+    for (const k of SYNC_KEYS) {
+      try { localStorage.removeItem(TS_PREFIX + k); } catch { /* приватный режим */ }
+    }
     identity = null; window.__saveIdentity = null;
+    apiBase = null; apiMode = 'нужен профиль';
+    status.online = false; status.lastError = ''; status.api = apiMode;
+    return purged;
   },
   // Универсальный вызов API полигона (капсулы, рейтинг, ручные выдачи).
   // Держим сеть ТОЛЬКО здесь — гейт check_r.mjs [4] это проверяет.
@@ -432,11 +557,10 @@ window.showProfilePanel = function showProfilePanel() {
     <div style="opacity:.78;margin-bottom:4px">${who}</div>
     <div id="sv-state" style="font-size:12px;margin-bottom:10px;opacity:.8">сервер: проверяю…</div>
     <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-      <input id="sv-nick" placeholder="ник" maxlength="24" value="${identity ? esc(identity.nick) : ''}"
+      <input id="sv-nick" placeholder="ник" maxlength="24" autocomplete="username" autocapitalize="none"
+        spellcheck="false" ${identity ? 'disabled' : ''} value="${identity ? esc(identity.nick) : ''}"
         style="flex:1 1 120px;min-width:0;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
-      <input id="sv-pin" placeholder="пин" inputmode="numeric" maxlength="12" type="password"
-        style="width:84px;background:#0b1418;border:1px solid #2a3a42;color:#dfe8ea;border-radius:6px;padding:6px 8px">
-      <button id="sv-ok" style="background:#2fa89b;border:0;color:#04262a;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer">Войти</button>
+      ${identity ? '' : '<button id="sv-login" style="background:#2fa89b;border:0;color:#04262a;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer">Далее: пин</button>'}
     </div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <button id="sv-sync" style="background:#1c2c33;border:1px solid #2a3a42;color:#cfe3e6;border-radius:6px;padding:6px 10px;cursor:pointer">Сохранить сейчас</button>
@@ -523,33 +647,24 @@ window.showProfilePanel = function showProfilePanel() {
   });
   const outBtn = $('#sv-out');
   if (outBtn) outBtn.addEventListener('click', () => {
-    window.__saveApi.clearIdentity();
-    location.reload();
+    // Выход стирает профиль и локальную базу — сначала подтверждение
+    // (одна модалка, канон [18]); после него чистим и перезагружаемся.
+    confirmSignOut(() => {
+      window.__saveApi.clearIdentity();
+      location.reload();
+    });
   });
-  $('#sv-ok').addEventListener('click', async () => {
-    const nick = ($('#sv-nick').value || '').trim().toLowerCase();
-    const pin = ($('#sv-pin').value || '').trim();
+  // P1 (#45): ШАГ 1 (ник) живёт в панели, ШАГ 2 (пинпад) — отдельная модалка
+  // auth-ui: текстового поля для пина больше нет ни на телефоне, ни на десктопе.
+  const loginBtn = $('#sv-login');
+  if (loginBtn) loginBtn.addEventListener('click', () => {
+    const nickEl = $('#sv-nick');
+    const nick = normalizeNick(nickEl ? nickEl.value : '');
     if (!/^[a-zA-Zа-яА-Я0-9_-]{2,24}$/.test(nick)) { setMsg('ник: 2–24 буквы/цифры/-/_'); return; }
-    if (!/^\d{3,12}$/.test(pin)) { setMsg('пин: 3–12 цифр'); return; }
-    setMsg('проверяю профиль…', false);
-    // Ручной вход — единственное место, где сеть разрешена без профиля.
-    const base = apiBase === null ? await resolveApi(true) : apiBase;
-    try {
-      const r = await fetch(`${base}/api/load`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player: nick, pin, key: '__check__' }),
-      });
-      if (r.status === 403) { setMsg('этот ник занят другим пином'); return; }
-      const j = await r.json().catch(() => ({}));
-      window.__saveApi.setIdentity((j && j.player) || nick, pin);
-      setMsg('вхожу, база подтянется после перезагрузки…', false);
-      setTimeout(() => location.reload(), 350);
-    } catch {
-      // сервера нет — сохраняем локально, играем офлайн
-      window.__saveApi.setIdentity(nick, pin);
-      setMsg('сервер недоступен: профиль сохранён локально', false);
-      setTimeout(() => location.reload(), 700);
-    }
+    // Одна модалка за раз: панель профиля уступает место пинпаду.
+    unregisterModal('profile');
+    panel.remove();
+    openAuth(window.game, { step: 'pin', nick });
   });
   refreshStatus();
 };

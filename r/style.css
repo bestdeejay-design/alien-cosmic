@@ -566,6 +566,90 @@ body.panel-left #minimap-box, body.panel-right #minimap-box { border-bottom-left
 .toast.hide { opacity: 0; transform: translateY(6px); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 
+/* ---------- P1 «Авторизация поэтапно» (#45): пинпад 3×4 ----------
+   Палец — главный инструмент: клавиши ≥48px, touch-action: manipulation
+   (двойной тап не зумит), поле пина не вызывает текстовую клавиатуру.
+   Панель живёт внутри канонического оверлея (.overlay), поэтому модалки
+   по-прежнему открываются по одной (check_r [18]). */
+.auth-overlay { z-index: 40; }
+.auth-box {
+  position: relative;
+  text-align: left;
+  width: min(94vw, 336px);
+  padding: 20px 20px 16px;
+  max-height: 92vh;
+  overflow-y: auto;
+  transition: transform .18s ease;
+}
+.auth-box.is-shake { animation: auth-shake .32s cubic-bezier(.36,.07,.19,.97); }
+@keyframes auth-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); }
+  40%, 60% { transform: translateX(7px); }
+}
+.auth-box h1 { font-size: 20px; letter-spacing: 2px; margin: 0 0 10px; text-align: center; }
+.auth-sub { font-size: 12px; line-height: 1.45; opacity: .78; margin: 0 0 12px; }
+.auth-label { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: .6; margin-bottom: 4px; }
+.auth-input {
+  width: 100%; box-sizing: border-box;
+  font: 16px/1.2 inherit;              /* 16px — iOS не зумит при фокусе */
+  color: #dfe8ea; background: #0b1418;
+  border: 1px solid #2a3a42; border-radius: 8px;
+  padding: 12px 10px; margin-bottom: 12px;
+  -webkit-appearance: none; appearance: none;
+}
+.auth-input:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.auth-main {
+  width: 100%; min-height: 48px;              /* палец: не меньше 48px */
+  background: #2fa89b; border: 0; border-radius: 10px;
+  color: #04262a; font: 600 15px/1 inherit; letter-spacing: 1px;
+  cursor: pointer; touch-action: manipulation;
+}
+.auth-main:disabled { opacity: .55; }
+.auth-link {
+  display: block; width: 100%; min-height: 44px; margin-top: 8px;
+  background: none; border: 0; color: #8fa6ae;
+  font: 13px/1 inherit; cursor: pointer; touch-action: manipulation;
+}
+.auth-dots { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 4px 0 12px; min-height: 12px; }
+.auth-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid rgba(118, 227, 215, .55); background: transparent;
+}
+.auth-dot.is-on { background: var(--cyan); box-shadow: 0 0 8px rgba(118, 227, 215, .7); }
+.auth-pad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.auth-key {
+  min-height: 56px;                          /* крупнее минимума: палец в перчатке */
+  font: 600 22px/1 inherit; color: #dfe8ea;
+  background: #142d34; border: 1px solid #2a3a42; border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;                /* без зума/задержки двойного тапа */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+}
+.auth-key:active { background: #1d4048; transform: scale(.97); }
+.auth-key.is-clear { color: #ffcf87; font-size: 18px; }
+.auth-key.is-back { color: var(--cyan); font-size: 20px; }
+.auth-progress { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
+.auth-spinner {
+  width: 18px; height: 18px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(118, 227, 215, .25); border-top-color: var(--cyan);
+  animation: auth-spin .8s linear infinite;
+}
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.auth-err {
+  margin-top: 10px; font-size: 12px; line-height: 1.4;
+  color: #ff8d7a; min-height: 16px;
+}
+@media (max-width: 380px) {
+  .auth-box { padding: 14px 12px 10px; }
+  .auth-key { min-height: 52px; font-size: 20px; }
+}
+
 /* ---------- Оверлеи ---------- */
 .overlay {
   position: absolute; inset: 0;
