@@ -785,6 +785,111 @@ function drawStatusBadges(ctx, b, px, py, w, st = null) {
   drawGradeMarks(ctx, b, px, py, w);
 }
 
+// Render only. All geometry (including recoil and flashes) fits radius 13px.
+// A 28x28 safety clip also excludes inherited canvas shadows beyond the tile inset.
+function drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse) {
+  const level = Math.max(1, Math.min(20, Math.floor(Number(b.level) || 1)));
+  const tier = level === 20 ? 4 : Math.floor(level / 5);
+  const step = level - [1, 5, 10, 15, 20][tier];
+  const alien = (b.faction || (b.side === 'enemy' ? 'alien' : 'human')) !== 'human';
+  const ink = alien ? '#240e20' : '#202a35';
+  const plate = alien ? '#934968' : '#8796a6';
+  const light = alien ? '#e6a4c0' : '#e0e9ef';
+  const glow = alien ? '#b3ff87' : '#7df3e2';
+  const circle = (x, y, r, color) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  };
+  const r = Math.max(0, Math.min(1, recoil || 0));
+  // Staggered visual pulses derived only from the existing cooldown, never timers/state.
+  const shot = i => r > 0 ? Math.max(0, 1 - Math.abs((1 - r) - i * .075 - .04) / .065) : 0;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(cx - 14, cy - 14, 28, 28); ctx.clip();
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  ctx.translate(cx, cy);
+  circle(0, 1, 12, 'rgba(0,0,0,.38)');
+  ctx.fillStyle = plate; ctx.strokeStyle = ink; ctx.lineWidth = 1.4;
+  if (alien) {
+    ctx.beginPath(); ctx.ellipse(0, 0, 10.5, 10, 0, 0, Math.PI * 2);
+  } else {
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 6 + i * Math.PI / 3;
+      points.push(Math.cos(a) * 11, Math.sin(a) * 11);
+    }
+    poly(ctx, points);
+  }
+  ctx.fill(); ctx.stroke();
+  // Internal braces, never external frames. The footprint is constant at all levels.
+  if (tier >= 1) for (const s of [-1, 1]) {
+    ctx.fillStyle = light;
+    if (alien) { poly(ctx, [s * 5, 7, s * 9, 4, s * 8, -6, s * 6, -3]); ctx.fill(); }
+    else ctx.fillRect(s * 7 - 1, -6, 2, 12);
+  }
+  if (tier >= 2) {
+    ctx.strokeStyle = glow; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, 0, 8.5, .5, 2.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 8.5, 3.65, 5.75); ctx.stroke();
+  }
+  if (tier >= 3) for (const s of [-1, 1]) {
+    ctx.fillStyle = light;
+    poly(ctx, [s * 3, -7, s * 5, -10, s * 7, -5]); ctx.fill();
+  }
+  if (tier === 4) for (const s of [-1, 1]) {
+    circle(s * 4, 8, 1.3, glow); circle(s * 4, -8, 1.3, glow);
+  }
+  // Sublevels increase internal density, not outer dimensions.
+  for (let i = 0; i < step; i++) {
+    ctx.fillStyle = alien ? light : '#f3c579';
+    ctx.fillRect(-4.5 + i * 2.5, 7.5, 1.2, 2);
+  }
+  ctx.save(); ctx.rotate(ang);
+  const barrels = alien ? (tier >= 2 ? [-4, 0, 4] : [0]) : (tier >= 3 ? [-4.5, -1.5, 1.5, 4.5] : [-3, 3]);
+  if (alien) {
+    ctx.fillStyle = ink;
+    ctx.beginPath(); ctx.ellipse(1, 0, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3 + tier; i++) for (const s of [-1, 1]) {
+      const x = -4 + i * (10 / (2 + tier));
+      ctx.fillStyle = '#ead8c7';
+      poly(ctx, [x, s * 6, x + 1.5, s * 6, x + .7, s * 3.5]); ctx.fill();
+    }
+  }
+  barrels.forEach((y, i) => {
+    const kick = shot(i), muzzle = 9 - kick * 1.5;
+    ctx.save(); ctx.translate(-kick * 1.5, 0);
+    if (alien) {
+      ctx.fillStyle = plate;
+      ctx.beginPath(); ctx.ellipse(5, y, 4, 1.25 + tier * .12, 0, 0, Math.PI * 2); ctx.fill();
+      circle(8, y, 1 + tier * .08, glow);
+    } else {
+      const width = 1.5 + tier * .22 + step * .045;
+      ctx.fillStyle = ink; ctx.fillRect(-2, y - width / 2, 11, width);
+      ctx.fillStyle = light; ctx.fillRect(0, y - width / 2, 7, .55);
+      ctx.fillStyle = tier >= 2 ? glow : '#596777'; ctx.fillRect(7, y - width / 2, 2, width);
+      for (let j = 0; j < step; j++) {
+        ctx.fillStyle = '#f3c579'; ctx.fillRect(j * 1.7, y - width / 2, .65, width);
+      }
+    }
+    ctx.restore();
+    // One flash per actual muzzle, staggered; the barrel moves along local X.
+    if (kick > 0) {
+      ctx.fillStyle = alien ? `rgba(179,255,135,${kick})` : `rgba(255,230,160,${kick})`;
+      poly(ctx, [muzzle, y - .8, muzzle + 1.5 + kick, y, muzzle, y + .8]); ctx.fill();
+    }
+  });
+  if (!alien) {
+    ctx.fillStyle = plate; rr(ctx, -7, -4, 9, 8, 2); ctx.fill();
+    circle(-3, 0, 2, '#3c5364'); circle(-3, 0, 1, glow);
+  }
+  ctx.restore();
+  if (alien) for (const s of [-1, 1]) {
+    ctx.strokeStyle = plate; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(s * 4, -5); ctx.lineTo(s * 6, -8); ctx.stroke();
+    circle(s * 6, -8, 1.5, ink); circle(s * 6, -8, .8, glow);
+  }
+  else circle(-5, -7, 1.1, '#f3c579');
+  ctx.restore();
+}
+
 export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = null) {
   const TILE_W = TILE;
   const px = b.tx * TILE_W - camX + (b.visX || 0), py = b.ty * TILE_W - camY + (b.visY || 0);
@@ -1001,61 +1106,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
       ctx.fillStyle = 'rgba(255,243,196,0.18)';
       poly(ctx, [R.rx + 4, R.fy - 15, R.rx - 12, R.fy + 12, R.rx + 18, R.fy + 12]); ctx.fill();
     } else if (b.type === 'turret') {
-      // «Гадюка» 1×1: бетонный шестигранник + спаренная пушка-клыки.
-      const bx = cx, by = cy + 3;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(bx + 3, by + 9, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
-      // Основание-шестигранник.
-      ctx.fillStyle = STEEL;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = Math.PI / 6 + i * Math.PI / 3;
-        const vx = bx + Math.cos(a) * 13, vy = by + Math.sin(a) * 13;
-        if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
-      }
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2; ctx.stroke();
-      // Кромка света по верхней грани + teal-огонь по основанию.
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillRect(bx - 11, by - 12, 22, 1.5);
-      ctx.save();
-      ctx.shadowColor = WIN; ctx.shadowBlur = 6;
-      ctx.globalAlpha = 0.5 + 0.3 * pulse;
-      ctx.fillStyle = WIN;
-      ctx.fillRect(bx - 9, by + 8, 18, 2);
-      ctx.restore();
-      ctx.fillStyle = '#a7aeb6';
-      ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(bx, by, 8.5, 0, 0, Math.PI * 2); ctx.stroke();
-      // Башня со спаренными стволами — явно пушка.
-      ctx.save();
-      ctx.translate(bx, by); ctx.rotate(ang);
-      const rec = recoil * 3;
-      ctx.fillStyle = FACED;
-      ctx.fillRect(-4 - rec, -6.5, 21, 4);
-      ctx.fillRect(-4 - rec, 2.5, 21, 4);
-      ctx.fillStyle = '#22252a';
-      ctx.fillRect(14 - rec, -7.5, 4, 6);
-      ctx.fillRect(14 - rec, 1.5, 4, 6);
-      ctx.fillStyle = STEEL_D;
-      ctx.fillRect(-4 - rec, -6.5, 21, 1.2);
-      ctx.fillRect(-4 - rec, 2.5, 21, 1.2);
-      // Вспышка выстрела.
-      if (recoil > 0.75) {
-        ctx.fillStyle = 'rgba(255,220,140,' + (0.9 * recoil).toFixed(2) + ')';
-        poly(ctx, [19 - rec, 0, 26 - rec, -4, 26 - rec, 4]); ctx.fill();
-      }
-      ctx.fillStyle = '#596069';
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#22252a'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-      // Барабан и прицел.
-      ctx.fillStyle = '#2e7d8c';
-      ctx.beginPath(); ctx.arc(bx - Math.cos(ang) * 7, by - Math.sin(ang) * 7, 2.4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = blink ? '#ff5f57' : '#7a2a24';
-      ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, Math.PI * 2); ctx.fill();
+      drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse);
     } else if (b.type === 'wall') {
       // Стена 1×1 во весь тайл: броневой сегмент стыкуется с соседями.
       ctx.fillStyle = '#4a4f57';
@@ -1419,35 +1470,7 @@ export function drawBuilding(ctx, b, ghost = false, camX = 0, camY = 0, st = nul
         ctx.restore();
       }
     } else if (b.type === 'turret') {
-      // Жвала 1×1: стреляющая пасть с зубами, наводится на цель.
-      mound(ctx, cx, cy + 2, 14, 12, FD, FM, FL);
-      veins(ctx, cx, cy + 2, 12, 10, 5, bid * 0.6);
-      // Глаза на стебельках.
-      for (const sx of [-1, 1]) {
-        ctx.strokeStyle = FM; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(cx + sx * 5, cy - 4); ctx.lineTo(cx + sx * 7, cy - 10); ctx.stroke();
-        aeye(ctx, cx + sx * 7, cy - 11, 3.2);
-      }
-      // Пасть: тёмное жерло + зубы + огонь глотки.
-      const mx = cx + Math.cos(ang) * 4, my = cy + 2 + Math.sin(ang) * 4;
-      const squash = 1 - recoil * 0.35;
-      ctx.fillStyle = '#160a0e';
-      ctx.beginPath(); ctx.ellipse(mx, my, 11, 9 * squash, ang, 0, Math.PI * 2); ctx.fill();
-      teethRing(ctx, mx, my, 10, 6, ang, 1.25, 8, '#d9cfc0');
-      ctx.save();
-      ctx.shadowColor = '#a8ff9e'; ctx.shadowBlur = 8;
-      ctx.fillStyle = 'rgba(140,255,150,' + (0.7 + 0.3 * Math.max(pulse, recoil)).toFixed(2) + ')';
-      ctx.beginPath(); ctx.ellipse(mx + Math.cos(ang) * 2, my + Math.sin(ang) * 2, 6, 4.5 * squash, ang, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      // Плевок в полёте сразу после выстрела.
-      if (recoil > 0.55) {
-        const px2 = mx + Math.cos(ang) * (12 + (1 - recoil) * 14);
-        const py2 = my + Math.sin(ang) * (12 + (1 - recoil) * 14);
-        ctx.fillStyle = 'rgba(168,255,158,' + (recoil * 0.9).toFixed(2) + ')';
-        ctx.beginPath(); ctx.arc(px2, py2, 3, 0, Math.PI * 2); ctx.fill();
-      }
-      // Слизь на жерлах.
-      slime(ctx, cx - 12, cy + 12, 1.8, t, bid);
+      drawEvolvedTurret(ctx, b, cx, cy, ang, recoil, pulse);
     } else if (b.type === 'wall') {
       // Хитиновая стена 1×1 во весь тайл: крупная чешуя, живая жила.
       ctx.fillStyle = '#401f2a';
