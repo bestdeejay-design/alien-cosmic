@@ -28,6 +28,9 @@
 //       стоп добычи по трюму Дома и ожидание у челнока.
 //  [18] Модалки и сейв (issue #33 З2/З3): одна модалка за раз, Escape,
 //       честный тост тихой неудачи сохранения.
+//  [21] Вход поэтапно (issue #45): модалка-пинпад 3×4 (12 клавиш ≥48px,
+//       touch-action: manipulation), «С» чистит всё, Escape сначала чистит
+//       точки, pull снапшота ДО старта симуляции, выход чистит все ключи.
 //
 // Запуск: node scripts/check_r.mjs   (код выхода 1 при провале)
 // ============================================================
@@ -344,5 +347,73 @@ try {
   bad('sim_econ_scale:\n' + String(e.stdout || e.stderr || e.message));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки зелёные');
+// ---------- [21] вход поэтапно: модалка-пинпад (issue #45) ----------
+console.log('\n[21] Вход поэтапно: модалка-пинпад (issue #45):');
+try {
+  const authSrc = readFileSync(path.join(R, 'js', 'auth-ui.js'), 'utf8');
+  const saveSrc = readFileSync(path.join(R, 'save-client.js'), 'utf8');
+  const bootSrc = readFileSync(path.join(R, 'raid-boot.js'), 'utf8');
+  const nsSrc = readFileSync(path.join(R, 'js', 'storage-ns.js'), 'utf8');
+  const cssSrc = readFileSync(path.join(R, 'style.css'), 'utf8');
+  const ru = readFileSync(path.join(R, 'locales', 'ru.js'), 'utf8');
+  const en = readFileSync(path.join(R, 'locales', 'en.js'), 'utf8');
+
+  // 1) пинпад 3×4: ровно 12 клавиш, «С» и «⌫» на своих местах
+  if (!/PAD_KEYS\s*=\s*Object\.freeze\(\['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'back'\]\)/.test(authSrc)) {
+    bad('в auth-ui.js нет раскладки 3×4 (1-9, C, 0, ⌫)');
+  } else ok('пинпад: 12 клавиш 3×4 (1-9, «С», 0, «⌫»)');
+  if (!/PIN_MIN\s*=\s*3/.test(authSrc) || !/PIN_MAX\s*=\s*12/.test(authSrc)) bad('пин не 3–12 цифр');
+  else ok('пин 3–12 цифр (приоритет §4 над «4–8» в тексте issue)');
+
+  // 2) канон модалок [18] + Escape сначала чистит точки
+  if (!/registerModal\(AUTH_MODAL_ID,\s*close,\s*\{\s*onEscape/.test(authSrc)) bad('пинпад не зарегистрирован как модалка с onEscape');
+  else ok('пинпад — модалка по канону [18], Escape чистит точки, второй закрывает');
+
+  // 3) тач: клавиши ≥48px и touch-action: manipulation
+  const keyBlock = /\.auth-key\s*\{([^}]*)\}/.exec(cssSrc);
+  const minH = keyBlock ? Number((/min-height:\s*(\d+)px/.exec(keyBlock[1]) || [])[1] || 0) : 0;
+  if (!keyBlock || minH < 48) bad('клавиша пинпада ниже 48px (палец не попадает)');
+  else ok(`клавиши пинпада ${minH}px ≥ 48px`);
+  if (!keyBlock || !/touch-action:\s*manipulation/.test(keyBlock[1])) bad('у клавиш пинпада нет touch-action: manipulation');
+  else ok('touch-action: manipulation (двойной тап не зумит)');
+
+  // 4) поля и i18n: autocomplete=username, «С» ↔ «C»
+  if (!/autocomplete="username"/.test(authSrc) || !/autocomplete="username"/.test(saveSrc)) bad('у поля ника нет autocomplete="username"');
+  else ok('логин-шаг: одно поле, autocomplete="username"');
+  if (!/keyClear: 'С'/.test(ru) || !/keyClear: 'C'/.test(en)) bad('«С»/«C» в локалях расходится');
+  else ok('RU/EN симметричны: «С» ↔ «C»');
+
+  // 5) pull снапшота ДО старта симуляции + офлайн-фолбэк
+  if (!/pullSnapshot/.test(saveSrc) || !/PULL_TIMEOUT_MS\s*=\s*10000/.test(authSrc)) bad('нет pull снапшота с таймаутом 10 с');
+  else ok('pull снапшота: таймаут 10 с, «Повторить», офлайн-фолбэк');
+  const gateAt = bootSrc.indexOf('saveApi.authGate');
+  const startAt = bootSrc.indexOf("startRaidHome('human')");
+  if (gateAt < 0) bad('raid-boot не ждёт гейт входа');
+  else if (!(gateAt < startAt)) bad('raid-boot стартует симуляцию РАНЬШЕ pull (гонка входа вернулась)');
+  else ok('raid-boot: pull снапшота ДО старта симуляции');
+
+  // 6) выход = полная очистка ключей профиля
+  if (!/purgeProfileKeys\(/.test(saveSrc)) bad('выход не чистит локальные ключи профиля');
+  else ok('выход: clearIdentity → purgeProfileKeys + перезагрузка');
+  if (!nsSrc.includes("'ac_raid_session_v1'")) bad('в списке очистки нет ac_raid_session_v1');
+  else ok('минимум §4: ac_raid_session_v1 в списке очистки');
+
+  // 7) автоприёмка «вход → пинпад → pull → КЦ-16» + кулдаун сервера
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ac_sz_auth45.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  if (lines.length < 10) throw new Error('ac_sz_auth45: ожидались 10 PASS, пришло ' + lines.length);
+  for (const l of lines) ok('auth45 · ' + l.replace(/^PASS\s+/, ''));
+
+  // 8) сквозной boot: страница загружается с профилем → pull → КЦ-16 (и офлайн)
+  for (const mode of ['cloud', 'offline']) {
+    const b = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ac_sz_auth45_boot.mjs'), mode], { stdio: 'pipe' }).toString();
+    const pass = b.split('\n').filter((l) => l.startsWith('PASS'));
+    if (pass.length !== 1) throw new Error('ac_sz_auth45_boot ' + mode + ': ' + b.slice(-400));
+    ok('auth45 · ' + pass[0].replace(/^PASS\s+/, ''));
+  }
+} catch (e) {
+  bad('auth-45:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход зелёные');
 process.exit(failed ? 1 : 0);

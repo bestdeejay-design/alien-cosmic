@@ -12,13 +12,13 @@
 //   • кнопка «Учебная тревога» — малая волна сразу, чтобы проверить оборону;
 //   • журнал последних событий.
 // ============================================================
-import { t } from './i18n.js?v=10272743';
+import { t } from './i18n.js?v=10271800';
 import {
   ensureCommander, rankOf, xpNeed, bonuses, commanderTitle, MAX_COMMANDER_LEVEL,
-} from './commander.js?v=10272743';
-import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10272743';
-import { issueRetreatToCC, clearHold, squadHoldCount } from './squad.js?v=10272743';
-import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10272743';
+} from './commander.js?v=10271800';
+import { homeRaidStatus, spawnHomeWave } from './home-raid.js?v=10271800';
+import { issueRetreatToCC, clearHold, squadHoldCount } from './squad.js?v=10271800';
+import { closeOthers, registerModal, unregisterModal } from './modals.js?v=10271800';
 
 let panel = null;
 let timer = null;
