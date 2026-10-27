@@ -200,21 +200,33 @@ try {
   assert(panel, 'панель профиля закрылась до входа');
   net.calls.length = 0;
   panel.querySelector('#sv-nick').value = 'best';
-  panel.querySelector('#sv-pin').value = '1234';
-  panel.querySelector('#sv-ok').click();
-  await new Promise((r) => setTimeout(r, 450)); // вход → «перезагрузка» через 350 мс
+  // P1 (#45): вход поэтапно. Шаг 1 — ник в панели, шаг 2 — пинпад отдельной
+  // модалки (текстового поля пина больше нет).
+  const A = await import('../r/js/auth-ui.js' + V);
+  panel.querySelector('#sv-login').click();
+  assert(A.auth.step === 'pin', 'шаг 2 не открылся: панель не перешла к пинпаду (step=' + A.auth.step + ')');
+  assert(A.auth.nick === 'best', 'ник не передан в пинпад: ' + A.auth.nick);
+  assert(!document.body.children.some((c) => c && c.id === 'sv-panel'), 'панель профиля осталась висеть под пинпадом');
+  for (const d of ['1', '2', '3', '4']) A.pressKey(d);
+  assert(A.auth.pin === '1234', 'пинпад не набрал 1234: ' + A.auth.pin);
+  await A.submitPin();
+  await new Promise((r) => setTimeout(r, 80));  // вход + авто-pull снапшота
   assert(net.calls.length > 0, 'ручной вход не сделал ни одного запроса (вход не работает)');
   assert(net.calls.some((c) => c.path.includes('/api/load')), 'ручной вход не проверил пин на сервере');
   const id = window.__saveApi.identity;
   assert(id && String(id.nick).toLowerCase() === 'best', 'после входа профиль не установлен: ' + JSON.stringify(id));
-  assert(reloads >= 1, 'после входа нет перезагрузки (база не подтянется)');
+  // База подтягивается ДО старта симуляции, а не перезагрузкой страницы:
+  // именно эта гонка (баг №1) и давала «новую базу» вместо КЦ-16.
+  assert(A.auth.step === 'pull' || A.auth.pullState === 'empty' || A.auth.pullState === 'ok',
+    'после пина не начался pull снапшота (step=' + A.auth.step + ', pull=' + A.auth.pullState + ')');
+  assert(net.calls.some((c) => c.path.includes('/api/load')), 'pull снапшота не сходил на сервер');
 
   // После входа фон обязан работать: pushAll реально пишет.
   net.calls.length = 0;
   localStorage.setItem('ac_raid_session_v1', JSON.stringify({ v: 1, probe: 'p3' }));
   await window.__saveApi.pushAll();
   assert(net.calls.some((c) => c.path.includes('/api/save')), 'после входа pushAll не пишет на сервер (гейт залип)');
-  pass('P3 ручной вход: сеть просыпается, после входа pushAll пишет');
+  pass('P3 ручной вход: ник → пинпад → pull снапшота до старта, сеть просыпается');
 } catch (e) { fail('P3 ручной вход', e); }
 
 // ---------- P4: админка — только профиль «best» ----------

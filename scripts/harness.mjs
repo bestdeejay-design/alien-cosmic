@@ -79,7 +79,7 @@ class FakeEl {
   }
   // Перерисовка innerHTML сбрасывает кэш ленивых узлов (как в браузере:
   // старые узлы уходят из дерева вместе со слушателями).
-  set innerHTML(v) { this._html = v; this.children = []; this._qcache = {}; this._qallCache = {}; }
+  set innerHTML(v) { this._html = v; this.children = []; this._qcache = {}; this._qallCache = {}; this._lazyChildren = []; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }
   removeEventListener() {}
   setAttribute(name, value) {
@@ -175,8 +175,22 @@ class FakeEl {
     }
     this._qcache = this._qcache || {};
     if (this._qcache[sel]) return this._qcache[sel];
+    // Вложенность: узел, собранный через innerHTML, живёт «ленивым» потомком
+    // (#auth-body → #auth-offline). Ищем и в его разметке — иначе обработчик,
+    // навешенный в одном месте, был бы невидим в другом (и клик в симе
+    // молча ничего не делал).
+    const all = this.children.concat(this._lazyChildren || []);
+    for (const c of all) {
+      if (typeof c.querySelector !== 'function') continue;
+      const deep = c.querySelector(sel);
+      if (deep) return (this._qcache[sel] = deep);
+    }
     const nodes = this._parseTags(sel);
     if (!nodes.length) return null;
+    // Запоминаем ленивые узлы: без этого вложенный элемент (#auth-body →
+    // #auth-offline) нельзя было найти с уровня родителя.
+    this._lazyChildren = this._lazyChildren || [];
+    if (!this._lazyChildren.includes(nodes[0])) this._lazyChildren.push(nodes[0]);
     return (this._qcache[sel] = nodes[0]);
   }
   querySelectorAll(sel) {
@@ -206,6 +220,12 @@ globalThis.localStorage = {
   getItem: (k) => (store.has(k) ? store.get(k) : null),
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
+  // Перечисление как у настоящего Storage: им пользуется «выход = полная
+  // очистка» (P1/#45, storage-ns.purgeProfileKeys). Без key()/length стаб
+  // скрывал бы от кода половину ключей.
+  key: (i) => { const keys = [...store.keys()]; return i >= 0 && i < keys.length ? keys[i] : null; },
+  get length() { return store.size; },
+  clear: () => store.clear(),
 };
 // sessionStorage — для панели админа (Э6): «вход по PIN на эту сессию».
 const sessionStore = new Map();

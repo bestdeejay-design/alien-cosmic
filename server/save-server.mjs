@@ -49,11 +49,48 @@ db.exec(`
 const pinHash = (nick, pin) => createHash('sha256').update(`${String(nick).toLowerCase()}:${pin}`).digest('hex');
 const NICK_RE = /^[a-zA-Zа-яА-Я0-9_-]{2,24}$/;
 
+// ---- П-5 (#45): защита от перебора пина -------------------------------
+// 5 неудачных попыток → кулдаун 60 с; каждая следующая серия удваивает
+// ожидание (60 → 120 → 240 … до 1 часа). Считаем по паре «ник + адрес»:
+// чужой человек за тем же роутером не блокирует владельца, а смена адреса
+// не обнуляет счёт по нику. Успешный вход сбрасывает серию.
+const RL_LIMIT = 5;
+const RL_BASE_MS = 60 * 1000;
+const RL_MAX_MS = 60 * 60 * 1000;
+const rl = new Map(); // 'ник|адрес' → { fails, until, strikes }
+const rlKey = (nick, ip) => `${String(nick || '').toLowerCase()}|${ip || '-'}`;
+function rlCheck(nick, ip) {
+  const e = rl.get(rlKey(nick, ip));
+  if (e && e.until > Date.now()) {
+    return { blocked: true, retryAfter: Math.max(1, Math.ceil((e.until - Date.now()) / 1000)) };
+  }
+  return { blocked: false };
+}
+function rlFail(nick, ip) {
+  const k = rlKey(nick, ip);
+  const e = rl.get(k) || { fails: 0, until: 0, strikes: 0 };
+  e.fails++;
+  if (e.fails >= RL_LIMIT) {
+    e.strikes++;
+    const wait = Math.min(RL_MAX_MS, RL_BASE_MS * 2 ** (e.strikes - 1));
+    e.until = Date.now() + wait;
+    e.fails = 0;
+    console.warn(`[save-server] rate-limit: ${e.strikes} серия неудач → кулдаун ${Math.round(wait / 1000)} с (ник «${nick}», ${ip || '-'})`);
+  }
+  rl.set(k, e);
+}
+function rlOk(nick, ip) { rl.delete(rlKey(nick, ip)); }
+const clientIp = (req) => String((req && req.socket && req.socket.remoteAddress) || '-');
+
 // Ник + пин → канонический профиль. Регистронезависимо.
-function authPlayer(nick, pin) {
+function authPlayer(nick, pin, ip) {
   const raw = String(nick || '').trim();
   if (!raw || !pin) return { ok: false, code: 400, error: 'need nick & pin' };
   if (!NICK_RE.test(raw)) return { ok: false, code: 400, error: 'bad nick' };
+  const gate = rlCheck(raw, ip);
+  if (gate.blocked) {
+    return { ok: false, code: 429, error: 'too many attempts', retryAfter: gate.retryAfter };
+  }
   const row = db.prepare('SELECT nick, pin_hash FROM players WHERE lower(nick) = lower(?)').get(raw);
   if (!row) {
     db.prepare('INSERT INTO players (nick, pin_hash, created) VALUES (?, ?, ?)')
@@ -62,22 +99,33 @@ function authPlayer(nick, pin) {
   }
   // Пин считается ОТ КАНОНИЧЕСКОГО ника — иначе смена регистра ломала вход.
   if (row.pin_hash !== pinHash(row.nick, pin)) {
+    rlFail(raw, ip);
     return { ok: false, code: 403, error: 'nick taken, wrong pin', nick: row.nick };
   }
+  rlOk(raw, ip);
   return { ok: true, nick: row.nick };
 }
 
-function json(res, code, obj) {
+function json(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, {
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  });
+  };
+  if (extraHeaders) Object.assign(headers, extraHeaders);
+  res.writeHead(code, headers);
   res.end(body);
 }
+
+// Отказ авторизации: 429 отдаёт Retry-After, чтобы клиент показал точный
+// отсчёт кулдауна, а не «попробуйте позже».
+const authFail = (res, auth) => json(
+  res, auth.code, auth,
+  auth.code === 429 ? { 'Retry-After': String(auth.retryAfter || 60) } : undefined,
+);
 
 function authOk(req) {
   if (!TOKEN) return true;
@@ -101,7 +149,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/health') {
     const n = db.prepare('SELECT COUNT(*) AS n FROM saves').get().n;
     const p = db.prepare('SELECT COUNT(*) AS n FROM players').get().n;
-    return json(res, 200, { ok: true, players: p, records: n, db: DB_PATH, version: 2 });
+    return json(res, 200, { ok: true, players: p, records: n, db: DB_PATH, version: 3 });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/save') {
@@ -109,8 +157,8 @@ const server = createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req) || '{}');
       const { player, key, value, ts } = body;
       const pin = body.pin !== undefined ? body.pin : url.searchParams.get('pin');
-      const auth = authPlayer(player, pin);
-      if (!auth.ok) return json(res, auth.code, auth);
+      const auth = authPlayer(player, pin, clientIp(req));
+      if (!auth.ok) return authFail(res, auth);
       if (!key || typeof value !== 'string') {
         return json(res, 400, { ok: false, error: 'need key, value(string)' });
       }
@@ -129,8 +177,8 @@ const server = createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       const pin = body.pin !== undefined ? body.pin : url.searchParams.get('pin');
-      const auth = authPlayer(body.player, pin);
-      if (!auth.ok) return json(res, auth.code, auth);
+      const auth = authPlayer(body.player, pin, clientIp(req));
+      if (!auth.ok) return authFail(res, auth);
       if (!body.key) return json(res, 400, { ok: false, error: 'need key' });
       const row = db.prepare('SELECT value, ts FROM saves WHERE player = ? AND key = ?')
         .get(auth.nick, String(body.key));
@@ -209,8 +257,8 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/delete') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
-      const auth = authPlayer(body.player, body.pin);
-      if (!auth.ok) return json(res, auth.code, auth);
+      const auth = authPlayer(body.player, body.pin, clientIp(req));
+      if (!auth.ok) return authFail(res, auth);
       if (!body.key) return json(res, 400, { ok: false, error: 'need key' });
       db.prepare('DELETE FROM saves WHERE player = ? AND key = ?').run(auth.nick, String(body.key));
       return json(res, 200, { ok: true, player: auth.nick });
