@@ -46,7 +46,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS players_nick_lower ON players (lower(nick));
 `);
 
-const pinHash = (nick, pin) => createHash('sha256').update(`${nick}:${pin}`).digest('hex');
+const pinHash = (nick, pin) => createHash('sha256').update(`${String(nick).toLowerCase()}:${pin}`).digest('hex');
 const NICK_RE = /^[a-zA-Zа-яА-Я0-9_-]{2,24}$/;
 
 // Ник + пин → канонический профиль. Регистронезависимо.

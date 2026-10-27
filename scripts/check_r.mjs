@@ -318,5 +318,31 @@ try {
   bad('sim_modals33:\n' + String(e.stdout || e.stderr || e.message));
 }
 
+// ---------- [19] safe-mode boot (issue #42 З1) ----------
+console.log('\n[19] Safe-mode boot (issue #42):');
+try {
+  const lines = [];
+  for (const sc of ['badjson', 'garbage', 'truncated', 'throwing']) {
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_boot42.mjs'), sc], { stdio: 'pipe' }).toString();
+    lines.push(...out.split('\n').filter((l) => l.startsWith('PASS')));
+  }
+  if (lines.length !== 4) throw new Error('ожидались 4 PASS, пришло ' + lines.length);
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+} catch (e) {
+  bad('sim_boot42:\n' + String(e.stdout || e.stderr || e.message));
+}
+
+
+// ---------- [20] масштаб цен: связка админка ↔ economy (issue #43 П-2) ----------
+console.log('\n[20] Масштаб цен админки (issue #43):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_econ_scale.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  if (!lines.length) throw new Error('ни одного PASS');
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+} catch (e) {
+  bad('sim_econ_scale:\n' + String(e.stdout || e.stderr || e.message));
+}
+
 console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки зелёные');
 process.exit(failed ? 1 : 0);
