@@ -1,0 +1,167 @@
+diff --git a/js/pathfinding.js b/js/pathfinding.js
+index 5c129b3..5eedc77 100644
+--- a/js/pathfinding.js
++++ b/js/pathfinding.js
+@@ -127,6 +127,21 @@ export function hasLos(map, x0, y0, x1, y1) {
+   }
+ }
+ 
++// «Толстая» видимость: прямая свободна, если свободны и две линии,
++// сдвинутые перпендикулярно на ~полкорпуса (±0.45 тайла ≈ 14 px).
++// Иначе сглаженный путь «чиркал» по углу стены: центральная линия
++// проходила, а корпус (r до 14) цеплял угол и вяз в скольжении.
++function losThick(map, x0, y0, x1, y1) {
++  if (!hasLos(map, x0, y0, x1, y1)) return false;
++  const dx = x1 - x0, dy = y1 - y0;
++  const len = Math.hypot(dx, dy);
++  if (len < 2.2) return true;
++  const ox = Math.round((-dy / len) * 0.45), oy = Math.round((dx / len) * 0.45);
++  if (!ox && !oy) return true;
++  return hasLos(map, x0 + ox, y0 + oy, x1 + ox, y1 + oy) &&
++         hasLos(map, x0 - ox, y0 - oy, x1 - ox, y1 - oy);
++}
++
+ // Сглаживание: выбрасываем промежуточные точки, если конец виден напрямую.
+ export function smoothPath(map, pts) {
+   if (pts.length <= 2) return pts;
+@@ -134,7 +149,7 @@ export function smoothPath(map, pts) {
+   let i = 0;
+   while (i < pts.length - 1) {
+     let j = pts.length - 1;
+-    for (; j > i + 1; j--) if (hasLos(map, pts[i].x, pts[i].y, pts[j].x, pts[j].y)) break;
++    for (; j > i + 1; j--) if (losThick(map, pts[i].x, pts[i].y, pts[j].x, pts[j].y)) break;
+     out.push(pts[j]);
+     i = j; // j всегда > i, либо j === i + 1 — цикл гарантированно завершается
+   }
+diff --git a/js/units.js b/js/units.js
+index 656470c..7d899e6 100644
+--- a/js/units.js
++++ b/js/units.js
+@@ -308,7 +308,7 @@ function updateOrderByKind(st, u, dt, grid) {
+       // раз в 0.5 c проверяем ближайшие точки пути; глубоко застрявших
+       // (толпа в узком проходе) тоже пересчитываем.
+       repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, o.gx, o.gy), 0.5);
+-      if (followPath(u)) {
++      if (followPath(u, st.map)) {
+         // Путь кончился, а до цели ещё далеко (частичный путь из A*) —
+         // достраиваем; после двух неудач честно останавливаемся.
+         const gd = Math.hypot(o.gx - u.x, o.gy - u.y);
+@@ -367,12 +367,24 @@ function updateAttackMove(st, u, dt, grid) {
+         u.pathI = 0;
+         u.repathT = 0.4;
+       }
+-      followPath(u);
++      followPath(u, st.map);
+     }
+     return;
+   }
+-  // Врагов нет — идём дальше к назначенной точке.
+-  if (followPath(u)) orderStop(u);
++  // Врагов нет — марш к точке. Марш тоже может сломаться: на маршруте
++  // встало здание (стена на марше) — пересчитываем, как в move.
++  // Раньше здесь не было ни repathIfBlocked, ни достройки частичного
++  // пути: forceRepath от интегратора некому было потребить, и юнит
++  // вечно толкался в стену («стоит или ломится только вперёд»). Г9.
++  repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, o.x, o.y), 0.5);
++  if (followPath(u, st.map)) {
++    const gd = Math.hypot(o.x - u.x, o.y - u.y);
++    if (gd > TILE && (u.repaths || 0) < 2) {
++      u.repaths = (u.repaths || 0) + 1;
++      u.path = pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, o.x, o.y);
++      u.pathI = 0;
++    } else orderStop(u);
++  }
+ }
+ 
+ // Самозащита без срыва приказа: занятые юниты стреляют по врагу
+@@ -441,7 +453,7 @@ function updateHeal(st, u, dt) {
+     u.pathI = 0;
+   }
+   repathIfBlocked(st, u, () => pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y));
+-  if (followPath(u)) u.path = null;
++  if (followPath(u, st.map)) u.path = null;
+ }
+ 
+ // ----------------------------------------------------------
+@@ -478,14 +490,19 @@ function repathIfBlocked(st, u, make, interval = 0.7) {
+   if (force) { u.path = make(); u.pathI = 0; }
+ }
+ 
+-// Движение по пути: true — путь завершён.
+-function followPath(u) {
++// Движение по пути: true — путь завершён. map — для проверки «не срезаем
++// ли угол»: пропуск точки разрешён только если к следующей есть прямая
++// видимость от клетки юнита (иначе после расталкивания можно перескочить
++// угловой waypoints и упереться в стену).
++function followPath(u, map) {
+   if (!u.path || u.pathI >= u.path.length) return true;
+   // Расталкивание могло сместить юнита с линии маршрута: если следующая
+   // точка уже ближе текущей — пропускаем её (анти-«пила» на поворотах).
+   while (u.pathI + 1 < u.path.length) {
+     const a = u.path[u.pathI], b = u.path[u.pathI + 1];
+-    if (Math.hypot(b.x - u.x, b.y - u.y) + 4 < Math.hypot(a.x - u.x, a.y - u.y)) u.pathI++;
++    const closer = Math.hypot(b.x - u.x, b.y - u.y) + 4 < Math.hypot(a.x - u.x, a.y - u.y);
++    const clear = !map || hasLos(map, (u.x / TILE) | 0, (u.y / TILE) | 0, (b.x / TILE) | 0, (b.y / TILE) | 0);
++    if (closer && clear) u.pathI++;
+     else break;
+   }
+   const wp = u.path[u.pathI];
+@@ -621,7 +638,7 @@ function updateGather(st, u, dt) {
+       }
+     }
+     repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: c.tx, y: c.ty, w: 1, h: 1 }));
+-    if (followPath(u)) u.path = null;
++    if (followPath(u, st.map)) u.path = null;
+     return;
+   }
+ 
+@@ -671,7 +688,7 @@ function updateGather(st, u, dt) {
+       u.pathI = 0;
+     }
+     repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: drop.tx, y: drop.ty, w: drop.w, h: drop.h }));
+-    if (followPath(u)) u.path = null;
++    if (followPath(u, st.map)) u.path = null;
+     return;
+   }
+ }
+@@ -708,7 +725,7 @@ function updateBuild(st, u, dt) {
+     u.pathI = 0;
+   }
+   repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: b.tx, y: b.ty, w: b.w, h: b.h }));
+-  if (followPath(u)) u.path = null;
++  if (followPath(u, st.map)) u.path = null;
+ }
+ 
+ // Ремонт: рабочий варит повреждённое здание или технику своей стороны.
+@@ -755,7 +772,7 @@ function updateRepair(st, u, dt) {
+   repathIfBlocked(st, u, () => isB
+     ? pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: t.tx, y: t.ty, w: t.w, h: t.h })
+     : pathToPoint(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, t.x, t.y));
+-  if (followPath(u)) u.path = null;
++  if (followPath(u, st.map)) u.path = null;
+ }
+ 
+ // Гарнизон: пехота идёт к бункеру и заходит внутрь.
+@@ -780,7 +797,9 @@ function updateGarrison(st, u) {
+     u.path = pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: b.tx, y: b.ty, w: b.w, h: b.h });
+     u.pathI = 0;
+   }
+-  if (followPath(u)) u.path = null;
++  // Бункер за новым зданием — тоже «стена на марше»: пересчитываем.
++  repathIfBlocked(st, u, () => pathToRect(st.map, (u.x / TILE) | 0, (u.y / TILE) | 0, { x: b.tx, y: b.ty, w: b.w, h: b.h }));
++  if (followPath(u, st.map)) u.path = null;
+ }
+ 
+ // Автопоиск цели в радиусе обзора (только для своей стороны; для игрока —
+@@ -846,9 +865,9 @@ function integrate(st, u, dt, grid) {
+     if (u.stuckT > 0.35 && u.nudgeT <= 0) {
+       const base = Math.atan2(dir.y, dir.x);
+       const r2 = u.r * 0.8;
+-      const free = (a) => !hitWall(st.map, u.x + Math.cos(a) * 10, u.y + Math.sin(a) * 10, r2);
++      const free = (a) => !hitWall(st.map, u.x + Math.cos(a) * 12, u.y + Math.sin(a) * 12, r2);
+       let picked = null;
+-      for (const off of [0.7, -0.7, 1.4, -1.4, 2.2, -2.2]) {
++      for (const off of [0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4]) {
+         const a = base + off;
+         if (free(a)) { picked = a; break; }
+       }
