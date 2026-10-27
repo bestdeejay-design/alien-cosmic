@@ -84,7 +84,7 @@ if (!game) {
         game.raidSession = null;
         try { localStorage.removeItem(RAID_SAVE_KEY); } catch { /* */ }
         try {
-          const { t } = await import('./js/i18n.js?v=10272742');
+          const { t } = await import('./js/i18n.js?v=10272743');
           if (game.ui && typeof game.ui.toast === 'function') {
             game.ui.toast(t('ui.boot.saveCorrupted'), 'warn', 5200);
           }
@@ -94,7 +94,7 @@ if (!game) {
       // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
       // карточки при входе (не кнопка в топбаре, а карточки на экране).
       try {
-        const chestsUi = await import('./js/chests-ui.js?v=10272742');
+        const chestsUi = await import('./js/chests-ui.js?v=10272743');
         chestsUi.registerChestCommand(game);
         await chestsUi.hydrateFromServer(game);
         chestsUi.maybeShowOnEntry(game);

@@ -10,7 +10,7 @@
 // Новые функции — только расширения: hasLosClear,
 // smoothPathClear, nearestFreeFrom.
 // ============================================================
-import { TILE } from './config.js?v=10272742';
+import { TILE } from './config.js?v=10272743';
 
 const SQRT2 = Math.SQRT2;
 // Смещения соседей: [dx, dy, стоимость шага].
