@@ -242,21 +242,32 @@ const browser = await chromium.launch();
 
   // Пакет S, баг 5: «Заново» в хедере спрашивает подтверждение (Р2а — оба профиля).
   log('=== Пакет S: «Заново» с подтверждением ===');
-  await page.evaluate(() => { window.game.state.minerals.player = 7777; });
+  // Фикс флейка (ре-аудит 27.10, 27b7055..eb5aa94): раньше сверяли minerals===7777,
+  // но за 400 мс ожидания успевает тикнуть экономика (+16: «7793») — отмена
+  // РАБОТАЛА, а проба падала. Детерминированный критерий: restart() создаёт
+  // НОВЫЙ объект state (game.restart → newGame), поэтому «партия жива» =
+  // ссылка на state не поменялась.
+  await page.evaluate(() => {
+    window.game.state.minerals.player = 7777;
+    window.__stRef = window.game.state;
+  });
   let rmsg = null;
   page.once('dialog', (d) => { rmsg = d.message(); d.dismiss(); });
   await page.evaluate(() => document.getElementById('btn-restart').click());
   await page.waitForTimeout(400);
   if (rmsg && rmsg.length > 10) ok('«Заново» открыл confirm: ' + rmsg.slice(0, 44) + '…');
   else bad('«Заново» молчит — confirm не открылся');
-  const m1 = await page.evaluate(() => window.game.state.minerals.player);
-  if (m1 === 7777) ok('отмена подтверждения: партия жива (минералы не сброшены)');
-  else bad(`отмена не сработала: партия сброшена (minerals=${m1})`);
+  const alive = await page.evaluate(() => ({
+    same: window.game.state === window.__stRef,
+    m: window.game.state.minerals.player,
+  }));
+  if (alive.same) ok(`отмена подтверждения: партия жива (тот же state, minerals=${alive.m} — тики экономики не в счёт)`);
+  else bad(`отмена не сработала: партия сброшена (minerals=${alive.m})`);
   page.once('dialog', (d) => d.accept());
   await page.evaluate(() => document.getElementById('btn-restart').click());
   await page.waitForTimeout(600);
-  const m2 = await page.evaluate(() => window.game.state.minerals.player);
-  if (m2 !== 7777) ok(`подтверждение: партия перезапущена (minerals=${m2})`);
+  const m2 = await page.evaluate(() => ({ same: window.game.state === window.__stRef, m: window.game.state.minerals.player }));
+  if (!m2.same && m2.m !== 7777) ok(`подтверждение: партия перезапущена (minerals=${m2.m}, state новый)`);
   else bad('рестарт не выполнился после подтверждения');
 }
 
