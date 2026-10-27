@@ -6,44 +6,44 @@
 // команды игрока, победа/поражение, рестарт без перезагрузки.
 // ============================================================
 // ПЕРВЫЙ импорт: изоляция localStorage полигона от S1 (см. storage-ns.js).
-import './storage-ns.js?v=10271841';
+import './storage-ns.js?v=10271845';
 import { HOUSE, MAX_BUILDING_LEVEL,
   TILE, LOGIC_DT, MAX_FRAME_DT,
   START_MINERALS, BUILDINGS, UNITS, SUPPLY_MAX, BUILDERS_PER_SITE, UPGRADES, GRADES, GRADE_ROMAN, gradeGar, ZOOM_MIN, ZOOM_MAX,
   EDGE_MARGIN, EDGE_ZONE_COLOR,
   fname, fdesc, GAME_VERSION, GAME_DATE,
-} from './config.js?v=10271841';
-import { GameMap, CC_WORKER_OFFS } from './map.js?v=10271841';
-import { Fog } from './fog.js?v=10271841';
-import { Sound } from './audio.js?v=10271841';
-import * as U from './units.js?v=10271841';
-import * as B from './buildings.js?v=10271841';
-import { AIController } from './ai.js?v=10271841';
-import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10271841';
-import * as ui from './ui.js?v=10271841';
-import { drawRankMark } from './skins.js?v=10271841';
-import { openAdmin, isAdminProfile } from './admin.js?v=10271841';
-import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10271841';
-import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10271841';
-import { openCommander } from './commander-ui.js?v=10271841';
+} from './config.js?v=10271845';
+import { GameMap, CC_WORKER_OFFS } from './map.js?v=10271845';
+import { Fog } from './fog.js?v=10271845';
+import { Sound } from './audio.js?v=10271845';
+import * as U from './units.js?v=10271845';
+import * as B from './buildings.js?v=10271845';
+import { AIController } from './ai.js?v=10271845';
+import { MISSIONS, SKIRMISH, loadProgress, saveProgress, objectiveLabel, missionIndex, isUnlocked, missionText, missionKey } from './missions.js?v=10271845';
+import * as ui from './ui.js?v=10271845';
+import { drawRankMark } from './skins.js?v=10271845';
+import { openAdmin, isAdminProfile } from './admin.js?v=10271845';
+import { ensureCommander, addXp, supplyBonus, logEvent } from './commander.js?v=10271845';
+import { initHomeRaid, updateHomeRaid } from './home-raid.js?v=10271845';
+import { openCommander } from './commander-ui.js?v=10271845';
 import {
   issueHold, issueRetreatToCC, clearHold, updateSquad, drawSquadZones, combatUnits, ccAnchor,
-} from './squad.js?v=10271841';
-import { showChests } from './chests-ui.js?v=10271841';
-import { createProfile } from './profile.js?v=10271841';
-import { attachInput, updateCamera } from './input.js?v=10271841';
-import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10271841';
+} from './squad.js?v=10271845';
+import { showChests } from './chests-ui.js?v=10271845';
+import { createProfile } from './profile.js?v=10271845';
+import { attachInput, updateCamera } from './input.js?v=10271845';
+import { t, message, has, initI18n, applyStaticDOM, onLocaleChange, setRich } from './i18n.js?v=10271845';
 import {
   MAX_LEVEL, ccGate, ccGateProgress, ccLevel as econCcLevel, canGradeBuilding,
   gradeEntry, TECH, unitRank, attackMul, houseLevelOf, HOUSE_LEVELS,
-} from './economy.js?v=10271841';
+} from './economy.js?v=10271845';
 import {
   createRaidSession, captureHomeBaseDTO, buildRaidHomeMission, buildRaidExpeditionMission,
   populateRaidState, updateRaidTick, checkRaidEnd, raidObjectiveText, drawRaidZone,
   validateRaidLoadout, deriveTargetSeed, RAID_PLANET,
   RAID_TIERS, RAID_UNIT_ORDER, unlockedRaidTier, countHomeRoster,
   boardHouseGarrison, boardRingNow,
-} from './raid.js?v=10271841';
+} from './raid.js?v=10271845';
 
 // Порядок кнопок в меню стройки: клавиша → тип здания.
 const BUILD_ORDER = [
