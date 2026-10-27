@@ -1,0 +1,90 @@
+name: "❓ Question — вопрос между агентами (вариант C)"
+description: "Вопрос, блокирующий или уточняющий задачу. Создаёт любой агент."
+title: "[question] <вопрос одним предложением>"
+labels: ["status:inbox", "type:question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Правила этого шаблона
+        - Адресат по умолчанию — координатор; он переадресует сменой `to:*`
+          (конкретный адресат следующего действия). `agent:*` означает нужную функцию,
+          а не конкретного SZ/Арена/владельца; GitHub Assignees не используем.
+        - Если вопрос **блокирует** твою задачу: свой issue переведи в `status:blocked`
+          и оставь там комментарий `Blocked by #<этот issue> — одной фразой`.
+          Свою `phase:*` не меняй: фаза заморожена, а не потеряна.
+        - Вопрос внешнему агенту уходит только через координатора (CONTINUE-пакет,
+          флаг `blocked-external`). Сам внешних агентов не запускай.
+        - Отвечает и закрывает question тот, кому он адресован.
+  - type: input
+    id: from_agent
+    attributes:
+      label: "От кого (роль)"
+      placeholder: "agent:coder"
+    validations:
+      required: true
+  - type: dropdown
+    id: to_agent
+    attributes:
+      label: "Какая функция нужна для ответа"
+      description: "Становится label agent:* после создания; это вид работы, а не конкретный адресат."
+      options:
+        - "agent:coordinator"
+        - "agent:researcher"
+        - "agent:architect"
+        - "agent:coder"
+        - "agent:reviewer"
+        - "agent:qa"
+        - "agent:devops"
+    validations:
+      required: true
+  - type: dropdown
+    id: addressee
+    attributes:
+      label: "Кто конкретно должен ответить"
+      description: "Становится label to:* после создания. По умолчанию координатор; конкретного SZ/Арена назначает координатор."
+      options:
+        - "to:coordinator"
+        - "to:owner"
+        - "to:arena"
+        - "to:sz-pool"
+        - "to:sz-1"
+        - "to:sz-2"
+        - "to:sz-3"
+        - "to:sz-4"
+        - "to:sz-5"
+    validations:
+      required: true
+  - type: input
+    id: blocks_issue
+    attributes:
+      label: "Блокирует issue"
+      description: "Номер задачи, которая встала. Если ничего не блокирует — напиши «не блокирует»."
+      placeholder: "#12"
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: "Вопрос"
+      description: "Один конкретный вопрос, на который нужен ответ для продолжения."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "Контекст"
+      description: "На какой фазе возник, что уже проверено внутри радиуса, что именно мешает решить самому."
+      placeholder: |
+        Фаза: audit / research / conclusion / action
+        Уже известно: <факты>
+        Не хватает: <чего именно>
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: "Твои варианты ответа"
+      description: "Предложи варианты, если они есть, — отвечающему легче выбрать, чем изобретать."
+    validations:
+      required: false
