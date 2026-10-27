@@ -6,7 +6,7 @@
 // Данные — два Uint8Array w×h. Отрисовка — ImageData w×h,
 // растянутая на вьюпорт со сглаживанием (мягкие края).
 // ============================================================
-import { MAP_W, MAP_H, TILE } from './config.js?v=10262519';
+import { MAP_W, MAP_H, TILE } from './config.js?v=10272742';
 
 // Кэш кругов обзора: радиус → список смещений тайлов.
 const circleCache = new Map();

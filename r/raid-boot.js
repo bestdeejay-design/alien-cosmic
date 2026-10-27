@@ -73,11 +73,28 @@ if (!game) {
       } catch (e) { console.warn('[r] сейв рейда повреждён, стартуем заново', e); }
     }
     if (!game.started) {
-      game.startRaidHome('human');
+      try {
+        game.startRaidHome('human');
+      } catch (e) {
+        // З1 (#42, safe-mode boot): валидный JSON с кривым содержимым больше
+        // не проваливается во внешний catch (тёмный экран, «r/ BOOT ERR»).
+        // Стираем битую сессию и стартуем новую базу — boot всегда приходит
+        // в играбельный home; серверный ключ перезапишется первым же сейвом.
+        console.error('[r] сейв рейда повреждён — safe-mode: начинаем новую базу', e);
+        game.raidSession = null;
+        try { localStorage.removeItem(RAID_SAVE_KEY); } catch { /* */ }
+        try {
+          const { t } = await import('./js/i18n.js?v=10272742');
+          if (game.ui && typeof game.ui.toast === 'function') {
+            game.ui.toast(t('ui.boot.saveCorrupted'), 'warn', 5200);
+          }
+        } catch { /* без тоста — но игра всё равно стартует */ }
+        game.startRaidHome('human');
+      }
       // Э6: капсулы снабжения — тянем серверный топ/подарки и показываем
       // карточки при входе (не кнопка в топбаре, а карточки на экране).
       try {
-        const chestsUi = await import('./js/chests-ui.js?v=10262519');
+        const chestsUi = await import('./js/chests-ui.js?v=10272742');
         chestsUi.registerChestCommand(game);
         await chestsUi.hydrateFromServer(game);
         chestsUi.maybeShowOnEntry(game);
