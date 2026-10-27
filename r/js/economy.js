@@ -28,14 +28,21 @@ export const MAX_LEVEL = 20;
 
 // ------------------------------------------------------------
 // Масштаб для стенда: ?econ=0.25 → цены ×0.25. Канон: 1.
+// Источники по приоритету: ?econ= в адресе (для ссылок/симов) →
+// «Масштаб цен» из админки (localStorage ac_econ_scale, #43) → 1.
 // ------------------------------------------------------------
 function readScale() {
   try {
-    if (typeof location === 'undefined' || !location.search) return 1;
-    const v = Number(new URLSearchParams(location.search).get('econ'));
-    if (!Number.isFinite(v) || v <= 0) return 1;
-    return Math.max(0.01, Math.min(100, v));
-  } catch { return 1; }
+    if (typeof location !== 'undefined' && location.search) {
+      const v = Number(new URLSearchParams(location.search).get('econ'));
+      if (Number.isFinite(v) && v > 0) return Math.max(0.01, Math.min(100, v));
+    }
+    if (typeof localStorage !== 'undefined') {
+      const v = Number(localStorage.getItem('ac_econ_scale'));
+      if (Number.isFinite(v) && v > 0) return Math.max(0.02, Math.min(2, v));
+    }
+  } catch { /* */ }
+  return 1;
 }
 export const ECON_SCALE = readScale();
 

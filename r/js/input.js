@@ -5,10 +5,10 @@
 // зданий, камера (края экрана, стрелки, колесо / два пальца),
 // горячие клавиши панели команд, трекпад-набор (. , Tab H).
 // ============================================================
-import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10262519';
-import { unitAt } from './units.js?v=10262519';
-import { buildingAt } from './buildings.js?v=10262519';
-import { message } from './i18n.js?v=10262519';
+import { TILE, EDGE_MARGIN, EDGE_SCROLL_SPEED, KEY_SCROLL_SPEED, EDGE_PAN_GRACE, BUILDINGS, ZOOM_MIN, ZOOM_MAX } from './config.js?v=10272740';
+import { unitAt } from './units.js?v=10272740';
+import { buildingAt } from './buildings.js?v=10272740';
+import { message } from './i18n.js?v=10272740';
 
 // A1 (аудит владельца 26.10.2026): «не вводятся пин/ник — всю клавиатуру
 // перепробовал». Причина: этот же глобальный keydown жрал цифры и буквы, пока
