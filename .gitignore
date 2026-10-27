@@ -2,3 +2,4 @@
 node_modules/
 server/saves.db
 backups/probe-disk.json
+.DS_Store
