@@ -59,7 +59,13 @@ globalThis.fetch = async (url, opts = {}) => {
   if (path.endsWith('/api/load')) {
     if (net.mode === 'wrongpin') return resp(403, { ok: false, error: 'nick taken, wrong pin' });
     if (net.mode === 'cooldown') return resp(429, { ok: false, error: 'too many attempts', retryAfter: 60 }, { 'retry-after': '60' });
-    if (body.key === '__check__') return resp(200, { ok: false, error: 'not found', player: body.player });
+    if (body.key === '__check__') {
+      return resp(200, {
+        ok: false, error: 'not found', player: body.player,
+        // режим 'register' = сервер только что закрепил пин за новым ником
+        registered: net.mode === 'register',
+      });
+    }
     if (body.key === 'ac_raid_session_v1' && net.cloud) return resp(200, { ok: true, value: net.cloud, ts: Date.now() });
     return resp(200, { ok: false, error: 'not found' });
   }
@@ -317,6 +323,107 @@ try {
   pass('I Escape: первый — чистит точки, второй — закрывает панель');
 } catch (e) { fail('I Escape на пинпаде', e); }
 
+// ---------- J: закрытие панели завершает гейт (БЛОКЕР ревью №2) ----------
+try {
+  // Офлайн-сервер + три способа закрыть панель. Каждый ОБЯЗАН завершить
+  // authGate: раньше промис ждал только две кнопки, и boot висел молча.
+  net.mode = 'off';
+  const gateOnce = async (act) => {
+    localStorage.setItem('ac_save_nick', 'best');
+    localStorage.setItem('ac_save_pin', '1234');
+    game.started = false;
+    const p = window.__saveApi.authGate(game, { timeoutMs: 60 });
+    for (let i = 0; i < 40 && !A.isAuthOpen(); i++) await new Promise((r) => setTimeout(r, 10));
+    assert(A.isAuthOpen(), 'гейт не открыл панель');
+    for (let i = 0; i < 40 && A.auth.step !== 'offline'; i++) await new Promise((r) => setTimeout(r, 10));
+    act();
+    const res = await Promise.race([p, new Promise((r) => setTimeout(() => r({ hang: true }), 2000))]);
+    assert(!res || !res.hang, 'гейт НЕ завершился после закрытия панели (дедлок)');
+    eq(A.isAuthOpen(), false, 'панель осталась открытой после закрытия');
+    return res;
+  };
+
+  // 1) кнопка «Позже»
+  const later = await gateOnce(() => {
+    const ov = A._debug.overlay;
+    const btn = ov && ov.querySelector('#auth-close');
+    assert(btn, 'в панели нет кнопки «Позже»');
+    btn.click();
+  });
+  eq(later.source, 'local', '«Позже»: гейт вернул не «локальный» источник');
+  eq(later.dismissed, true, '«Позже»: гейт не пометил решение как «закрыто игроком»');
+
+  // 2) Escape (на экране выбора точек нет — закрывается первым же)
+  await gateOnce(() => { fireWindow('keydown', { key: 'Escape', code: 'Escape' }); });
+
+  // 3) тап по подложке (e.target === overlay)
+  await gateOnce(() => {
+    const ov = A._debug.overlay;
+    const handlers = (ov && ov._handlers && ov._handlers.click) || [];
+    for (const fn of handlers) fn({ target: ov });
+  });
+
+  // 4) кнопка «Играть офлайн» — решение offline, панель закрыта
+  const off = await gateOnce(() => {
+    const ov = A._debug.overlay;
+    ov.querySelector('#auth-offline').click();
+  });
+  eq(off.source, 'offline', '«Играть офлайн»: неверный источник гейта');
+
+  // 5) панель, закрытая без гейта, тоже не ломает игру
+  A.openAuth(game, { step: 'login' });
+  A._debug.close();
+  eq(A.isAuthOpen(), false, 'панель не закрылась вне гейта');
+  eq(A._debug.gatePending, false, 'после закрытия остался «висящий» гейт');
+  pass('J закрытие панели («Позже», Escape, подложка, «Играть офлайн») завершает гейт — дедлока нет');
+} catch (e) { fail('J дедлок гейта', e); }
+
+// ---------- K: подтверждение выхода и тост «Профиль создан» ----------
+try {
+  // Подтверждение выхода: одна модалка [18], отмена ничего не стирает.
+  net.mode = 'cloud';
+  localStorage.setItem('ac_save_nick', 'best');
+  localStorage.setItem('ac_save_pin', '1234');
+  localStorage.setItem('ac_raid_session_v1', cloudSession || '{}');
+  let confirmed = 0;
+  A.confirmSignOut(() => { confirmed++; });
+  const dlg = document.body.children.find((c) => c && c.id === 'auth-confirm');
+  assert(dlg, 'диалог подтверждения выхода не открылся');
+  assert(dlg.querySelector('#auth-confirm-yes'), 'в диалоге нет кнопки «Выйти»');
+  dlg.querySelector('#auth-confirm-no').click();
+  eq(confirmed, 0, '«Отмена» в диалоге выхода всё равно выполнила выход');
+  assert(localStorage.getItem('ac_raid_session_v1'), '«Отмена» стёрла базу рейда');
+  eq(A.isAuthOpen(), false, 'диалог выхода закрыл что-то лишнее');
+
+  A.confirmSignOut(() => { confirmed++; });
+  document.body.children.find((c) => c && c.id === 'auth-confirm')
+    .querySelector('#auth-confirm-yes').click();
+  eq(confirmed, 1, 'подтверждение выхода не сработало');
+
+  // Тост «Профиль создан»: сервер отвечает registered=true на новый ник.
+  const toasts = [];
+  window.__authToastHook = (kind, info) => toasts.push({ kind, ...info });
+  net.mode = 'register';
+  A.authReset('login');
+  A.goToPin('newbie');
+  for (const d of '4321') A.pressKey(d);
+  const reg = await A.submitPin();
+  eq(reg.registered, true, 'сервер сообщил «профиль создан», а пинпад это потерял');
+  for (let i = 0; i < 60 && !toasts.length; i++) await new Promise((r) => setTimeout(r, 10));
+  delete window.__authToastHook;
+  net.mode = 'cloud';
+  const toast = toasts.find((x) => x.kind === 'registered');
+  assert(toast, 'после регистрации нового ника нет тоста «Профиль создан»: ' + JSON.stringify(toasts));
+  eq(toast.nick, 'newbie', 'тост «Профиль создан» показан не для того ника');
+  const ru = (await import('../r/locales/ru.js' + V)).default;
+  const en = (await import('../r/locales/en.js' + V)).default;
+  assert(/\{nick\}/.test(ru.ui.auth.profileCreated) && /\{nick\}/.test(en.ui.auth.profileCreated),
+    'в тексте «Профиль создан» нет подстановки ника');
+  assert(ru.ui.auth.logoutTitle && en.ui.auth.logoutTitle && ru.ui.auth.logoutYes && en.ui.auth.logoutYes,
+    'нет ключей подтверждения выхода в одной из локалей');
+  pass('K подтверждение выхода (одна модалка) + тост «Профиль создан»');
+} catch (e) { fail('K подтверждение выхода / тост', e); }
+
 // ---------- G: выход = полная очистка ----------
 try {
   const junk = [
@@ -376,9 +483,17 @@ try {
     const blocked = await post('/api/load', { player: 'rl-probe', pin: '1234', key: '__check__' });
     eq(blocked.status, 429, 'после 5 неудач нет кулдауна 429');
     eq(Number(blocked.retry), 60, 'кулдаун не 60 с (Retry-After): ' + blocked.retry);
-    // Другой ник кулдаун не наследует (счёт по паре ник+адрес).
+    // Другой ник кулдаун не наследует (счёт по нику, не по адресу машины).
     const other = await post('/api/load', { player: 'rl-other', pin: '1234', key: '__check__' });
     assert(other.status === 200, 'чужой ник попал под кулдаун соседа: ' + other.status);
+    // Новый ник: сервер закрепляет пин и говорит registered=true —
+    // из этого флага клиент показывает тост «Профиль создан».
+    eq(other.j && other.j.registered, true, 'новый ник не помечен как созданный профиль');
+    const known = await post('/api/load', { player: 'rl-probe', pin: '1234', key: '__check__' });
+    // Кулдаун ещё висит (выше), поэтому берём отдельный ник для проверки флага.
+    const again = await post('/api/load', { player: 'rl-other', pin: '1234', key: '__check__' });
+    eq(again.j && again.j.registered, false, 'вернувшийся игрок помечен как «профиль создан»');
+    void known;
     for (let i = 0; i < 20 && !/rate-limit/.test(srvLog); i++) await new Promise((r) => setTimeout(r, 20));
     assert(/rate-limit/.test(srvLog), 'сервер не записал инцидент в лог (канон §4: «и лог»): ' + srvLog.slice(-200));
     pass('H сервер: 5 неудач → 429 + Retry-After: 60, лог есть, соседние ники свободны');
