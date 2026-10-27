@@ -49,3 +49,12 @@ cloudflared tunnel --url http://localhost:8790
 
 После того как lovii-адрес появится в профиле, координатор переносит базу best
 из гиста в lovii-БД одним скриптом (values уже в гисте — читаются публично).
+
+## Статус (26.10.2026): РАЗВЁРНУТО на gostiny-prod-01
+
+- `server/lovii-save-server.mjs` — версия, работающая на сервере (путь БД /data/saves.db,
+  docker-контейнер `ac-save`, node:22-alpine, порт 127.0.0.1:8790, restart unless-stopped).
+- Профиль best (КЦ-16, 336 692 минералов, 18 вылетов) перенесён и читается.
+- Остаток: публичный https-адрес (caddy-гейтвей сервера или cloudflared) — чтобы Pages
+  писал напрямую; до этого запись идёт через PAT-канал на Mac.
+- Фикс: node:sqlite `ON CONFLICT DO UPDATE` падает ("parameter 1") — заменён на явные INSERT/UPDATE.
