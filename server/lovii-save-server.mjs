@@ -1,8 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-const db = new DatabaseSync("/data/saves.db");
-db.exec("CREATE TABLE IF NOT EXISTS saves (player TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (player, key)); CREATE TABLE IF NOT EXISTS players (nick TEXT PRIMARY KEY, pin_hash TEXT NOT NULL, created INTEGER NOT NULL);");
+const db = new DatabaseSync(process.env.DB_PATH || "/data/saves.db");
+db.exec("CREATE TABLE IF NOT EXISTS saves (player TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (player, key)); CREATE TABLE IF NOT EXISTS players (nick TEXT PRIMARY KEY, pin_hash TEXT NOT NULL, created INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS schema_floor (player TEXT NOT NULL, key TEXT NOT NULL, floor INTEGER NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (player, key));");
 const pinHash = (n, p) => createHash("sha256").update(String(n).toLowerCase() + ":" + p).digest("hex");
 const json = (res, code, obj, extra) => { const h = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" }; if (extra) Object.assign(h, extra); res.writeHead(code, h); res.end(JSON.stringify(obj)); };
 const body = (req) => new Promise((ok, err) => { let d = ""; req.on("data", c => { d += c; if (d.length > 2e6) err(new Error("too large")); }); req.on("end", () => ok(d)); req.on("error", err); });
@@ -46,11 +46,23 @@ createServer(async (req, res) => {
   try {
   const u = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") return json(res, 204, {});
-  if (u.pathname === "/health") return json(res, 200, { ok: true, records: db.prepare("SELECT COUNT(*) n FROM saves").get().n, version: 5 });
+  if (u.pathname === "/health") return json(res, 200, { ok: true, records: db.prepare("SELECT COUNT(*) n FROM saves").get().n, version: 6, schemaGuard: !process.env.ALLOW_SCHEMA_DOWNGRADE });
   if (req.method === "POST" && u.pathname === "/api/save") {
     const { player, key, value, pin } = JSON.parse(await body(req));
     const a = auth(player, pin, clientIp(req)); if (a.error) return authFail(res, a);
     if (!key || typeof value !== "string") return json(res, 400, { ok: false, error: "need key,value" });
+    // ace#10 (решение координатора 28.10): барьер версий схемы. Клиент v2 кладёт
+    // в blob целое `schema`; сервер хранит максимум по (player,key) и отклоняет
+    // запись ниже планки — старый клиент (тот же raidSeq, LWW) не может стереть
+    // поля v2. Килл-свитч: ALLOW_SCHEMA_DOWNGRADE=1 (Д-9 ace#6).
+    let schema = 0;
+    try { const j = JSON.parse(value); if (j && typeof j === "object") schema = Math.floor(Number(j.schema) || 0); } catch {}
+    if (!process.env.ALLOW_SCHEMA_DOWNGRADE) {
+      const fr = db.prepare("SELECT floor FROM schema_floor WHERE player = ? AND key = ?").get(a.nick, key);
+      const floor = fr ? fr.floor : 0;
+      if (schema < floor) return json(res, 409, { ok: false, error: "schema floor", floor, got: schema, player: a.nick });
+      if (schema > floor) db.prepare("INSERT INTO schema_floor (player,key,floor,ts) VALUES (?,?,?,?) ON CONFLICT(player,key) DO UPDATE SET floor = excluded.floor, ts = excluded.ts").run(a.nick, key, schema, Date.now());
+    }
     const exist = db.prepare("SELECT ts FROM saves WHERE player = ? AND key = ?").get(a.nick, key);
     if (exist) db.prepare("UPDATE saves SET value = ?, ts = ? WHERE player = ? AND key = ?").run(value, Date.now(), a.nick, key);
     else db.prepare("INSERT INTO saves (player,key,value,ts) VALUES (?,?,?,?)").run(a.nick, key, value, Date.now());
@@ -65,4 +77,4 @@ createServer(async (req, res) => {
   }
   json(res, 404, { ok: false, error: "unknown route" });
   } catch (e) { json(res, 500, { ok: false, error: "HANDLER-ERR", stack: String(e.stack).split("\n").slice(0, 6) }); }
-}).listen(8790, () => console.log("[save] :8790 v4"));
+}).listen(Number(process.env.PORT) || 8790, () => console.log(`[save] :${process.env.PORT || 8790} v6`));

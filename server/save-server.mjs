@@ -44,6 +44,13 @@ db.exec(`
     created  INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS players_nick_lower ON players (lower(nick));
+  CREATE TABLE IF NOT EXISTS schema_floor (
+    player TEXT NOT NULL,
+    key    TEXT NOT NULL,
+    floor  INTEGER NOT NULL,
+    ts     INTEGER NOT NULL,
+    PRIMARY KEY (player, key)
+  );
 `);
 
 const pinHash = (nick, pin) => createHash('sha256').update(`${String(nick).toLowerCase()}:${pin}`).digest('hex');
@@ -164,10 +171,31 @@ const server = createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'need key, value(string)' });
       }
       const now = Date.now();
+      const skey = String(key).slice(0, 128);
+      // ace#10 (решение координатора 28.10): барьер версий схемы. Клиент v2
+      // кладёт в blob целое поле `schema`. Сервер хранит максимум увиденного
+      // по паре (player,key) и ОТКЛОНЯЕТ запись, чья схема ниже планки —
+      // старый клиент (тот же raidSeq, LWW) больше не может стереть поля v2.
+      // Килл-свитч: ALLOW_SCHEMA_DOWNGRADE=1 (откат без релиза клиента, Д-9 #6).
+      let schema = 0;
+      try { const j = JSON.parse(value); if (j && typeof j === 'object') schema = Math.floor(Number(j.schema) || 0); } catch { /* не-JSON blob — schema 0 */ }
+      if (!process.env.ALLOW_SCHEMA_DOWNGRADE) {
+        const row = db.prepare('SELECT floor FROM schema_floor WHERE player = ? AND key = ?').get(auth.nick, skey);
+        const floor = row ? row.floor : 0;
+        if (schema < floor) {
+          return json(res, 409, { ok: false, error: 'schema floor', floor, got: schema, player: auth.nick });
+        }
+        if (schema > floor) {
+          db.prepare(`
+            INSERT INTO schema_floor (player, key, floor, ts) VALUES (?, ?, ?, ?)
+            ON CONFLICT(player, key) DO UPDATE SET floor = excluded.floor, ts = excluded.ts
+          `).run(auth.nick, skey, schema, now);
+        }
+      }
       db.prepare(`
         INSERT INTO saves (player, key, value, ts) VALUES (?, ?, ?, ?)
         ON CONFLICT(player, key) DO UPDATE SET value = excluded.value, ts = excluded.ts
-      `).run(auth.nick, String(key).slice(0, 128), value, Number(ts) || now);
+      `).run(auth.nick, skey, value, Number(ts) || now);
       return json(res, 200, { ok: true, ts: now, player: auth.nick, registered: !!auth.registered });
     } catch (e) {
       return json(res, 400, { ok: false, error: String(e.message) });
