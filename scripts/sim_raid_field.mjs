@@ -154,13 +154,13 @@ try {
   const slots = E.HOUSE_LEVELS.slots(st.raidHouse.level);
   assert(String(el('res-minerals').textContent) === `${cargo}/${cap}`,
     'счётчик в хедере не «трюм/ёмкость»: ' + el('res-minerals').textContent);
-  assert(String(el('res-supply').textContent) === `${st.supply.player.used}/${slots}`,
-    'население в хедере не по местам Дома: ' + el('res-supply').textContent);
+  assert(document.body && document.body.classList.contains('raid-expedition'),
+    'на вылазке должен стоять класс состояния body.raid-expedition (П16б)');
   const obj = el('res-objective').textContent;
   assert(!/\{\w+\}/.test(obj), 'в строке цели сырые подстановки: ' + obj);
   assert(!/\{\w+\}/.test(el('res-minerals').textContent), 'в счётчике сырые подстановки');
   assert(!/\{\w+\}/.test(el('res-supply').textContent), 'в населении сырые подстановки');
-  pass(`F5 хедер: «${el('res-minerals').textContent}» трюм · «${el('res-supply').textContent}» места Дома · цель без «{…}»`);
+  pass(`F5 хедер: «${el('res-minerals').textContent}» трюм · чип населения скрыт · цель без «{…}»`);
 } catch (e) { fail('F5 хедер вылазки', e); }
 
 // ---------- F6: эвакуация и кламп груза по грейду ----------
