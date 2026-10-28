@@ -203,6 +203,40 @@ try {
   pass(`H9 таймеры дома идут в рейде: апгрейд 600→${b2.gradeUp.t.toFixed(1)} c (рейд 60 c)`);
 } catch (e) { fail('H9 таймеры дома в рейде', e); }
 
+// ---------- H10 (П3/П4/П5): журнал экспедиций, учёт ресурсов и юнитов ----------
+try {
+  const st = boot(3);
+  ticks(2);
+  // Вылазка 1: полный возврат (десант сел в кольцо) + бюджет вернётся.
+  let res = game.launchRaidExpedition({ tier: 1, seed: 91, budget: 40, units: { worker: 1, marine: 1 } });
+  assert(res && res.ok, 'вылазка 1 не запустилась: ' + JSON.stringify(res));
+  game.triggerRaidEvac();
+  game.triggerRaidEvac();
+  let s = game.raidSession;
+  assert(Array.isArray(s.log) && s.log.length === 1, 'журнал пуст после первой вылазки');
+  let e1 = s.log[0];
+  assert(e1.seq === 1 && e1.outcome === 'evac', 'запись 1 кривая: ' + JSON.stringify(e1).slice(0, 120));
+  assert(e1.sentCount === 2 && e1.boardedCount === 2 && e1.losses === 0, 'учёт юнитов 1: ' + e1.sentCount + '/' + e1.boardedCount);
+  assert(e1.returnedBudget === 40, 'бюджет не вернулся: ' + e1.returnedBudget);
+  assert(e1.sent.length === 2 && e1.sent.every((u) => u.type === 'worker' || u.type === 'marine'), 'состав sent не записан');
+  assert(s.totals.expeditions === 1 && s.totals.evac === 1 && s.totals.cargo === 40 && s.totals.losses === 0, 'итоги 1: ' + JSON.stringify(s.totals));
+  // Вылазка 2: десант погибает — исход evac, но losses=2 и XP не начисляется.
+  const xp0 = game.state.commander ? game.state.commander.xp : 0;
+  const raids0 = game.state.commander ? game.state.commander.stats.raids : 0;
+  res = game.launchRaidExpedition({ tier: 1, seed: 92, budget: 0, units: { marine: 2 } });
+  assert(res && res.ok, 'вылазка 2 не запустилась: ' + JSON.stringify(res));
+  for (const u of game.state.units) if (u.side === 'player' && u.kind === 'unit' && !u.evacuated) u.dead = true;
+  game.state.units = game.state.units.filter((u) => !u.dead);
+  game.finishRaidExpedition('evac'); // шаттл цел, десанта нет
+  s = game.raidSession;
+  assert(s.log.length === 2 && s.log[1].seq === 2, 'журнал не дописал вторую вылазку');
+  assert(s.log[1].boardedCount === 0 && s.log[1].losses === 2, 'потери 2 не записаны: ' + JSON.stringify(s.log[1]));
+  assert(s.totals.expeditions === 2 && s.totals.losses === 2 && s.totals.evac === 2, 'итоги 2: ' + JSON.stringify(s.totals));
+  const c = game.state.commander;
+  assert(c.stats.raids === raids0, 'XP/служба начислена за рейд без десанта (П5)');
+  pass(`H10 журнал: 2 записи, итоги {n:2, evac:2, cargo:${s.totals.cargo}, losses:2}, XP без десанта не начислен`);
+} catch (e) { fail('H10 журнал экспедиций', e); }
+
 // ---------- H5: сборщик чинит сборщика ----------
 try {
   const st = boot(3);
