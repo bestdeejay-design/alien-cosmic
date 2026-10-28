@@ -258,6 +258,61 @@ try {
   pass(`F10 аванпост воюет: ${engaged.length}/${guards.length} охраны перешли в атаку`);
 } catch (e) { fail('F10 агро аванпоста', e); }
 
+// ---------- F11 (П10): отсеки ВСЕХ Домов садятся в челнок, состав точен ----------
+try {
+  // Домашняя база вручную: два Дома, marine в отсеке ВТОРОГО (как у владельца).
+  game.startRaidHome('human', { forceNew: true });
+  ticks(4);
+  const home = game.state;
+  home.minerals.player = 100000;
+  const cc = home.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+  const d1 = new B.Building(home, 'player', 'depot', cc.tx + 2, cc.ty + 2, true);
+  d1.level = 5; home.map.markBuilding(d1); home.bcount.player++;
+  const d2 = new B.Building(home, 'player', 'depot', cc.tx + 8, cc.ty, true);
+  d2.level = 5; home.map.markBuilding(d2); home.bcount.player++;
+  U.spawnUnit(home, 'player', 'worker', cc.x + 90, cc.y + 90, false);
+  U.spawnUnit(home, 'player', 'worker', cc.x + 116, cc.y + 90, false);
+  const m = U.spawnUnit(home, 'player', 'marine', d2.x, d2.y, false);
+  m.garrison = d2; m.hidden = true; d2.garrison.push(m);
+  ticks(2);
+  const res = game.launchRaidExpedition({ tier: 1, seed: 4242, budget: 0, units: { worker: 2, marine: 1 } });
+  assert(res && res.ok, 'вылет не состоялся: ' + JSON.stringify(res));
+  const ex = game.state;
+  const arrived = ex.units.filter((u) => u.side === 'player' && u.kind === 'unit' && !u.dead);
+  const marines = arrived.filter((u) => u.type === 'marine').length;
+  const workers = arrived.filter((u) => u.type === 'worker').length;
+  assert(arrived.length === 3, `прилетело ${arrived.length}, посадили 3`);
+  assert(marines === 1 && workers === 2, `состав искажён: маринов ${marines}, рабочих ${workers}`);
+  assert(ex.raidInitialCount === 3, 'raidInitialCount != посадке');
+  pass('F11 отсеки всех Домов: посадил 3 — прилетело 3 (2 рабочих + 1 морпех из второго отсека)');
+} catch (e) { fail('F11 состав точен', e); }
+
+// ---------- F12 (П14): автопоиск не ведёт сборщик под огонь замеченной турели ----------
+try {
+  const st = launch(1, { worker: 2 }, 5);
+  const pad = st.raidDrop;
+  // Жила рядом с площадкой + замеченная турель рядом с жилой.
+  const c = st.map.crystals.find((cr) => cr.amount > 0);
+  assert(c, 'нет жилы для проверки');
+  st.fog.mark(c.tx, c.ty, 2);
+  const t = new B.Building(st, 'enemy', 'turret', Math.max(1, c.tx - 2), c.ty, true);
+  t.level = 10; st.map.markBuilding(t); st.bcount.enemy++;
+  t.spotted = true; // игрок её уже видел
+  for (const w of st.units.filter((u) => u.type === 'worker' && !u.dead)) {
+    const pick = U.nearestCrystal(st, w);
+    assert(pick !== c, 'автопоиск выбрал жилу в зоне поражения замеченной турели');
+    // Ручной приказ игрока свят: прямо к этой жиле — можно.
+    U.orderGather(st, w, c);
+    assert(w.order.kind === 'gather', 'ручной приказ к жиле под огнём не сработал');
+    break;
+  }
+  // Турель уничтожена — зона исчезла, жила снова автодоступна.
+  t.dead = true;
+  const w2 = st.units.find((u) => u.type === 'worker' && !u.dead);
+  assert(U.nearestCrystal(st, w2) === c || U.nearestCrystal(st, w2) !== null, 'после сноса турели автопоиск мёртв');
+  pass('F12 зоны поражения: автопоиск обходит жилу под огнём, ручной приказ работает');
+} catch (e) { fail('F12 зоны поражения', e); }
+
 if (failures.length) {
   console.log(`\n❌ Вылазка: провалено ${failures.length} (${failures.join(', ')})`);
   process.exit(1);
