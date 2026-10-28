@@ -82,6 +82,7 @@ export default {
       footerNote: 'SINGLE-PLAYER STRATEGY · FRONTIER-64',
       backToTop: 'Back to top',
       season1: 'Season 1 · Campaign',
+      alarmLab: 'Defense lab · combat alert drill',
       s3Eyebrow: 'Season 3 · Live',
       s3Title: 'Alien Cosmic: Expedition',
       s3Sub: 'A persistent command base, erg expeditions, incoming raids and an officer career. Progress lives in the cloud — log in with nick + PIN from any device.',
