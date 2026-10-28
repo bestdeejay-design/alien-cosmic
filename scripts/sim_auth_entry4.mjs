@@ -54,7 +54,7 @@ if(['cloud','remembered','empty','corrupt'].includes(mode)){
  }
  await boot;
  if(mode==='empty'||mode==='corrupt')assert.equal(cc().level,1);
- else {assert.equal(cc().level,16);assert.equal(g.state.minerals.player,336692);assert.equal(cloud,originalCloud);assert.equal(ts,12345);}
+ else {assert.equal(cc().level,16);assert.equal(g.state.minerals.player,336692);/* П2: capturedAt жив при каждом снимке — сравниваем состав без метки */assert.equal(cloud.replace(/"capturedAt":\d+,?/g,''),originalCloud.replace(/"capturedAt":\d+,?/g,''));assert.equal(ts,12345);}
 } else {
  if(mode==='escape')fireWindow('keydown',{key:'Escape',code:'Escape'});else click('#auth-close');await boot;
  assert.equal(save.identity,null);assert.equal(cc().level,1);

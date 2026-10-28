@@ -174,6 +174,35 @@ try {
   pass('H4 аура Дома в рейде лечит существо своей расы, технику/дрона/чужую расу — нет');
 } catch (e) { fail('H4 аура в рейде', e); }
 
+// ---------- H9 (П2): таймеры дома идут, пока идёт рейд ----------
+try {
+  const st = boot(3);
+  const b = st._depot;
+  // Дом на апгрейде (600 c остаток) + очередь производства (30 c).
+  b.gradeUp = { to: b.level + 1, t: 600, total: 600 };
+  b.queue = [{ type: 'marine', t: 30, total: 30 }];
+  ticks(2);
+  const res = game.launchRaidExpedition({ tier: 1, seed: 77, budget: 0, units: { worker: 1, marine: 1 } });
+  assert(res && res.ok, 'вылазка для H9 не запустилась: ' + JSON.stringify(res));
+  // Рейд «длился» 60 секунд реального времени: сдвигаем capturedAt снимка базы.
+  game.raidSession.homeDto.capturedAt = Date.now() - 60000;
+  ticks(2);
+  game.triggerRaidEvac(); // нажатие 1 — маяк
+  game.triggerRaidEvac(); // нажатие 2 — взлёт и возврат на базу
+  const home = game.state;
+  assert(home.raidMode === 'home', 'не вернулись на базу после эвакуации');
+  const b2 = home.buildings.find((x) => !x.dead && x.type === 'depot');
+  assert(b2 && b2.gradeUp, 'апгрейд Дома пропал после возврата');
+  assert(b2.gradeUp.t <= 540.5,
+    `таймер апгрейда не списал время рейда: ${b2.gradeUp.t.toFixed(1)} (ожидалось ~540)`);
+  assert(b2.gradeUp.t >= 538,
+    `таймер апгрейда списал слишком много: ${b2.gradeUp.t.toFixed(1)}`);
+  const q = b2.queue[0];
+  assert(!q || q.t <= 0.5 || q.t >= 28,
+    `очередь в «мёртвой зоне»: t=${q && q.t} (либо ~0 — время списано, либо следующий юнит с полным t)`);
+  pass(`H9 таймеры дома идут в рейде: апгрейд 600→${b2.gradeUp.t.toFixed(1)} c (рейд 60 c)`);
+} catch (e) { fail('H9 таймеры дома в рейде', e); }
+
 // ---------- H5: сборщик чинит сборщика ----------
 try {
   const st = boot(3);
