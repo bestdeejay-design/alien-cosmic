@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alien Cosmic: Expedition — Сезон 3</title>
+<meta name="description" content="Alien Cosmic: Expedition — постоянная база-КЦ, экспедиции за эргом, входящие рейды. Вход по нику и пину.">
+<meta property="og:title" content="Alien Cosmic: Expedition"/>
+<meta property="og:description" content="Сезон 3: постоянная база, экспедиции, авторизация ник + пин."/>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #d8efe9;
+    background:
+      radial-gradient(1100px 500px at 75% 85%, rgba(198, 106, 62, 0.18), transparent 60%),
+      radial-gradient(900px 420px at 20% 15%, rgba(118, 227, 215, 0.10), transparent 60%),
+      linear-gradient(160deg, #07141a 0%, #0a1b21 55%, #081418 100%);
+  }
+  .card {
+    max-width: 640px; width: min(640px, calc(100vw - 24px)); text-align: center;
+    padding: 44px 34px 36px; border: 1px solid rgba(118, 227, 215, 0.25); border-radius: 16px;
+    background: rgba(10, 27, 33, 0.66); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
+  .eyebrow {
+    display: inline-block; font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase;
+    color: #76e3d7; margin: 0 0 10px;
+  }
+  h1 { margin: 0 0 12px; font-size: clamp(28px, 6vw, 44px); letter-spacing: 0.02em; }
+  h1 span { color: #f3c579; }
+  .sub { margin: 0 auto 26px; max-width: 470px; font-size: 14px; line-height: 1.65; color: #9fb6bb; }
+  .cta {
+    display: inline-block; padding: 15px 44px; border-radius: 10px; text-decoration: none;
+    font-size: 17px; font-weight: 700; letter-spacing: 0.04em; color: #06222b;
+    background: linear-gradient(180deg, #8ff5e2, #5fd8c4);
+    box-shadow: 0 10px 30px rgba(118, 227, 215, 0.25);
+  }
+  .cta:hover { filter: brightness(1.06); }
+  .auth-hint { margin: 14px 0 0; font-size: 12px; color: #7d969b; }
+  .auth-hint b { color: #a9c6c2; font-weight: 600; }
+  .row { margin-top: 26px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .ghost {
+    display: inline-block; padding: 10px 20px; border-radius: 8px; text-decoration: none;
+    font-size: 13px; color: #bfe6de; border: 1px solid rgba(118, 227, 215, 0.3);
+  }
+  .ghost:hover { border-color: rgba(118, 227, 215, 0.6); }
+  .foot { margin-top: 26px; font-size: 11px; color: #5d7478; }
+  .planet {
+    width: 110px; height: 110px; margin: 0 auto 18px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 32%, #f6c7a6, #c66a3e 30%, #8a3b28 58%, #4a1a12 100%);
+    box-shadow: 0 0 44px rgba(198, 106, 62, 0.35), inset -14px -10px 30px rgba(0, 0, 0, 0.45);
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="planet" aria-hidden="true"></div>
+  <p class="eyebrow">Сезон 3 · Открыт</p>
+  <h1>ALIEN COSMIC<br><span>EXPEDITION</span></h1>
+  <p class="sub">Постоянная база-КЦ на Актан-4. Экспедиции за эргом, оборона дома,
+  командир и журнал вылетов. Прогресс живёт в облаке — база ходит за вами между устройствами.</p>
+  <a class="cta" href="r/">Войти в Экспедицию</a>
+  <p class="auth-hint">Вход: <b>ник + пин-код</b> (первый вход сам создаёт профиль и сохранит базу)</p>
+  <div class="row">
+    <a class="ghost" href="main.html">Классическая RTS — полный сайт</a>
+    <a class="ghost" href="https://bestdeejay-design.github.io/alien-cosmic/">Зеркало на GitHub Pages</a>
+  </div>
+  <p class="foot">ALIEN COSMIC RTS · ACTAN-4 SECTOR · SAVE CLOUD ONLINE</p>
+</main>
+</body>
+</html>
