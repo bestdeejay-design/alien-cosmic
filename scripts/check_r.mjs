@@ -33,6 +33,8 @@
 //       точки, pull снапшота ДО старта симуляции, выход чистит все ключи,
 //       закрытие панели завершает гейт (дедлок ревью №2), один pull на старт,
 //       rate-limit по нику, тост «Профиль создан», подтверждение выхода.
+//  [23] Y-сортировка отрисовки (ace#8): южное поверх северного, здания и
+//       юниты в едином порядке глубины, UI-слои вторым проходом.
 //  [22] Блок капсул на телефоне (жалоба владельца 27.10): панель целиком в
 //       390×844 без прокрутки страницы, «На базу» ловит нажатие, после
 //       закрытия ввод доходит до канваса и базы (elementFromPoint).
@@ -451,5 +453,32 @@ try {
   bad('sim_capsule_fit:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 6).join('\n'));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход зелёные');
+// ---------- [23] y-сортировка отрисовки (issue ace#8) ----------
+// Южный объект (ниже на экране) рисуется поверх северного; здания и юниты —
+// в едином порядке глубины по нижней кромке (ty+h / y+r); HP/выделение/
+// бейджи — вторым проходом поверх тел. Оба порядка постройки.
+console.log('\n[23] Y-сортировка отрисовки (ace#8):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_ysort.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  if (lines.length < 8) throw new Error('ожидались 8 PASS, пришло ' + lines.length + (out.includes('FAIL') ? '\n' + out.split('\n').filter((l) => l.startsWith('FAIL')).join('\n') : ''));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+} catch (e) {
+  bad('sim_ysort:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
+}
+
+// ---------- [24] стены в игре (ace#7 финал) ----------
+// D «Крест» (Гелиос) + K1 «Хитиновые доли» (кхарид) в игровом рендере:
+// 3 конфигурации × 2 фракции × I/V/XX, все маски соседей, fallback одиночной секции.
+console.log('\n[24] Стены в игре (ace#7 финал):');
+try {
+  const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_walls.mjs')], { stdio: 'pipe' }).toString();
+  const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+  if (lines.length < 4) throw new Error('ожидались 4 PASS, пришло ' + lines.length + (out.includes('FAIL') ? '\n' + out.split('\n').filter((l) => l.startsWith('FAIL')).join('\n') : ''));
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+} catch (e) {
+  bad('sim_walls:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход/ysort/стены зелёные');
 process.exit(failed ? 1 : 0);
