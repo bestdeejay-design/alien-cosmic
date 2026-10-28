@@ -290,7 +290,8 @@ try {
   localStorage.setItem('ac_save_nick', 'best');
   localStorage.setItem('ac_save_pin', '1234');
   game.started = false;
-  const gateP = window.__saveApi.authGate(game, { timeoutMs: 80 });
+  const gateP = window.__saveApi.authGate(game);
+  await A.pullSnapshot({ timeoutMs: 80 });
   for (let i = 0; i < 40 && A.auth.step !== 'offline'; i++) await new Promise((r) => setTimeout(r, 10));
   eq(A.auth.step, 'offline', 'гейт не показал офлайн-экран при мёртвом сервере');
   const offlineBtn = A._debug.overlay && A._debug.overlay.querySelector('#auth-offline');
@@ -298,7 +299,7 @@ try {
   assert(A._debug.overlay.querySelector('#auth-retry'), 'в офлайн-экране нет кнопки «Повторить»');
   offlineBtn.click();
   const gate = await gateP;
-  eq(gate.source, 'offline', 'офлайн-фолбэк не вернул управление игре');
+  eq(gate.source, 'guest', 'офлайн-фолбэк не вернул управление игре');
   eq(A.isAuthOpen(), false, 'после офлайн-фолбэка панель осталась открытой (игра не начнётся)');
   // Дальше ровно то, что делает raid-boot: база из локального сейва.
   if (!game.started) game.startRaidHome('human');
@@ -332,7 +333,9 @@ try {
     localStorage.setItem('ac_save_nick', 'best');
     localStorage.setItem('ac_save_pin', '1234');
     game.started = false;
-    const p = window.__saveApi.authGate(game, { timeoutMs: 60 });
+    window.__saveApi.setIdentity('best', '1234');
+    const p = window.__saveApi.authGate(game);
+    await A.pullSnapshot({ timeoutMs: 60 });
     for (let i = 0; i < 40 && !A.isAuthOpen(); i++) await new Promise((r) => setTimeout(r, 10));
     assert(A.isAuthOpen(), 'гейт не открыл панель');
     for (let i = 0; i < 40 && A.auth.step !== 'offline'; i++) await new Promise((r) => setTimeout(r, 10));
@@ -350,7 +353,7 @@ try {
     assert(btn, 'в панели нет кнопки «Позже»');
     btn.click();
   });
-  eq(later.source, 'local', '«Позже»: гейт вернул не «локальный» источник');
+  eq(later.source, 'guest', '«Позже»: гейт вернул не «локальный» источник');
   eq(later.dismissed, true, '«Позже»: гейт не пометил решение как «закрыто игроком»');
 
   // 2) Escape (на экране выбора точек нет — закрывается первым же)
@@ -368,7 +371,7 @@ try {
     const ov = A._debug.overlay;
     ov.querySelector('#auth-offline').click();
   });
-  eq(off.source, 'offline', '«Играть офлайн»: неверный источник гейта');
+  eq(off.source, 'guest', '«Играть офлайн»: неверный источник гейта');
 
   // 5) панель, закрытая без гейта, тоже не ломает игру
   A.openAuth(game, { step: 'login' });

@@ -426,12 +426,12 @@ try {
   if (lines.length < 12) throw new Error('ac_sz_auth45: ожидались 12 PASS, пришло ' + lines.length);
   for (const l of lines) ok('auth45 · ' + l.replace(/^PASS\s+/, ''));
 
-  // 10) сквозной boot: профиль → pull → КЦ-16, офлайн-фолбэк, «Позже», Escape-Escape
-  for (const mode of ['cloud', 'offline', 'later', 'esc']) {
-    const b = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ac_sz_auth45_boot.mjs'), mode], { stdio: 'pipe' }).toString();
+  // ace#4: explicit front door, guest promotion and unchanged cloud Value + ts.
+  for (const mode of ['cloud', 'remembered', 'empty', 'corrupt', 'skip', 'escape', 'load-cloud', 'replace', 'cancel-replace', 'guest-empty', 'offline', 'late-skip', 'late-login', 'save-fail']) {
+    const b = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'sim_auth_entry4.mjs'), mode], { stdio: 'pipe' }).toString();
     const pass = b.split('\n').filter((l) => l.startsWith('PASS'));
-    if (pass.length !== 1) throw new Error('ac_sz_auth45_boot ' + mode + ': ' + b.slice(-400));
-    ok('auth45 · ' + pass[0].replace(/^PASS\s+/, ''));
+    if (pass.length !== 1) throw new Error('sim_auth_entry4 ' + mode + ': ' + b.slice(-400));
+    ok('entry4 · ' + pass[0].replace(/^PASS\s+/, ''));
   }
 } catch (e) {
   bad('auth-45:\n' + String(e.stdout || e.stderr || e.message));

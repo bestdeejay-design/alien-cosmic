@@ -73,6 +73,9 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${URL_BASE}/r/`, { waitUntil: 'load' });
 
+  // ace#4: guest entry is an explicit choice, no automatic simulation startup.
+  await page.locator('#auth-close').click();
+
   // Автопоказ капсул при входе (maybeShowOnEntry, задержка 900 мс).
   await page.waitForSelector('#chest-overlay:not(.hidden)', { timeout: 15000 });
   await sleep(300);
