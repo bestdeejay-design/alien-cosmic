@@ -65,6 +65,17 @@ function boot(houseLv = 5) {
   return st;
 }
 
+// Канон владельца 28.10: автопоиск сборщика — только по открытым жилам.
+// Хелпер симулирует разведку (открытие тумана) и возвращает рабочих к добыче.
+function revealAndGather(st) {
+  for (const c of st.map.crystals) if (c.amount > 0) st.fog.mark(c.tx, c.ty, 2);
+  for (const u of st.units) {
+    if (u.side !== 'player' || u.dead || u.garrison || u.type !== 'worker') continue;
+    const c = U.nearestCrystal(st, u);
+    if (c) U.orderGather(st, u, c);
+  }
+}
+
 // ---------- H1: перелёт Дома обновляет мировой центр ----------
 try {
   const st = boot();
@@ -112,6 +123,9 @@ try {
   worker.hp = 5;
   // Убираем КЦ, чтобы диспетчер авто-лечения не подменил проверку ауры.
   for (const cc of st.buildings) if (cc.type === 'cc' && cc.side === 'player') cc.dead = true;
+  // Канон 28.10: рабочий занят добычей по открытым жилам (иначе бездельник
+  // получает пассивную регенерацию и проверка ауры не о том).
+  revealAndGather(st);
   ticks(150);
   assert(marine.hp === 10, `на базе аура Дома всё ещё лечит существо (hp ${Math.round(marine.hp)})`);
   assert(worker.hp === 5, `на базе аура Дома лечит дрона-сборщика (hp ${Math.round(worker.hp)})`);
@@ -143,6 +157,8 @@ try {
   alien.faction = 'alien';
   alien.hp = 10;
 
+  // Канон 28.10: сборщики заняты открытой добычей (не чинят технику из праздности).
+  revealAndGather(ex);
   for (let i = 0; i < 90; i++) { // ~3 c логики
     marine.x = house.x + TILE; marine.y = house.y;
     tank.x = house.x - TILE; tank.y = house.y;

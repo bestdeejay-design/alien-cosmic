@@ -66,6 +66,16 @@ function launch(tier = 1, roster = { worker: 3, marine: 1 }, houseLv = 5) {
   const res = game.launchRaidExpedition({ tier, seed: 4242, budget: 100, units: { ...roster } });
   assert(res && res.ok, 'вылазка не запустилась: ' + JSON.stringify(res));
   ticks(4);
+  // Канон владельца 28.10: автопоиск сборщика — только по открытым от тумана
+  // жилам. Симулируем разведку (ручное управление) и заново отдаём добычу.
+  const ex = game.state;
+  for (const c of ex.map.crystals) if (c.amount > 0) ex.fog.mark(c.tx, c.ty, 2);
+  for (const u of ex.units) {
+    if (u.side !== 'player' || u.dead || u.garrison || u.type !== 'worker') continue;
+    const c = U.nearestCrystal(ex, u);
+    if (c) U.orderGather(ex, u, c);
+  }
+  ticks(4);
   return game.state;
 }
 

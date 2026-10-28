@@ -58,6 +58,16 @@ function launch(tier = 1, roster = { worker: 2, marine: 2 }, houseLv = 5) {
   const res = game.launchRaidExpedition({ tier, seed: 4242, budget: 100, units: { ...roster } });
   assert(res && res.ok, 'вылазка не запустилась: ' + JSON.stringify(res));
   ticks(4);
+  // Канон владельца 28.10: автопоиск — только по открытым жилам. Симулируем
+  // разведку и заново отдаём добычу полевым сборщикам.
+  const ex = game.state;
+  for (const c of ex.map.crystals) if (c.amount > 0) ex.fog.mark(c.tx, c.ty, 2);
+  for (const u of ex.units) {
+    if (u.side !== 'player' || u.dead || u.garrison || u.type !== 'worker') continue;
+    const c = U.nearestCrystal(ex, u);
+    if (c) U.orderGather(ex, u, c);
+  }
+  ticks(4);
   return game.state;
 }
 
@@ -209,6 +219,8 @@ try {
   const w = fieldOf(st).find((u) => u.cfg.canMine && u.evacWait);
   assert(w, 'нет ожидающего сборщика для проверки');
   const crystal = (st.map.crystals || [])[0] || null;
+  // Канон 28.10: приказ сбора возможен только по открытой жиле — открываем.
+  if (crystal) st.fog.mark(crystal.tx, crystal.ty, 2);
   // Авто-возврат к добыче (внутренний путь диспетчера ремонта) не срабатывает.
   U.orderGather(st, w, crystal);
   assert(w.order.kind !== 'gather' && w.evacWait, 'авто-приказ добычи перебил ожидание эвакуации');
