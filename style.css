@@ -1295,7 +1295,7 @@ body.menu-active #zoom-controls { display: none; }
 }
 
 /* Сезон 3: Alien Cosmic: Expedition — баннер рядом с «Быстрой игрой» */
-.season3-section { background: linear-gradient(180deg, #08161c, #0a1b21); padding-top: 18px; }
+.season3-section { background: linear-gradient(180deg, #08161c, #0a1b21); padding: 18px 0 26px; }
 .season3-banner {
   position: relative; display: flex; align-items: center; justify-content: space-between;
   gap: 16px; flex-wrap: wrap; max-width: 980px; margin: 0 auto; padding: 22px 26px;
