@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Боевой полигон · ace#10</title>
+  <style>:root{color-scheme:dark;--bg:#0a1114;--panel:#101a1d;--panel-2:#142124;--edge:#26383a;--edge-soft:#1c2d2f;--ink:#e1ece6;--muted:#82948f;--faint:#536762;--mint:#afe4c9;--mint-bright:#d7f6d9;--orange:#ed9975;--gold:#d6c28b;--mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}html{min-width:320px;background:var(--bg)}body{margin:0;color:var(--ink);background:radial-gradient(ellipse at 48% -35%,#1b312d 0,transparent 44%),var(--bg);font-family:var(--sans);font-size:13px}button,input,select{font:inherit}button{color:inherit;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.38}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--mint);outline-offset:2px}.hidden{display:none!important}
+.topbar{height:62px;border-bottom:1px solid #22312f;display:flex;align-items:center;justify-content:space-between;padding:0 35px;background:#0c1517e8}.brand,.topbar-right{display:flex;align-items:center;gap:17px}.brand-mark{height:27px;width:27px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px;transform:rotate(45deg);padding:3px}.brand-mark i{background:#b8dfc6}.brand-mark i:nth-child(2),.brand-mark i:nth-child(3){opacity:.55}.brand-name{font-family:var(--mono);font-weight:800;font-size:15px;letter-spacing:.08em}.brand-name span{color:#5a7169}.brand-divider{height:22px;width:1px;background:#2a3d39}.brand-caption,.connection,.language{font-family:var(--mono);font-size:9px;letter-spacing:.11em;color:#91a59c}.topbar-right{gap:24px}.connection{display:flex;align-items:center;gap:8px}.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;background:#a6dfb9;box-shadow:0 0 9px #93e8af80}.language{display:flex;gap:3px;border:1px solid #2a3a37;padding:3px}.language button{background:none;border:0;padding:5px 7px;font-family:var(--mono);font-size:10px;color:#70847d}.language button.selected{background:#b4dec7;color:#10211a;font-weight:800}
+.app-shell{max-width:1720px;margin:0 auto;padding:0 35px}.page-heading{display:flex;justify-content:space-between;align-items:end;margin:36px 0 27px;gap:20px}.eyebrow,.section-index{font:700 9px/1.2 var(--mono);letter-spacing:.15em;color:#9bb3a8;text-transform:uppercase}.eyebrow{display:flex;align-items:center;gap:8px}.eyebrow-line{width:22px;height:1px;background:#b8dcca}.dim{color:#5a6d66}.page-heading h1{font-size:clamp(28px,2.6vw,40px);line-height:1.05;letter-spacing:-.045em;margin:12px 0 7px;font-weight:630}.page-heading h1 span{color:#90c7ad;font-weight:400}.page-heading p{color:#93a59d;margin:0;font-size:13px}.heading-note{display:flex;gap:12px;align-items:start;color:#778b82;font-size:11px;line-height:1.5;padding:0 0 2px}.note-index{width:18px;height:18px;border:1px solid #6b8276;border-radius:50%;text-align:center;line-height:16px;font:11px/16px var(--mono);flex-shrink:0}
+.workspace{display:grid;grid-template-columns:260px minmax(420px,1fr) 255px;align-items:start;gap:16px}.panel{border:1px solid var(--edge);background:linear-gradient(160deg,#142023,#10191c 68%);box-shadow:0 10px 28px #00000017}.setup-panel{padding:20px 18px 18px}.panel-heading,.right-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px}.panel-heading h2,.right-header h2,.selected-panel h2{font-size:16px;font-weight:600;letter-spacing:-.025em;margin:8px 0 0}.panel-code{font:10px var(--mono);letter-spacing:.06em;color:#5c7268}.control-group{margin-bottom:19px}.field-label{display:flex;justify-content:space-between;align-items:center;color:#90a59b;font:700 9px/1.3 var(--mono);letter-spacing:.12em;margin-bottom:9px}.field-label b{font:700 12px var(--mono);color:#d1e9d8;letter-spacing:0}.segmented{display:flex;border:1px solid #2d3e3b;background:#0c1618;padding:3px;gap:2px}.segmented button{background:transparent;border:0;color:#81948b;font-size:11px;flex:1;padding:8px 3px}.segmented button.active{background:#b7dfc6;color:#10221a;font-weight:700}.difficulty-list{display:flex;flex-direction:column;gap:6px}.difficulty-card{height:53px;display:flex;align-items:center;gap:11px;text-align:left;border:1px solid #283936;background:#111d1f;padding:7px 9px;transition:border-color .15s,background .15s}.difficulty-card:hover{border-color:#769a87}.difficulty-card.active{background:#1c302a;border-color:#9bcbb1}.mode-glyph{display:flex;justify-content:center;align-items:center;width:30px;height:30px;font:700 10px var(--mono);border:1px solid #476057;color:#a9ceba;background:#1b2d27;flex-shrink:0}.glyph-medium{color:#dfc589;border-color:#665d41;background:#302e22}.glyph-hard{color:#eda887;border-color:#6a4b3b;background:#30241e}.mode-copy{display:flex;flex-direction:column;gap:4px;min-width:0}.mode-copy strong{font-size:12px;line-height:1;font-weight:650}.mode-copy small{font-size:9px;color:#80948a;white-space:nowrap}.check-mark{margin-left:auto;width:11px;height:11px;border:1px solid #597368;border-radius:50%}.difficulty-card.active .check-mark{border:3px solid #b4dec4;background:#244436}.profile-divider{display:flex;justify-content:space-between;border-top:1px solid #293936;padding-top:16px;margin:2px 0 17px;font:700 9px var(--mono);letter-spacing:.12em;color:#80948a}.compact{margin-bottom:15px}input[type=range]{appearance:none;width:100%;height:3px;background:#39534a;outline:0;display:block;margin:15px 0 8px}input[type=range]::-webkit-slider-thumb{appearance:none;height:11px;width:11px;border-radius:0;background:#c2e9cd;border:2px solid #14251d;box-shadow:0 0 0 1px #a9d9ba}input[type=range]::-moz-range-thumb{height:9px;width:9px;border:1px solid #bce6c8;background:#c2e9cd;border-radius:0}.range-ends{display:flex;justify-content:space-between;color:#61766c;font:9px var(--mono)}select{display:block;background:#0e191a;color:#c5d5cc;border:1px solid #30423c;width:100%;padding:10px;font-size:11px;border-radius:0}.select-label{margin-top:2px}.seed-line{display:flex;align-items:center;justify-content:space-between;margin-top:12px;color:#70887c;font:700 9px var(--mono);letter-spacing:.12em}.seed-line input{width:86px;color:#9fb7aa;text-align:right;background:transparent;border:0;border-bottom:1px solid #34483f;padding:3px;font:11px var(--mono)}.text-button{padding:0;border:0;background:none;color:#a6d9b8;font-size:10px;line-height:1.4;text-align:left}.text-button:hover{text-decoration:underline}#apply{margin-top:14px}.inline-hint{margin-top:8px;color:#e6c390;font-size:10px;line-height:1.4}.plan-box{background:#0c1718;border:1px solid #273b34;padding:12px;margin:17px 0 12px}.plan-top{display:flex;justify-content:space-between;font:700 9px var(--mono);letter-spacing:.1em;color:#789287}.live-tag{color:#acdabe;font-size:8px}.plan-summary{margin-top:9px;font:600 13px var(--mono);color:#d8eadb}.plan-details{margin-top:6px;font-size:10px;line-height:1.5;color:#82998b}.primary-button{border:0;background:#b8e4c6;color:#14261b;width:100%;height:45px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;font-weight:750;font-size:12px;transition:background .15s}.primary-button:hover{background:#d6f4db}.primary-button span:last-child{font-size:18px}.small-note{font-size:9.5px;line-height:1.55;color:#70867c;margin:10px 0 0}
+.board-column{min-width:0}.board-head{height:58px;display:flex;align-items:flex-start;justify-content:space-between;padding:1px 1px 0}.board-head h2{font-size:16px;letter-spacing:-.025em;margin:7px 0 0;font-weight:600}.board-title-dot{font-size:6px;color:#9dd2ac;vertical-align:middle;margin-left:4px}.board-status{border:1px solid #32483d;padding:7px 9px;display:flex;align-items:center;gap:7px;color:#acd0b9;font:700 9px var(--mono);letter-spacing:.08em}.board-status .status-dot{width:5px;height:5px}.battle-frame{position:relative;aspect-ratio:14/9;background:#111e1e;border:1px solid #496050;overflow:hidden}.battle-frame canvas{display:block;width:100%;height:100%;cursor:crosshair;image-rendering:auto}.board-corner{position:absolute;width:15px;height:15px;pointer-events:none;border-color:#b4e0bd}.corner-tl{left:5px;top:5px;border-top:1px solid;border-left:1px solid}.corner-tr{right:5px;top:5px;border-top:1px solid;border-right:1px solid}.corner-bl{left:5px;bottom:5px;border-bottom:1px solid;border-left:1px solid}.corner-br{right:5px;bottom:5px;border-bottom:1px solid;border-right:1px solid}.board-overlay{position:absolute;pointer-events:none;font:700 8px var(--mono);letter-spacing:.13em;color:#a0b9a8;text-shadow:0 1px 4px #000}.top-left{left:21px;top:19px;display:flex;align-items:center;gap:8px}.bottom-right{right:19px;bottom:17px;color:#9ab3a1}.overlay-square{height:6px;width:6px;background:#c6edd1}.overlay-sep{color:#6f8679}.timeline{height:67px;border:1px solid #293b37;border-top:0;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#121e1f}.timeline-left{display:flex;align-items:center;gap:11px}.tiny-icon{font-size:20px;color:#9cc5ab}.timeline-label{display:block;color:#738d7f;font:700 8px var(--mono);letter-spacing:.1em;margin-bottom:5px}.timeline strong{font:700 11px var(--mono);color:#d5e6d8}.timeline-divider{height:27px;width:1px;background:#31453c;margin:0 6px}.time-actions{display:flex;align-items:center;gap:3px}.time-actions button{background:transparent;border:0;padding:6px 8px;color:#809a8b;font:10px var(--mono)}.time-actions button.active{background:#a9d7b6;color:#14251b;font-weight:800}.time-actions .icon-button{border-right:1px solid #34473c;color:#b6d5bf;margin-right:4px;font-size:13px}
+.commands{border:1px solid #263936;margin-top:15px;background:#101b1c;padding:17px}.commands-heading{display:flex;align-items:end;justify-content:space-between;margin-bottom:13px}.commands-heading h3{margin:7px 0 0;font-size:14px;letter-spacing:-.02em;font-weight:600}.commands-heading>span{font-size:10px;color:#7f9488}.command-row{display:flex;gap:6px;flex-wrap:wrap}.directions{display:flex;flex:1;min-width:0;gap:5px}.directions button,.outline-button,.subtle-button{border:1px solid #3b5147;background:#162520;padding:10px 12px;font:700 10px var(--mono);color:#c4ddc9;letter-spacing:.025em;white-space:nowrap}.directions button{flex:1;min-width:0;padding:10px 5px}.directions button:hover,.outline-button:hover,.subtle-button:hover,.wide-secondary:hover{border-color:#96c5a6;background:#20362b}.directions button span{font-size:8px;color:#8fa99a;margin-left:3px}.subtle-button{background:#263b30}.secondary{margin-top:8px}.secondary .outline-button{padding:9px 10px;font-size:9px}.danger-link{border:0;background:transparent;color:#e3a181;margin-left:auto;font:10px var(--mono)}.command-caption{color:#728b7d;font-size:10px;margin:11px 0 0}
+.right-column{display:flex;flex-direction:column;gap:14px}.commander-panel,.telemetry-panel,.selected-panel{padding:18px}.right-header{margin-bottom:17px}.commander-card{display:flex;align-items:center;gap:11px}.avatar{width:53px;height:53px;border:1px solid #638273;background:linear-gradient(135deg,#314e3e,#1a2d27);display:grid;place-items:center;position:relative;overflow:hidden}.avatar:before,.avatar:after{content:"";position:absolute;border:1px solid #72927b;transform:rotate(45deg);width:25px;height:25px}.avatar:after{width:15px;height:15px;border-color:#a8d0ae}.avatar span{color:#d1e8c9;z-index:1;font-size:12px}.avatar-lines{position:absolute;inset:4px;border:1px solid #567764}.commander-overline{font:700 8px var(--mono);letter-spacing:.1em;color:#7d9888}.commander-name{font-size:15px;font-weight:650;margin:5px 0 4px}.commander-name b{font:700 12px var(--mono);color:#a6d6b5}.commander-sub{font-size:10px;color:#829b8c}.xp-meta{display:flex;justify-content:space-between;align-items:center;font:700 8px var(--mono);letter-spacing:.08em;color:#839d8e;margin-top:18px}.xp-meta b{font-size:10px;color:#c1ddc8;letter-spacing:0}.progress{height:4px;background:#344b3c;margin-top:8px}.progress>div{height:100%;background:#aadcbc;width:0;transition:width .25s}.wide-secondary{width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 10px;background:#172620;border:1px solid #3a5143;color:#b8d6bf;font-size:10px;text-align:left;margin-top:14px}.wide-secondary span:last-child{font-family:var(--mono);color:#a5cfaf}.stat-row{border-top:1px solid #263a30;display:flex;align-items:center;justify-content:space-between;padding:12px 0;color:#96aca0;font-size:11px}.stat-row>span{display:flex;align-items:center;gap:9px}.stat-icon{color:#83ac91;font-style:normal;font-size:13px;min-width:14px}.stat-row strong{font:700 12px var(--mono);color:#d2e7d6}.stat-row strong small{font:8px var(--mono);color:#769282}.telemetry-panel .wide-secondary{margin-top:8px}.selected-panel .section-index{margin-bottom:10px}.selected-panel h2{font-size:14px;line-height:1.3}.selection-help{font-size:10px;line-height:1.5;color:#8ca497}.selected-panel .text-button{margin-top:13px}.recovery-strip{border-left:2px solid #a7895d;padding:2px 8px 5px 12px}.recovery-strip .section-index{color:#c2a36d;font-size:8px}.recovery-strip p{color:#899d8c;line-height:1.45;font-size:10px;margin:7px 0}.recovery-strip .outline-button{display:block;margin:7px 0;font-size:9px;padding:8px}.recovery-strip .text-button{color:#cbb88e}
+.insights{margin-top:22px;padding:22px}.insights-top{display:flex;justify-content:space-between;align-items:end;border-bottom:1px solid #2a3c34;gap:15px}.insights-top h2{font-size:19px;letter-spacing:-.03em;margin:8px 0 18px;font-weight:600}.insight-tabs{display:flex;align-items:stretch;gap:22px}.insight-tabs button{border:0;border-bottom:2px solid transparent;padding:0 0 18px;color:#81978a;background:transparent;font-size:11px}.insight-tabs button.active{color:#c5e8cc;border-color:#a8d5b2}.tab-content{padding-top:20px}.empty-report{display:flex;align-items:center;gap:18px;min-height:85px}.empty-icon{width:45px;height:45px;border:1px solid #3a5345;display:grid;place-items:center;font-size:27px;color:#a5d0af}.empty-report h3{font-size:13px;margin:0 0 6px}.empty-report p,.metrics-toolbar p{margin:0;color:#839b8b;font-size:11px;line-height:1.5}.report-head{display:flex;align-items:start;justify-content:space-between;gap:15px}.result-tag{display:inline-block;padding:6px 8px;color:#a9ddba;background:#1b3224;border:1px solid #385c42;font:700 9px var(--mono);letter-spacing:.1em}.result-tag.defeat{background:#36231e;color:#f0ad8c;border-color:#714b3b}.report-head h3{font-size:20px;margin:12px 0 6px}.report-head p{font-size:11px;color:#8fa799;margin:0}.report-score{font:700 33px var(--mono);color:#d3edda;text-align:right}.report-score small{display:block;color:#779184;font:9px var(--mono);letter-spacing:.1em;margin-top:3px}.report-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:1px solid #2b4035;margin-top:20px}.report-cell{padding:14px;border-right:1px solid #2b4035}.report-cell:last-child{border-right:0}.report-cell span{display:block;font:700 8px var(--mono);letter-spacing:.08em;color:#819b8b;margin-bottom:7px}.report-cell strong{font:700 15px var(--mono);color:#d9eadc}.report-cell small{display:block;margin-top:4px;font-size:9px;color:#829a8b;line-height:1.35}.sector-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:15px}.sector-card{background:#14231e;border-left:2px solid #587c62;padding:11px 12px}.sector-card.weak{border-color:#e4a37a;background:#30271f}.sector-card b{font:700 9px var(--mono);color:#bddec3;letter-spacing:.1em}.sector-card p{font-size:10px;color:#8ba494;margin:7px 0 0;line-height:1.5}.report-foot{font-size:10px;line-height:1.6;color:#91a89a;margin:14px 0 0}.metrics-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px}.metrics-toolbar .section-index{margin-bottom:8px}.analysis-progress{color:#b8dfc2;font:11px var(--mono);margin:15px 0}.metric-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:18px 0}.metric-card{min-height:118px;border:1px solid #2d4438;background:#121f1b;padding:14px}.metric-card .metric-num{font:700 9px var(--mono);letter-spacing:.1em;color:#789581}.metric-card h3{font-size:13px;margin:9px 0 7px}.metric-card p{font-size:10px;line-height:1.55;color:#9bb1a2;margin:0}.metrics-table-wrap{overflow-x:auto;margin:16px 0}.metrics-table{border-collapse:collapse;width:100%;min-width:800px;font:10px var(--mono);color:#aabfb1}.metrics-table th{text-align:left;color:#769382;font-size:9px;letter-spacing:.05em;font-weight:700}.metrics-table th,.metrics-table td{padding:10px;border-bottom:1px solid #293c32;vertical-align:top}.metrics-table tr:hover td{background:#17281f}.table-title{font-size:14px;margin:24px 0 4px}.table-caption{font-size:10px;color:#819b8b;line-height:1.5;margin:0}.model-copy{max-width:980px;columns:2;column-gap:50px;font-size:11px;line-height:1.7;color:#9cb1a2}.model-copy h3{break-after:avoid;font-size:13px;color:#d7e9d9;margin:0 0 6px}.model-copy p{break-inside:avoid;margin:0 0 17px}.footer{display:flex;justify-content:space-between;gap:15px;padding:24px 0 30px;color:#6e8879;font:9px var(--mono);letter-spacing:.04em}.footer-dot{font-size:6px;color:#a4d5ae}
+dialog{width:min(700px,calc(100vw - 30px));max-height:90vh;overflow:auto;border:1px solid #526b59;background:#14211d;color:#dce9dc;padding:23px;box-shadow:0 30px 100px #000a}dialog::backdrop{background:#040a08d9}.dialog-head{display:flex;justify-content:space-between;align-items:start}.dialog-head h2{font-size:20px;margin:8px 0 0}.icon-button{background:none;border:0;color:#b6d5bf}.dialog-head .icon-button{font-size:23px}.dialog-intro{color:#94ad9c;line-height:1.5;font-size:11px}.skill-points-line{display:flex;justify-content:space-between;border:1px solid #3c5845;padding:10px;margin:14px 0;color:#a9c4ae;font-size:11px}.skill-points-line strong{font:700 13px var(--mono);color:#d7f1d8}.skill-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.skill-card{border:1px solid #344b3c;background:#111c18;padding:12px}.skill-card h3{font-size:12px;margin:0 0 5px}.skill-card p{color:#8da596;font-size:10px;line-height:1.45;min-height:30px;margin:0 0 10px}.skill-card button{border:1px solid #42634b;background:#1d3223;color:#baddc0;padding:7px 9px;font:10px var(--mono);width:100%;text-align:left}.skill-card button:disabled{opacity:.4}.toast{position:fixed;bottom:22px;right:25px;max-width:min(360px,calc(100vw - 50px));background:#d0ead2;color:#16261a;padding:12px 16px;box-shadow:0 8px 30px #0008;font-size:11px;line-height:1.45;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:10}.toast.visible{opacity:1;transform:translateY(0)}
+@media(max-width:1250px){.workspace{grid-template-columns:245px minmax(370px,1fr)}.right-column{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);align-items:start}.recovery-strip{grid-column:1/-1}.heading-note{display:none}.app-shell{padding:0 24px}.topbar{padding:0 24px}}
+@media(max-width:760px){.topbar{height:56px;padding:0 16px}.brand{gap:10px}.brand-caption,.brand-divider{display:none}.connection{font-size:8px}.topbar-right{gap:10px}.app-shell{padding:0 14px}.page-heading{margin:28px 0 22px}.page-heading h1{font-size:30px}.workspace{display:flex;flex-direction:column;gap:14px}.setup-panel,.board-column,.right-column{width:100%}.setup-panel{order:0}.board-column{order:1}.right-column{order:2;display:grid;grid-template-columns:1fr 1fr;gap:10px}.selected-panel,.recovery-strip{grid-column:1/-1}.mode-copy small{white-space:normal}.battle-frame{min-height:0}.board-overlay{font-size:7px}.timeline{padding:0 10px}.timeline-left{gap:6px}.timeline-label{font-size:7px}.timeline strong{font-size:9px}.timeline-divider{margin:0 2px}.time-actions button{padding:6px}.commands{padding:13px}.commands-heading>span{display:none}.directions button span{display:none}.directions button{font-size:16px}.insights{padding:16px}.insights-top{display:block}.insights-top h2{margin-bottom:14px}.insight-tabs{gap:18px}.insight-tabs button{padding-bottom:12px}.report-grid{grid-template-columns:repeat(3,1fr)}.report-cell:nth-child(3){border-right:0}.report-cell:nth-child(-n+3){border-bottom:1px solid #2b4035}.sector-strip{grid-template-columns:repeat(2,1fr)}.metric-cards{grid-template-columns:1fr}.metrics-toolbar{align-items:start;flex-direction:column}.model-copy{columns:1}.footer{flex-wrap:wrap;line-height:1.5}.footer span:nth-child(2){order:3;width:100%}.skill-grid{grid-template-columns:1fr}}
+@media(max-width:380px){.connection span:last-child{display:none}.right-column{grid-template-columns:1fr}.selected-panel,.recovery-strip{grid-column:auto}.report-grid{grid-template-columns:repeat(2,1fr)}.report-cell:nth-child(3){border-right:1px solid #2b4035}.report-cell:nth-child(2n){border-right:0}.report-cell:nth-child(-n+4){border-bottom:1px solid #2b4035}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand-name">ACE <span>/</span> 10</span><span class="brand-divider"></span><span class="brand-caption" data-t="brandCaption">СТЕНД БОЕВОЙ ТРЕВОГИ</span></div>
+    <div class="topbar-right"><span class="connection"><span class="status-dot"></span><span data-t="offline">АВТОНОМНЫЙ РЕЖИМ</span></span><div class="language" role="group" aria-label="Language"><button type="button" data-lang="ru" class="selected">RU</button><button type="button" data-lang="en">EN</button></div></div>
+  </header>
+  <main class="app-shell">
+    <div class="page-heading">
+      <div><div class="eyebrow"><span class="eyebrow-line"></span><span data-t="kicker">ОПЕРАЦИОННЫЙ ПОЛИГОН</span><span class="dim"> / 01</span></div><h1 data-t="title">Боевая тревога <span>v2</span></h1><p data-t="subtitle">Настройте оборону. Проверьте, что произойдёт на поле боя.</p></div>
+      <div class="heading-note"><span class="note-index">i</span><span data-t="modelNote">Модель для проверки решений,<br>не игровой движок и не финальный арт.</span></div>
+    </div>
+    <div class="workspace">
+      <aside class="panel setup-panel" aria-labelledby="setup-title">
+        <div class="panel-heading"><div><div class="section-index">01 / <span data-t="scenario">СЦЕНАРИЙ</span></div><h2 id="setup-title" data-t="setup">Настройка</h2></div><span class="panel-code">A—01</span></div>
+        <div class="control-group"><label class="field-label" data-t="eventType">ТИП СОБЫТИЯ</label><div class="segmented event-kinds" role="group" aria-label="Event type"><button type="button" data-kind="normal" class="active" data-t="alarm">Тревога</button><button type="button" data-kind="siege" data-t="siege">Осада</button><button type="button" data-kind="training" data-t="training">Учение</button></div></div>
+        <div class="control-group"><label class="field-label" data-t="difficulty">СЛОЖНОСТЬ</label><div class="difficulty-list" role="group" aria-label="Difficulty">
+          <button type="button" class="difficulty-card" data-mode="light"><span class="mode-glyph glyph-light">I</span><span class="mode-copy"><strong data-t="light">Лёгкая</strong><small data-t="lightDesc">Один подход · 2 волны</small></span><span class="check-mark"></span></button>
+          <button type="button" class="difficulty-card active" data-mode="medium"><span class="mode-glyph glyph-medium">II</span><span class="mode-copy"><strong data-t="medium">Средняя</strong><small data-t="mediumDesc">Два подхода · 3 волны</small></span><span class="check-mark"></span></button>
+          <button type="button" class="difficulty-card" data-mode="hard"><span class="mode-glyph glyph-hard">III</span><span class="mode-copy"><strong data-t="hard">Тяжёлая</strong><small data-t="hardDesc">Две группы · 4 волны</small></span><span class="check-mark"></span></button>
+        </div></div>
+        <div id="siege-control" class="control-group hidden"><label class="field-label" for="waves"><span data-t="waveCount">ЧИСЛО ВОЛН</span><b id="waves-value">5</b></label><input type="range" id="waves" min="5" max="10" value="5"><div class="range-ends"><span>05</span><span>10</span></div></div>
+        <div class="profile-divider"><span data-t="labProfile">ПРОФИЛЬ ПОЛИГОНА</span><span>↘</span></div>
+        <div class="control-group compact"><label class="field-label" for="cc-range"><span data-t="ccLevel">УРОВЕНЬ КЦ</span><b id="cc-value">01</b></label><input type="range" id="cc-range" min="1" max="20" value="1"><div class="range-ends"><span>01</span><span>20</span></div></div>
+        <div class="control-group compact"><label class="field-label" for="level-range"><span data-t="commanderLevel">КОМАНДИР</span><b id="level-value">01</b></label><input type="range" id="level-range" min="1" max="20" value="1"><div class="range-ends"><span>01</span><span>20</span></div></div>
+        <label class="field-label select-label" for="defense" data-t="garrison">НАЧАЛЬНЫЙ ГАРНИЗОН</label><select id="defense"><option value="light" data-t="garrisonLight">Малый</option><option value="balanced" selected data-t="garrisonBalanced">Подготовленный</option><option value="fortified" data-t="garrisonFortified">Укреплённый</option></select>
+        <div class="seed-line"><label for="seed">SEED</label><input id="seed" type="number" min="1" max="4294967295" value="1027" inputmode="numeric"></div>
+        <button id="apply" type="button" class="text-button" data-t="apply">Применить новый профиль ↗</button>
+        <div id="profile-dirty" class="inline-hint hidden" data-t="applyHint">Изменения сработают после применения профиля.</div>
+        <div class="plan-box"><div class="plan-top"><span data-t="attackPlan">ПЛАН АТАКИ</span><span class="live-tag">LIVE</span></div><div id="plan-summary" class="plan-summary">—</div><div id="plan-details" class="plan-details">—</div></div>
+        <button id="start" type="button" class="primary-button"><span data-t="start">Запустить тревогу</span><span aria-hidden="true">↗</span></button>
+        <p id="training-note" class="small-note hidden" data-t="trainingNote">Учение проходит на копии: постоянных наград и ущерба нет.</p>
+        <p class="small-note" data-t="setupFoot">Смена профиля сбрасывает только этот локальный стенд. Начальные 240 с здесь пропущены.</p>
+      </aside>
+      <section class="board-column" aria-label="Battlefield">
+        <div class="board-head"><div><span class="section-index">02 / <span data-t="battlefield">ПОЛЕ БОЯ</span></span><h2 data-t="fieldTitle">Карта обороны <span class="board-title-dot">●</span></h2></div><div class="board-status"><span class="status-dot"></span><span id="phase">ГОТОВНОСТЬ</span></div></div>
+        <div class="battle-frame"><canvas id="battle" width="896" height="576" aria-label="Interactive battlefield"></canvas><div class="board-corner corner-tl"></div><div class="board-corner corner-tr"></div><div class="board-corner corner-bl"></div><div class="board-corner corner-br"></div><div class="board-overlay top-left"><span class="overlay-square"></span><span data-t="tacticalView">ТАКТИЧЕСКАЯ КАРТА</span><span class="overlay-sep">/</span><span id="wave-label">00 : 00</span></div><div class="board-overlay bottom-right"><span data-t="schematic">СХЕМА · НЕ ИГРОВОЙ АРТ</span></div></div>
+        <div class="timeline"><div class="timeline-left"><span class="tiny-icon">◷</span><div><span class="timeline-label" data-t="eventTime">ВРЕМЯ СОБЫТИЯ</span><strong id="event-time">00:00</strong></div><span class="timeline-divider"></span><div><span class="timeline-label" data-t="state">СОСТОЯНИЕ</span><strong id="status-text" data-t="ready">Ожидание запуска</strong></div></div><div class="time-actions"><button id="pause" type="button" class="icon-button" title="Pause" aria-label="Pause">Ⅱ</button><button type="button" data-speed="1">1×</button><button type="button" data-speed="4" class="active">4×</button><button type="button" data-speed="16">16×</button></div></div>
+        <div class="commands"><div class="commands-heading"><div><span class="section-index">03 / <span data-t="commands">ПРИКАЗЫ</span></span><h3 data-t="controlSquad">Управление отрядом</h3></div><span data-t="selectDirection">Выберите направление</span></div><div class="command-row"><div class="directions" role="group" aria-label="Directions"><button data-sector="north" title="North">↑ <span data-t="northShort">СЕВЕР</span></button><button data-sector="west" title="West">← <span data-t="westShort">ЗАПАД</span></button><button data-sector="east" title="East">→ <span data-t="eastShort">ВОСТОК</span></button><button data-sector="south" title="South">↓ <span data-t="southShort">ЮГ</span></button></div><button id="auto" class="subtle-button" data-t="auto">Авто</button></div><div class="command-row secondary"><button id="assemble" class="outline-button" data-t="assemble">◎ СБОР</button><button id="release" class="outline-button" data-t="release">Отпустить сбор</button><button id="scout" class="outline-button" data-t="scout">Разведать СЗ ↗</button><button id="surrender" class="danger-link hidden" data-t="surrender">Сдаться</button></div><p class="command-caption" data-t="commandNote">Ручной приказ важнее автоматики. СБОР не меняет rally.</p></div>
+      </section>
+      <aside class="right-column">
+        <section class="panel commander-panel"><div class="right-header"><div><div class="section-index">04 / <span data-t="commander">КОМАНДИР</span></div><h2 data-t="personnel">Личный состав</h2></div><span class="panel-code">P—01</span></div><div class="commander-card"><div class="avatar" aria-hidden="true"><div class="avatar-lines"></div><span>✦</span></div><div><div class="commander-overline" data-t="commanderRank">ЗВАНИЕ / УРОВЕНЬ</div><div class="commander-name"><span id="rank">Капитан</span> <b id="commander-lvl">01</b></div><div class="commander-sub" data-t="candidate">Кандидатная кривая ×8</div></div></div><div class="xp-meta"><span data-t="experience">ОПЫТ КОМАНДИРА</span><b id="xp-label">0 / 800 XP</b></div><div class="progress"><div id="xp-bar"></div></div><button id="skills" class="wide-secondary"><span data-t="skills">Навыки командира</span><span id="skill-points">0 ↗</span></button></section>
+        <section class="panel telemetry-panel"><div class="right-header"><div><div class="section-index">05 / <span data-t="telemetry">ТЕЛЕМЕТРИЯ</span></div><h2 data-t="baseStatus">Состояние базы</h2></div><span class="panel-code">B—02</span></div><div class="stat-row"><span><i class="stat-icon">◈</i><span data-t="balance">Баланс</span></span><strong><span id="wallet">550</span><small> ERG</small></strong></div><div class="stat-row"><span><i class="stat-icon">♙</i><span data-t="guard">Бойцы</span></span><strong id="guard-count">—</strong></div><div class="stat-row"><span><i class="stat-icon">◇</i><span data-t="damage">Смета ремонта</span></span><strong><span id="repair-estimate">0</span><small> ERG</small></strong></div><div class="stat-row"><span><i class="stat-icon">◷</i><span data-t="cooldown">До тревоги</span></span><strong id="cooldown">—</strong></div><button id="skip" class="wide-secondary hidden"><span data-t="skipWait">Промотать ожидание</span><span>↗</span></button><button id="reinforce" class="wide-secondary"><span data-t="reinforce">Пополнить отряд</span><span>−50 ◈</span></button></section>
+        <section class="panel selected-panel"><div class="section-index">06 / <span data-t="selected">ВЫБРАННЫЙ ОБЪЕКТ</span></div><h2 id="object-name" data-t="selectBuilding">Выберите постройку</h2><p id="object-detail" class="selection-help" data-t="selectHelp">Нажмите на строение на карте, чтобы увидеть состояние и стоимость ремонта.</p><button id="repair" class="wide-secondary" disabled><span data-t="repair">Ремонтировать</span><span>↗</span></button><button id="repair-all" class="text-button" data-t="repairAll">Ремонтировать всё ↗</button></section>
+        <section class="recovery-strip"><div><span class="section-index" data-t="recoveryTest">АВАРИЙНОЕ ВОССТАНОВЛЕНИЕ</span><p id="recovery-status" data-t="recoveryHint">Руины сохраняют свой id и уровень.</p></div><button id="recovery" class="outline-button hidden" data-t="activateRecovery">Начать восстановление</button><button id="collect" class="outline-button hidden" data-t="collectRecovery">Собрать аварийный ресурс</button><button id="zero" class="text-button" data-t="zeroFixture">Создать нулевой сценарий ↗</button></section>
+      </aside>
+    </div>
+    <section class="insights panel" id="insights"><div class="insights-top"><div><div class="section-index">07 / <span data-t="review">ПОСЛЕ БОЯ</span></div><h2 data-t="insights">Разбор и измерения</h2></div><div class="insight-tabs" role="tablist"><button type="button" data-tab="report" role="tab" aria-selected="true" class="active" data-t="report">Разбор</button><button type="button" data-tab="metrics" role="tab" aria-selected="false" data-t="metrics">6 измерений</button><button type="button" data-tab="model" role="tab" aria-selected="false" data-t="about">О модели</button></div></div><div id="tab-report" class="tab-content"><div id="report-content" class="empty-report"><span class="empty-icon">⌁</span><div><h3 data-t="noReport">Данные появятся после события</h3><p data-t="noReportText">Запустите тревогу и посмотрите, какие сектора выдержали удар.</p></div></div></div><div id="tab-metrics" class="tab-content hidden"><div class="metrics-toolbar"><div><div class="section-index" data-t="benchKicker">ДЕТЕРМИНИРОВАННЫЕ ПРОГОНЫ · 30 ГЦ</div><p data-t="benchCaveat">Это расчёты модели стенда, не плейтест владельца и не измерение игры.</p></div><button id="run-analysis" class="outline-button" data-t="runAnalysis">Повторить измерения ↗</button></div><div id="analysis-progress" class="analysis-progress hidden"></div><div id="analysis-content"></div></div><div id="tab-model" class="tab-content hidden"><div class="model-copy" id="model-copy"></div></div></section>
+    <footer class="footer"><span>ACE / 10 <span class="footer-dot">●</span> OFFLINE LAB</span><span data-t="footer">Самодостаточный HTML · никаких запросов в сеть · данные только этого стенда</span><span>2026 / 10</span></footer>
+  </main>
+  <dialog id="skills-dialog"><div class="dialog-head"><div><div class="section-index">COMMANDER / 01</div><h2 data-t="skills">Навыки командира</h2></div><button id="close-skills" class="icon-button" aria-label="Close">×</button></div><p class="dialog-intro" data-t="skillsIntro">По одному очку на каждом уровне со второго. Навыки меняют приоритеты приказов, а не урон или доход.</p><div class="skill-points-line"><span data-t="availablePoints">Доступно очков</span><strong id="dialog-points">0</strong></div><div id="skill-grid" class="skill-grid"></div><button id="reset-skills" class="text-button" data-t="resetSkills">Сбросить распределение ↗</button><p class="small-note" data-t="skillsCaveat">Упрощённые диспетчеры стенда; при отсутствии подходящего юнита или цели навык не действует.</p></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script>window.STAND_PARAMS={"contract":"ace-10-alarm-spec-v1","status":"prototype_defaults_pending_review","simulationHz":30,"levels":{"min":1,"max":20},"difficulty":{"light":{"base":3,"ccDiv":5,"commanderDiv":7,"waves":2,"tierOffset":-1,"warningSec":25,"breakSec":20},"medium":{"base":4,"ccDiv":4,"commanderDiv":5,"waves":3,"tierOffset":0,"warningSec":20,"breakSec":15},"hard":{"base":5,"ccDiv":3,"commanderDiv":4,"waves":4,"tierOffset":0,"warningSec":15,"breakSec":10}},"tier":{"min":1,"max":5,"ccDiv":5,"commanderDiv":10},"siege":{"minWaves":5,"maxWaves":10,"growthDiv":2,"growthCap":3},"multipliersBP":{"base":10000,"hpTier":800,"hpCc":40,"hpCommander":20,"damageTier":400,"damageCc":20,"damageCommander":10},"waveLimits":{"plannedPerWave":18,"aliveFromEvent":24,"hardSecondGroupDelaySec":3},"roleRewardErg":{"marine":4,"buggy":7,"flamer":6,"tank":12,"arty":15},"tierRewardErgPerStep":1,"settlement":{"winErgPercent":100,"lossErgPercent":50,"winXpPerEarnedErg":1,"lossXp":0},"commanderXpNeed":{"base":60,"perLevel":40,"scale":8},"scheduler":{"firstSec":240,"intervalSec":300,"minRealEventCooldownSec":300},"theft":{"carrierMaxErg":8,"contactSec":2,"emptyEscapeAfterContactSec":90},"recovery":{"hpPerErg":6,"buildingHpPerSecond":26,"emergencyCcPercent":20,"emergencyWorkerCostErg":50,"lockedReserveErg":50},"score":{"preservationNumerator":1,"preservationDenominator":4}};window.STAND_BASELINE={"modes":[{"key":"C1-K1-normal-light-2","n":3,"wins":3,"meanSec":48.5,"minSec":48.5,"maxSec":48.5,"b":84,"potential":84,"spawned":21,"kills":21,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":289.23959827833573,"ergPerHour":289.23959827833573,"repair":0,"unitLossCost":150},{"key":"C1-K1-normal-medium-3","n":3,"wins":3,"meanSec":57.666666666666664,"minSec":57,"maxSec":58,"b":180,"potential":180,"spawned":45,"kills":45,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":603.9142590866729,"ergPerHour":603.9142590866729,"repair":0,"unitLossCost":300},{"key":"C1-K1-normal-hard-4","n":3,"wins":3,"meanSec":65.78888888888889,"minSec":64.36666666666666,"maxSec":66.5,"b":312,"potential":312,"spawned":78,"kills":78,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":1023.5412047021657,"ergPerHour":1023.5412047021657,"repair":0,"unitLossCost":150},{"key":"C1-K1-siege-medium-5","n":3,"wins":3,"meanSec":92.52222222222223,"minSec":91.5,"maxSec":93.03333333333333,"b":288,"potential":288,"spawned":72,"kills":72,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":880.4597050414698,"ergPerHour":880.4597050414698,"repair":0,"unitLossCost":350},{"key":"C1-K1-siege-medium-10","n":3,"wins":3,"meanSec":186.67777777777778,"minSec":185.43333333333334,"maxSec":187.3,"b":696,"potential":696,"spawned":174,"kills":174,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":1716.1252026209447,"ergPerHour":1716.1252026209447,"repair":0,"unitLossCost":1500},{"key":"C20-K10-normal-light-2","n":3,"wins":3,"meanSec":51.23333333333333,"minSec":51.233333333333334,"maxSec":51.233333333333334,"b":309,"potential":309,"spawned":45,"kills":45,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":1055.708455917244,"ergPerHour":1055.708455917244,"repair":0,"unitLossCost":300},{"key":"C20-K10-normal-medium-3","n":3,"wins":3,"meanSec":63.20000000000001,"minSec":62.46666666666667,"maxSec":63.56666666666667,"b":738,"potential":738,"spawned":90,"kills":90,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":2438.3259911894274,"ergPerHour":2438.3259911894274,"repair":0,"unitLossCost":1050},{"key":"C20-K10-normal-hard-4","n":3,"wins":2,"meanSec":65.81111111111112,"minSec":39.833333333333336,"maxSec":78.8,"b":1217,"potential":1530,"spawned":143,"kills":139,"escaped":1,"unresolved":3,"unspawned":31,"xpPerHour":3345.989126142818,"ergPerHour":3667.466512772226,"repair":416.61899999999997,"unitLossCost":450},{"key":"C20-K10-siege-medium-5","n":3,"wins":3,"meanSec":105.25555555555555,"minSec":103.56666666666666,"maxSec":106.1,"b":1239,"potential":1239,"spawned":147,"kills":147,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":3668.796095742056,"ergPerHour":3668.796095742056,"repair":0,"unitLossCost":2050},{"key":"C20-K10-siege-medium-10","n":3,"wins":0,"meanSec":185.79999999999998,"minSec":167.6,"maxSec":194.9,"b":2232,"potential":2784,"spawned":276,"kills":263,"escaped":3,"unresolved":10,"unspawned":48,"xpPerHour":0,"ergPerHour":2754.219843557019,"repair":0,"unitLossCost":5200},{"key":"C20-K20-normal-light-2","n":3,"wins":3,"meanSec":51.13333333333333,"minSec":51.13333333333333,"maxSec":51.13333333333333,"b":405,"potential":405,"spawned":51,"kills":51,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":0,"ergPerHour":1384.0896145813556,"repair":0,"unitLossCost":450},{"key":"C20-K20-normal-medium-3","n":3,"wins":3,"meanSec":65.83333333333333,"minSec":64.96666666666667,"maxSec":66.26666666666667,"b":1029,"potential":1029,"spawned":108,"kills":108,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":0,"ergPerHour":3375.3075170842826,"repair":0,"unitLossCost":1850},{"key":"C20-K20-normal-hard-4","n":3,"wins":0,"meanSec":41.199999999999996,"minSec":39.733333333333334,"maxSec":41.93333333333333,"b":820,"potential":2001,"spawned":93,"kills":85,"escaped":3,"unresolved":5,"unspawned":105,"xpPerHour":0,"ergPerHour":1438.4525205158266,"repair":291.268669,"unitLossCost":650},{"key":"C20-K20-siege-medium-5","n":3,"wins":3,"meanSec":111.51111111111112,"minSec":110.26666666666667,"maxSec":112.13333333333334,"b":1764,"potential":1764,"spawned":177,"kills":177,"escaped":0,"unresolved":0,"unspawned":0,"xpPerHour":0,"ergPerHour":5143.968031104871,"repair":19.472,"unitLossCost":3250},{"key":"C20-K20-siege-medium-10","n":3,"wins":0,"meanSec":148.92222222222222,"minSec":130.1,"maxSec":158.33333333333334,"b":2238,"potential":3900,"spawned":244,"kills":225,"escaped":3,"unresolved":16,"unspawned":140,"xpPerHour":0,"ergPerHour":2991.164022473579,"repair":38.944,"unitLossCost":5350}],"l2":[{"cc":1,"defense":"fortified","reached":true,"elapsedTicks":148645,"wins":14,"losses":0,"progress":40,"hires":29,"repairTicks":0,"wallet":70,"blocked":"","events":[{"id":"lab-1","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-2","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-3","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-4","result":"victory","b":60,"xp":60,"ticks":1709},{"id":"lab-5","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-6","result":"victory","b":60,"xp":60,"ticks":1707},{"id":"lab-7","result":"victory","b":60,"xp":60,"ticks":1740},{"id":"lab-8","result":"victory","b":60,"xp":60,"ticks":1755},{"id":"lab-9","result":"victory","b":60,"xp":60,"ticks":1755},{"id":"lab-10","result":"victory","b":60,"xp":60,"ticks":1752},{"id":"lab-11","result":"victory","b":60,"xp":60,"ticks":1764},{"id":"lab-12","result":"victory","b":60,"xp":60,"ticks":1779},{"id":"lab-13","result":"victory","b":60,"xp":60,"ticks":1800},{"id":"lab-14","result":"victory","b":60,"xp":60,"ticks":1844}]},{"cc":2,"defense":"fortified","reached":true,"elapsedTicks":148460,"wins":14,"losses":0,"progress":40,"hires":29,"repairTicks":0,"wallet":70,"blocked":"","events":[{"id":"lab-1","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-2","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-3","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-4","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-5","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-6","result":"victory","b":60,"xp":60,"ticks":1707},{"id":"lab-7","result":"victory","b":60,"xp":60,"ticks":1741},{"id":"lab-8","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-9","result":"victory","b":60,"xp":60,"ticks":1750},{"id":"lab-10","result":"victory","b":60,"xp":60,"ticks":1755},{"id":"lab-11","result":"victory","b":60,"xp":60,"ticks":1752},{"id":"lab-12","result":"victory","b":60,"xp":60,"ticks":1764},{"id":"lab-13","result":"victory","b":60,"xp":60,"ticks":1767},{"id":"lab-14","result":"victory","b":60,"xp":60,"ticks":1779}]},{"cc":3,"defense":"fortified","reached":true,"elapsedTicks":148384,"wins":14,"losses":0,"progress":40,"hires":29,"repairTicks":0,"wallet":70,"blocked":"","events":[{"id":"lab-1","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-2","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-3","result":"victory","b":60,"xp":60,"ticks":1696},{"id":"lab-4","result":"victory","b":60,"xp":60,"ticks":1707},{"id":"lab-5","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-6","result":"victory","b":60,"xp":60,"ticks":1710},{"id":"lab-7","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-8","result":"victory","b":60,"xp":60,"ticks":1726},{"id":"lab-9","result":"victory","b":60,"xp":60,"ticks":1742},{"id":"lab-10","result":"victory","b":60,"xp":60,"ticks":1741},{"id":"lab-11","result":"victory","b":60,"xp":60,"ticks":1750},{"id":"lab-12","result":"victory","b":60,"xp":60,"ticks":1752},{"id":"lab-13","result":"victory","b":60,"xp":60,"ticks":1764},{"id":"lab-14","result":"victory","b":60,"xp":60,"ticks":1786}]},{"cc":4,"defense":"fortified","reached":true,"elapsedTicks":148298,"wins":14,"losses":0,"progress":40,"hires":29,"repairTicks":0,"wallet":70,"blocked":"","events":[{"id":"lab-1","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-2","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-3","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-4","result":"victory","b":60,"xp":60,"ticks":1707},{"id":"lab-5","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-6","result":"victory","b":60,"xp":60,"ticks":1695},{"id":"lab-7","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-8","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-9","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-10","result":"victory","b":60,"xp":60,"ticks":1725},{"id":"lab-11","result":"victory","b":60,"xp":60,"ticks":1750},{"id":"lab-12","result":"victory","b":60,"xp":60,"ticks":1750},{"id":"lab-13","result":"victory","b":60,"xp":60,"ticks":1752},{"id":"lab-14","result":"victory","b":60,"xp":60,"ticks":1764}]},{"cc":5,"defense":"fortified","reached":true,"elapsedTicks":127128,"wins":12,"losses":0,"progress":64,"hires":29,"repairTicks":0,"wallet":94,"blocked":"","events":[{"id":"lab-1","result":"victory","b":72,"xp":72,"ticks":1722},{"id":"lab-2","result":"victory","b":72,"xp":72,"ticks":1722},{"id":"lab-3","result":"victory","b":72,"xp":72,"ticks":1722},{"id":"lab-4","result":"victory","b":72,"xp":72,"ticks":1722},{"id":"lab-5","result":"victory","b":72,"xp":72,"ticks":1725},{"id":"lab-6","result":"victory","b":72,"xp":72,"ticks":1725},{"id":"lab-7","result":"victory","b":72,"xp":72,"ticks":1752},{"id":"lab-8","result":"victory","b":72,"xp":72,"ticks":1767},{"id":"lab-9","result":"victory","b":72,"xp":72,"ticks":1767},{"id":"lab-10","result":"victory","b":72,"xp":72,"ticks":1767},{"id":"lab-11","result":"victory","b":72,"xp":72,"ticks":1767},{"id":"lab-12","result":"victory","b":72,"xp":72,"ticks":1770}]}],"l2risk":{"cc":1,"defense":"balanced","reached":false,"elapsedTicks":135951,"wins":9,"losses":3,"progress":540,"hires":24,"repairTicks":103,"wallet":0,"blocked":"CC_UNAVAILABLE","events":[{"id":"lab-1","result":"victory","b":60,"xp":60,"ticks":1785},{"id":"lab-2","result":"victory","b":60,"xp":60,"ticks":1764},{"id":"lab-3","result":"victory","b":60,"xp":60,"ticks":1800},{"id":"lab-4","result":"victory","b":60,"xp":60,"ticks":1785},{"id":"lab-5","result":"victory","b":60,"xp":60,"ticks":1794},{"id":"lab-6","result":"victory","b":60,"xp":60,"ticks":1764},{"id":"lab-7","result":"victory","b":60,"xp":60,"ticks":1842},{"id":"lab-8","result":"victory","b":60,"xp":60,"ticks":1970},{"id":"lab-9","result":"defeat","b":8,"xp":0,"ticks":765},{"id":"lab-10","result":"defeat","b":0,"xp":0,"ticks":761},{"id":"lab-11","result":"victory","b":60,"xp":60,"ticks":3694},{"id":"lab-12","result":"defeat","b":8,"xp":0,"ticks":924}]},"growth":{"reached":true,"cc":4,"level":2,"progress":40,"ticks":156022,"wins":14,"losses":0,"external":2600,"growthCost":1616,"growthSeconds":265,"hires":37,"wallet":654,"blocked":"","milestones":[{"cc":2,"commander":1,"progress":0,"ticks":8100,"wins":0,"losses":0,"cost":240},{"cc":3,"commander":1,"progress":60,"ticks":20445,"wins":1,"losses":0,"cost":650},{"cc":4,"commander":1,"progress":300,"ticks":66075,"wins":5,"losses":0,"cost":1329}]},"loss":{"B":80,"payout":40,"xp":0,"repair":0,"replacements":0,"cargo":0,"seconds":1610,"surrenders":5,"net":40,"grossPerHour":89.44099378881988,"netPerHour":89.44099378881988},"lossSamples":[{"seed":7,"report":{"id":"lab-1","kind":"normal","mode":"medium","cc":1,"level":1,"waves":3,"tier":1,"seed":7,"result":"defeat","reason":"surrender","elapsedTicks":660,"wallActiveMs":null,"bounty":16,"payout":8,"xp":0,"preservation":4,"score":20,"spawned":4,"kills":4,"escaped":0,"unresolved":0,"unspawned":11,"potential":60,"sectors":{"north":{"damageMicro":0,"kills":4,"attempts":1,"returned":0,"lost":0,"firstContact":657,"firstBreach":null},"east":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"south":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"west":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null}},"damageMicro":0,"lootStolen":0,"lootReturned":0,"lootLost":0,"repairEstimate":0,"repairSpent":0,"gatherIncome":24,"defendersLost":0,"defenderLossCost":0,"levelBefore":1,"levelAfter":1,"accelerated":false,"train":false}},{"seed":17,"report":{"id":"lab-1","kind":"normal","mode":"medium","cc":1,"level":1,"waves":3,"tier":1,"seed":17,"result":"defeat","reason":"surrender","elapsedTicks":660,"wallActiveMs":null,"bounty":16,"payout":8,"xp":0,"preservation":4,"score":20,"spawned":4,"kills":4,"escaped":0,"unresolved":0,"unspawned":11,"potential":60,"sectors":{"north":{"damageMicro":0,"kills":4,"attempts":1,"returned":0,"lost":0,"firstContact":657,"firstBreach":null},"east":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"south":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"west":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null}},"damageMicro":0,"lootStolen":0,"lootReturned":0,"lootLost":0,"repairEstimate":0,"repairSpent":0,"gatherIncome":24,"defendersLost":0,"defenderLossCost":0,"levelBefore":1,"levelAfter":1,"accelerated":false,"train":false}},{"seed":27,"report":{"id":"lab-1","kind":"normal","mode":"medium","cc":1,"level":1,"waves":3,"tier":1,"seed":27,"result":"defeat","reason":"surrender","elapsedTicks":660,"wallActiveMs":null,"bounty":16,"payout":8,"xp":0,"preservation":4,"score":20,"spawned":4,"kills":4,"escaped":0,"unresolved":0,"unspawned":11,"potential":60,"sectors":{"north":{"damageMicro":0,"kills":4,"attempts":1,"returned":0,"lost":0,"firstContact":657,"firstBreach":null},"east":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"south":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"west":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null}},"damageMicro":0,"lootStolen":0,"lootReturned":0,"lootLost":0,"repairEstimate":0,"repairSpent":0,"gatherIncome":24,"defendersLost":0,"defenderLossCost":0,"levelBefore":1,"levelAfter":1,"accelerated":false,"train":false}},{"seed":37,"report":{"id":"lab-1","kind":"normal","mode":"medium","cc":1,"level":1,"waves":3,"tier":1,"seed":37,"result":"defeat","reason":"surrender","elapsedTicks":660,"wallActiveMs":null,"bounty":16,"payout":8,"xp":0,"preservation":4,"score":20,"spawned":4,"kills":4,"escaped":0,"unresolved":0,"unspawned":11,"potential":60,"sectors":{"north":{"damageMicro":0,"kills":4,"attempts":1,"returned":0,"lost":0,"firstContact":657,"firstBreach":null},"east":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"south":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"west":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null}},"damageMicro":0,"lootStolen":0,"lootReturned":0,"lootLost":0,"repairEstimate":0,"repairSpent":0,"gatherIncome":24,"defendersLost":0,"defenderLossCost":0,"levelBefore":1,"levelAfter":1,"accelerated":false,"train":false}},{"seed":47,"report":{"id":"lab-1","kind":"normal","mode":"medium","cc":1,"level":1,"waves":3,"tier":1,"seed":47,"result":"defeat","reason":"surrender","elapsedTicks":660,"wallActiveMs":null,"bounty":16,"payout":8,"xp":0,"preservation":4,"score":20,"spawned":4,"kills":4,"escaped":0,"unresolved":0,"unspawned":11,"potential":60,"sectors":{"north":{"damageMicro":0,"kills":4,"attempts":1,"returned":0,"lost":0,"firstContact":657,"firstBreach":null},"east":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"south":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null},"west":{"damageMicro":0,"kills":0,"attempts":0,"returned":0,"lost":0,"firstContact":null,"firstBreach":null}},"damageMicro":0,"lootStolen":0,"lootReturned":0,"lootLost":0,"repairEstimate":0,"repairSpent":0,"gatherIncome":24,"defendersLost":0,"defenderLossCost":0,"levelBefore":1,"levelAfter":1,"accelerated":false,"train":false}}],"lossSequence":{"events":[{"result":"defeat","reason":"surrender","b":16,"payout":8,"xp":0,"damage":0,"lossCost":0,"lootLost":0,"ticks":660},{"result":"defeat","reason":"surrender","b":16,"payout":8,"xp":0,"damage":0,"lossCost":50,"lootLost":0,"ticks":672},{"result":"defeat","reason":"surrender","b":16,"payout":8,"xp":0,"damage":0,"lossCost":0,"lootLost":0,"ticks":660},{"result":"defeat","reason":"surrender","b":16,"payout":8,"xp":0,"damage":0,"lossCost":50,"lootLost":0,"ticks":672},{"result":"defeat","reason":"surrender","b":16,"payout":8,"xp":0,"damage":0,"lossCost":50,"lootLost":0,"ticks":672}],"hires":3,"repairTicks":0,"gathered":130,"walletStart":550,"walletEnd":570,"netExcludingGather":-110,"elapsedTicks":39336},"recovery":{"synthetic":true,"issued":564,"debtBefore":100,"complete":true,"identitiesMatch":true,"walletAfterFirst":0,"secondIssued":300,"secondComplete":true,"walletAfterSecond":0,"repairTicks":4248}};</script>
+  <script>/* ace#10 — standalone demonstrator. This is NOT the alien-cosmic engine.
+ * Pure deterministic engine shared by the offline UI and automated trials. */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CombatLab = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
+  'use strict';
+  const HZ = 30, U = 1000000, W = 28, H = 18, STEP = 1 / HZ;
+  const SIDES = ['north', 'east', 'south', 'west'];
+  const SKILLS = {focus:2,triage:2,antiarty:5,engineer:5,reserve:10,scout:10,counter:15,logistics:15};
+  const ROLE_ORDER = ['marine', 'buggy', 'flamer', 'tank', 'arty'];
+  const UNIT_COST = {marine:50,worker:50,medic:75,scout:60,buggy:100,flamer:75,tank:180,arty:220};
+  const ROLE = {
+    marine: {hp:52,dmg:7,range:134/32,cooldown:.85,speed:100/32,sight:7,bounty:4},
+    buggy: {hp:85,dmg:8,range:132/32,cooldown:.45,speed:158/32,sight:8,bounty:7},
+    flamer: {hp:75,dmg:14,range:74/32,cooldown:.9,speed:90/32,sight:7,bounty:6},
+    tank: {hp:260,dmg:36,range:200/32,cooldown:2.4,speed:62/32,sight:9,bounty:12},
+    arty: {hp:160,dmg:48,range:400/32,cooldown:3.4,speed:48/32,sight:10,bounty:15},
+    worker: {hp:60,dmg:4,range:26/32,cooldown:1,speed:92/32,sight:7},
+    medic: {hp:60,dmg:2,range:26/32,cooldown:1,speed:104/32,sight:7},
+    scout: {hp:50,dmg:0,range:0,cooldown:1,speed:185/32,sight:11}
+  };
+  const BUILDS = {
+    cc:{w:4,h:3,hp:1500}, depot:{w:2,h:2,hp:500}, barracks:{w:3,h:2,hp:1000},
+    turret:{w:1,h:1,hp:380,dmg:8,range:150/32,cooldown:.65}, wall:{w:1,h:1,hp:900}
+  };
+  const ENTRIES = {
+    north:{x:14,y:.35}, east:{x:W-.35,y:9}, south:{x:14,y:H-.35}, west:{x:.35,y:9}
+  };
+  const SECTOR_POS = {north:{x:14,y:4.5},east:{x:21.2,y:8.5},south:{x:14,y:13.5},west:{x:6.8,y:8.5}};
+  const DEFAULT_LAYOUT = [
+    ['cc','CC-1',12,7], ['depot','DEPOT-1',9,10], ['barracks','BARRACKS-1',16,10],
+    ['turret','T-N',13,4], ['turret','T-W',8,8], ['turret','T-E',19,8], ['turret','T-S',14,13],
+    ['wall','W-N1',11,6], ['wall','W-N2',12,6], ['wall','W-N3',15,6], ['wall','W-N4',16,6],
+    ['wall','W-W',10,8], ['wall','W-E',17,8]
+  ];
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+  const dist = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
+  const center = b => ({x:b.x+b.w/2,y:b.y+b.h/2});
+  const micros = x => Math.round(x*U);
+  const money = x => x/U;
+  const ceilDiv = (a,b) => Math.floor((a+b-1)/b);
+  const nowId = n => `lab-${n}`;
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  function rng(seed) { let x=(seed>>>0)||123456789; return () => { x ^= x<<13; x ^= x>>>17; x ^= x<<5; return (x>>>0)/4294967296; }; }
+  function sectorAt(x,y) { const dx=x-14,dy=y-8.5; return Math.abs(dx)>Math.abs(dy)*1.5?(dx<0?'west':'east'):(dy<0?'north':'south'); }
+  function need(level,params) { const xp=params?.commanderXpNeed||{base:60,perLevel:40,scale:8}; return level >= 20 ? 0 : xp.scale*(xp.base+xp.perLevel*level); }
+  function rank(level) { return level<5?'captain':level<10?'major':level<15?'colonel':'general'; }
+  function matrix(params,c,k) {
+    const d=params.difficulty;
+    const base = {};
+    for (const mode of ['light','medium','hard']) base[mode]=d[mode].base+Math.floor((c-1)/d[mode].ccDiv)+Math.floor((k-1)/d[mode].commanderDiv);
+    const t=params.tier;
+    base.tier=t.min+Math.min(t.max-t.min,Math.floor((c-1)/t.ccDiv)+Math.floor((k-1)/t.commanderDiv));
+    return base;
+  }
+  function makePlan(params, options) {
+    const {cc,level,mode,kind,seed} = options;
+    assert(Number.isInteger(cc)&&cc>=1&&cc<=20,'CC_RANGE');
+    assert(Number.isInteger(level)&&level>=1&&level<=20,'LEVEL_RANGE');
+    assert(params.difficulty[mode],'MODE_RANGE');
+    assert(['normal','siege','training'].includes(kind),'KIND_RANGE');
+    const cfg=params.difficulty[mode], Wv=kind==='siege'?Number(options.waves):cfg.waves;
+    assert(Number.isInteger(Wv)&&(kind!=='siege'||(Wv>=params.siege.minWaves&&Wv<=params.siege.maxWaves)),'WAVE_RANGE');
+    const base=matrix(params,cc,level);
+    const tier=Math.max(1,base.tier+cfg.tierOffset);
+    const bp=params.multipliersBP;
+    const hpBP=bp.base+bp.hpTier*(tier-1)+bp.hpCc*(cc-1)+bp.hpCommander*(level-1);
+    const dmgBP=bp.base+bp.damageTier*(tier-1)+bp.damageCc*(cc-1)+bp.damageCommander*(level-1);
+    const random=rng(seed); const first=Math.floor(random()*SIDES.length);
+    const second=(first+1+Math.floor(random()*3))%4;
+    const waves=[];
+    for(let wave=1;wave<=Wv;wave++) {
+      const add=kind==='siege'?Math.min(params.siege.growthCap,Math.floor((wave-1)/params.siege.growthDiv)):wave-1;
+      const n=base[mode]+add;
+      const buggy=tier>=2?Math.floor(n/(mode==='hard'?3:4)):0;
+      const flamer=tier>=3?Math.floor(n/(mode==='hard'?4:5)):0;
+      const tank=tier>=4&&((mode==='medium'&&wave>=3)||(mode==='hard'&&wave>=2))?1:0;
+      const arty=tier>=5&&((mode==='medium'||mode==='hard')&&wave>=3)?1:0;
+      const counts={marine:n-buggy-flamer-tank-arty,buggy,flamer,tank,arty};
+      const slots=[];
+      // Mix roles so the two hard groups contain both carriers and escorts.
+      const remaining={...counts};
+      while(slots.length<n) for(const role of ROLE_ORDER) if(remaining[role]>0){ slots.push(role);remaining[role]--; }
+      const groups=slots.map((role,i)=>({
+        role, ordinal:i, delay:mode==='hard'&&i>=Math.floor(n/2)?params.waveLimits.hardSecondGroupDelaySec*HZ:0,
+        sector:SIDES[mode==='light'?first:mode==='medium'?(wave%2?first:second):(i<Math.floor(n/2)?first:second)]
+      }));
+      waves.push({wave,n,tier,counts,slots:groups});
+    }
+    return {cc,level,mode,kind,seed:seed>>>0,waves:Wv,tier,hpBP,dmgBP,warningTicks:cfg.warningSec*HZ,breakTicks:cfg.breakSec*HZ,entries:[SIDES[first],SIDES[second]],plan:waves};
+  }
+  function emptySector() { return {damageMicro:0,kills:0,attempts:0,returned:0,lost:0,firstContact:null,firstBreach:null}; }
+  function makeUnit(id,type,x,y,cc=1) {
+    const cfg=ROLE[type];
+    const hp=micros(cfg.hp*(1+(cc-1)*.025));
+    return {id,type,x,y,hp,maxHp:hp,alive:true,order:{kind:'idle',owner:'none'},gatherHold:false,evacHold:false,raidHoldFull:false,carry:0,cooldown:0,autoSearch:0,targetId:null};
+  }
+  function guardCount(cc, defense='balanced') {
+    return defense==='light'?5+Math.floor((cc-1)/4):defense==='fortified'?25+Math.floor((cc-1)*1.4):15+Math.floor((cc-1)*1.1);
+  }
+  function makeProfile(cc=1,level=1,seed=1027,defense='balanced') {
+    assert(Number.isInteger(cc)&&cc>=1&&cc<=20&&Number.isInteger(level)&&level>=1&&level<=20,'PROFILE_RANGE');
+    assert(['light','balanced','fortified'].includes(defense),'DEFENSE_RANGE');
+    const buildings=DEFAULT_LAYOUT.map(([type,id,x,y])=>{
+      const a=BUILDS[type]; const maxHp=micros(Math.round(a.hp*(1+(cc-1)*.055)));
+      return {id,type,x,y,w:a.w,h:a.h,level:cc,hp:maxHp,maxHp,status:'live',cooldown:0,repairPaidHp:0};
+    });
+    const units=[];const n=guardCount(cc,defense);
+    const guardPositions=[{x:14,y:5.5},{x:18,y:8.2},{x:14,y:12},{x:10,y:8.2},{x:13,y:10.8},{x:15,y:10.8},{x:11,y:7},{x:17,y:7},{x:12,y:10},{x:16,y:10}];
+    for(let i=0;i<n;i++){const pos=guardPositions[i%guardPositions.length];units.push(makeUnit(`MAR-${i+1}`,'marine',pos.x+Math.floor(i/guardPositions.length)*.18,pos.y+(i%3-1)*.14,cc));}
+    units.push(makeUnit('WORK-1','worker',10.5,12.3,cc),makeUnit('WORK-2','worker',11.5,12.6,cc),makeUnit('MED-1','medic',15.5,11.4,cc),makeUnit('SCOUT-1','scout',17.5,12.8,cc));
+    const explored=Array(W*H).fill(0); const p={id:'stand-base',version:1,cc,seed,defense,seq:0,elapsedTicks:0,cooldownTicks:0,wallet:micros(550),restricted:0,debt:0,recovery:null,commander:{level,progress:0,unspent:level-1,skills:{}},buildings,units,explored,
+      deposits:[{id:'ordinary-1',type:'ordinary',x:20,y:13,amount:130,explored:false},{id:'trophy-1',type:'trophy',x:3,y:3,amount:75,explored:false}],
+      rally:{x:15,y:11},reports:[],settledIds:[],firstL2Ticks:null,selectedDifficulty:'medium',gatherIncome:0};
+    reveal(p,14,8.5,9); for(const u of units) reveal(p,u.x,u.y,Math.min(ROLE[u.type].sight,7));
+    return p;
+  }
+  function reveal(p,x,y,radius) {
+    for(let ty=Math.max(0,Math.floor(y-radius));ty<=Math.min(H-1,Math.ceil(y+radius));ty++) for(let tx=Math.max(0,Math.floor(x-radius));tx<=Math.min(W-1,Math.ceil(x+radius));tx++) if((tx+.5-x)**2+(ty+.5-y)**2<=radius*radius) p.explored[ty*W+tx]=1;
+    for(const d of p.deposits||[]) d.explored=!!p.explored[Math.floor(d.y)*W+Math.floor(d.x)];
+  }
+  function knownDeposit(profile, unit, paths=['ordinary','trophy','emergency']) {
+    if(!unit || !unit.alive || unit.evacHold || unit.raidHoldFull || unit.gatherHold) return null;
+    return profile.deposits.filter(d=>d.amount>0&&paths.includes(d.type)&&profile.explored[Math.floor(d.y)*W+Math.floor(d.x)]===1)
+      .sort((a,b)=>dist(unit,a)-dist(unit,b)||a.id.localeCompare(b.id))[0]||null;
+  }
+  function travel(o, target, speed, stop=0) {
+    const dx=target.x-o.x,dy=target.y-o.y,d=Math.hypot(dx,dy);
+    if(d<=stop+.001) return true;
+    const move=Math.min(speed*STEP,Math.max(0,d-stop));
+    o.x=clamp(o.x+(dx/d)*move,.1,W-.1);o.y=clamp(o.y+(dy/d)*move,.1,H-.1);
+    return d-move<=stop+.01;
+  }
+  function ccOf(p) { return p.buildings.find(b=>b.type==='cc'); }
+  function living(b) { return b && b.status==='live' && b.hp>0; }
+  function visibleToPlayer(p, enemy) {
+    return p.units.some(u=>u.alive&&dist(u,enemy)<=ROLE[u.type].sight)||p.buildings.some(b=>living(b)&&dist(center(b),enemy)<= (b.type==='cc'?9:b.type==='turret'?9:5));
+  }
+  function repairEstimate(p,params) { const ratio=params?.recovery?.hpPerErg||6;return p.buildings.reduce((sum,b)=>sum+ceilDiv(Math.max(0,b.maxHp-b.hp),ratio),0); }
+  function paidRepair(p,b,hpMicro,restrictedFirst=false,ratio=6) {
+    const missing=Math.max(0,b.maxHp-b.hp); let h=Math.min(hpMicro,missing);
+    if(!h) return {hp:0,spent:0};
+    const prev=b.repairPaidHp||0;
+    const fullCost=ceilDiv(prev+h,ratio)-ceilDiv(prev,ratio);
+    let available=p.wallet+(restrictedFirst?p.restricted:0);
+    if(fullCost>available){
+      // Find the largest positive micro-HP that can actually be paid for.
+      let low=0,high=h; while(low<high){const mid=Math.ceil((low+high)/2);if(ceilDiv(prev+mid,ratio)-ceilDiv(prev,ratio)<=available)low=mid;else high=mid-1;} h=low;
+    }
+    if(!h) return {hp:0,spent:0};
+    const spent=ceilDiv(prev+h,ratio)-ceilDiv(prev,ratio); let left=spent;
+    if(restrictedFirst){const take=Math.min(left,p.restricted);p.restricted-=take;left-=take;}
+    p.wallet-=left; b.repairPaidHp=prev+h;b.hp+=h;
+    if(b.hp>=b.maxHp){b.hp=b.maxHp;b.status='live';}
+    return {hp:h,spent};
+  }
+  function advanceCommander(commander,earned,params) {
+    // Private helper. The only call site is inside settle; no kill/repair/training XP.
+    if(commander.level>=20||earned<=0) return 0;
+    commander.progress+=earned;
+    while(commander.level<20&&commander.progress>=need(commander.level,params)){
+      commander.progress-=need(commander.level,params);commander.level++;commander.unspent++;
+    }
+    if(commander.level>=20) commander.progress=0;
+    return earned;
+  }
+  function settle(sim, result, reason) {
+    const e=sim.state.event;
+    if(!e) return null;
+    const p=sim.state.profile;
+    const previous=p.reports.find(r=>r.id===e.id);
+    if(previous||e.settled||p.settledIds.includes(e.id)){
+      const prior=previous||e.report||null;e.settled=true;sim.state.event=null;return prior;
+    }
+    assert(result==='victory'||result==='defeat','OUTCOME');
+    const bounty=e.bounty, payout=Math.floor(bounty*(result==='victory'?sim.params.settlement.winErgPercent:sim.params.settlement.lossErgPercent)/100);
+    const score=sim.params.score;
+    const preservation=e.startHP>0?Math.floor(bounty*score.preservationNumerator*Math.max(0,e.startHP-Math.min(e.damageMicro,e.startHP))/(score.preservationDenominator*e.startHP)):0;
+    const report={id:e.id,kind:e.plan.kind,mode:e.plan.mode,cc:e.plan.cc,level:e.plan.level,waves:e.plan.waves,tier:e.plan.tier,seed:e.plan.seed,result,reason,
+      elapsedTicks:e.elapsedTicks,wallActiveMs:e.wallActiveMs||null,bounty,payout,xp:0,preservation,score:bounty+preservation,spawned:e.spawned,kills:e.killedIds.length,escaped:e.escaped,unresolved:e.enemies.filter(x=>x.alive).length,
+      unspawned:e.plan.plan.reduce((n,w)=>n+w.n,0)-e.spawned,
+      potential:e.plan.plan.reduce((acc,w)=>acc+Object.entries(w.counts).reduce((n,[role,count])=>n+count*(sim.params.roleRewardErg[role]+(e.plan.tier-1)*sim.params.tierRewardErgPerStep),0),0),
+      sectors:clone(e.sectors),damageMicro:e.damageMicro,lootStolen:e.lootStolen,lootReturned:e.lootReturned,lootLost:e.lootLost,
+      repairEstimate:repairEstimate(p,sim.params),repairSpent:0,gatherIncome:e.gatherIncome,defendersLost:e.defendersLost,defenderLossCost:e.defenderLossCost,levelBefore:p.commander.level,levelAfter:p.commander.level,
+      accelerated:!!sim.state.accelerated,train:e.plan.kind==='training'};
+    e.settled=true;
+    if(e.plan.kind==='training') {
+      // The entire real profile and real timers are restored, not merely the wallet.
+      sim.state.profile=clone(e.trainingSnapshot);
+      e.report=report; sim.state.lastReport=report; sim.state.event=null; return report;
+    }
+    p.wallet+=micros(payout);
+    if(result==='victory') {
+      // XP_ENTRY: the sole call site of advanceCommander in the runtime.
+      report.xp=advanceCommander(p.commander,bounty*sim.params.settlement.winXpPerEarnedErg,sim.params);
+      if(report.levelBefore<2&&p.commander.level>=2&&p.firstL2Ticks===null)p.firstL2Ticks=p.elapsedTicks;
+    }
+    report.levelAfter=p.commander.level;
+    p.cooldownTicks=sim.params.scheduler.minRealEventCooldownSec*HZ; p.reports.push(report); if(p.reports.length>60)p.reports.shift();
+    p.settledIds.push(e.id); if(p.settledIds.length>100)p.settledIds.shift();
+    e.report=report; sim.state.lastReport=report;sim.state.event=null;
+    return report;
+  }
+  class Simulator {
+    constructor(params,options={}) {
+      assert(params.simulationHz===HZ,'UNSUPPORTED_HZ');
+      this.params=clone(params);
+      this.state={profile:makeProfile(options.cc||1,options.level||1,options.seed||1027,options.defense||'balanced'),event:null,lastReport:null,paused:false,accelerated:false,repairTarget:null,visualShots:[],message:''};
+    }
+    static fromSnapshot(params,snap){
+      assert(snap&&snap.version===1&&snap.state&&snap.state.profile,'INVALID_SNAPSHOT');
+      const sim=new Simulator(params); sim.state=clone(snap.state);
+      assert(sim.state.profile.version===1&&Array.isArray(sim.state.profile.explored)&&sim.state.profile.explored.length===W*H,'INVALID_PROFILE');
+      return sim;
+    }
+    snapshot(){ return {version:1,state:clone(this.state)}; }
+    profile(){ return this.state.profile; }
+    preview(opts={}) { const p=this.profile();return makePlan(this.params,{cc:p.cc,level:p.commander.level,mode:opts.mode||p.selectedDifficulty,kind:opts.kind||'normal',waves:opts.waves||5,seed:Number.isInteger(opts.seed)?opts.seed:p.seed+p.seq}); }
+    reset(cc,level,seed=1027,defense='balanced'){assert(!this.state.event,'EVENT_ACTIVE'); this.state.profile=makeProfile(cc,level,seed,defense);this.state.lastReport=null;this.state.repairTarget=null;}
+    start(opts={}) {
+      const p=this.profile();assert(!this.state.event,'EVENT_ACTIVE');
+      const kind=opts.kind||'normal',mode=opts.mode||p.selectedDifficulty;
+      assert(living(ccOf(p))||(kind==='training'&&p.recovery&&ccOf(p).hp>0),'CC_UNAVAILABLE');
+      assert(!p.recovery||kind==='training','RECOVERY_ACTIVE');
+      assert(kind==='training'||p.cooldownTicks<=0,'COOLDOWN');
+      const plan=this.preview({...opts,kind,mode});
+      const snap=kind==='training'?clone(p):null;
+      if(kind==='training'&&ccOf(p).status==='emergency')ccOf(p).status='live';
+      if(kind!=='training'){p.seq++;p.selectedDifficulty=mode;}
+      const id=kind==='training'?`training-${p.seq}-${plan.seed}`:nowId(p.seq);
+      const startBuildings=p.buildings.filter(living); const startHP=startBuildings.reduce((v,b)=>v+b.maxHp,0);
+      const e={id,plan,phase:'WARNING',timerTicks:plan.warningTicks,waveIndex:0,waveTicks:0,elapsedTicks:0,wallActiveMs:0,pending:[],enemies:[],spawned:0,escaped:0,killedIds:[],bounty:0,lootStolen:0,lootReturned:0,lootLost:0,damageMicro:0,startHP,startIds:startBuildings.map(b=>b.id),gatherIncome:0,defendersLost:0,defenderLossCost:0,sectors:Object.fromEntries(SIDES.map(s=>[s,emptySector()])),settled:false,trainingSnapshot:snap,rngState:plan.seed};
+      this.state.event=e;this.state.paused=false;this.state.lastReport=null;this.state.message='';return e;
+    }
+    surrender(){ const e=this.state.event;assert(e,'NO_EVENT');for(const enemy of e.enemies)if(enemy.alive&&enemy.cargo){e.lootLost+=enemy.cargo;e.sectors[enemy.sector].lost+=enemy.cargo;enemy.cargo=0;} return settle(this,'defeat','surrender'); }
+    skipCooldown(){const p=this.profile();assert(!this.state.event,'EVENT_ACTIVE');const n=p.cooldownTicks;p.elapsedTicks+=n;p.cooldownTicks=0;return n;}
+    setPaused(on){this.state.paused=!!on;}
+    buySkill(name){
+      const c=this.profile().commander;assert(SKILLS[name]!==undefined,'SKILL');assert(c.level>=SKILLS[name],'SKILL_LOCKED');
+      assert((c.skills[name]||0)<3,'SKILL_MAX');assert(c.unspent>0,'NO_SKILL_POINTS');
+      c.skills[name]=(c.skills[name]||0)+1;c.unspent--;return c.skills[name];
+    }
+    resetSkills(){assert(!this.state.event,'EVENT_ACTIVE');const c=this.profile().commander;c.skills={};c.unspent=c.level-1;}
+    moveSquad(sector) {
+      assert(SECTOR_POS[sector],'SECTOR');let count=0;
+      for(const u of this.profile().units) if(u.alive&&['marine','buggy','tank','flamer','arty'].includes(u.type)&&!u.evacHold&&!u.gatherHold){
+        u.order={kind:'move',owner:'player',sector,target:{...SECTOR_POS[sector],x:SECTOR_POS[sector].x+(count%3-.9)*.45,y:SECTOR_POS[sector].y+Math.floor(count/3)*.35}};count++;
+      } return count;
+    }
+    autoSquad(){let count=0;for(const u of this.profile().units)if(u.alive&&u.order.owner==='player'&&['move','hold'].includes(u.order.kind)&&!u.gatherHold){u.order={kind:'idle',owner:'none'};count++;}return count;}
+    assemble(){
+      const p=this.profile(),cc=ccOf(p);assert(living(cc),'CC_UNAVAILABLE');let n=0,unreachable=0;
+      const positions=[];
+      for(let x=cc.x;x<cc.x+cc.w;x++){positions.push({x:x+.5,y:cc.y-.5},{x:x+.5,y:cc.y+cc.h+.5});}
+      for(let y=cc.y;y<cc.y+cc.h;y++){positions.push({x:cc.x-.5,y:y+.5},{x:cc.x+cc.w+.5,y:y+.5});}
+      for(const u of p.units.slice().sort((a,b)=>a.id.localeCompare(b.id)))if(u.alive&&u.order.kind==='idle'&&!u.gatherHold&&!u.evacHold&&!u.raidHoldFull&&!u.carry){
+        if(n>=positions.length){unreachable++;continue;}
+        u.order={kind:'assemble',owner:'player',target:positions[n++]};
+      }return {assembled:n,unreachable};
+    }
+    releaseGather(){let n=0;for(const u of this.profile().units)if(u.gatherHold||u.order.kind==='assemble'){u.gatherHold=false;u.order={kind:'idle',owner:'none'};n++;}return n;}
+    scoutTrophy(){const u=this.profile().units.find(x=>x.alive&&x.type==='scout'&&!x.evacHold&&!x.gatherHold);if(!u)return false;u.order={kind:'scout',owner:'player',target:{x:4,y:4}};return true;}
+    selectRepair(id){const b=this.profile().buildings.find(x=>x.id===id);assert(b&&b.hp<b.maxHp,'NO_DAMAGE');this.state.repairTarget=id;return b;}
+    stopRepair(){this.state.repairTarget=null;}
+    reinforce(){
+      const p=this.profile();assert(!this.state.event,'EVENT_ACTIVE');assert(!p.recovery,'RECOVERY_ACTIVE');
+      const cap=guardCount(p.cc,p.defense),n=p.units.filter(u=>u.alive&&u.type==='marine').length;
+      assert(n<cap,'SQUAD_FULL');assert(p.wallet>=micros(50),'NO_FUNDS');p.wallet-=micros(50);
+      const id=`MAR-NEW-${p.seq}-${p.units.length}`;p.units.push(makeUnit(id,'marine',14,11,p.cc));return id;
+    }
+    activateRecovery(){
+      const p=this.profile();assert(!this.state.event,'EVENT_ACTIVE');assert(!p.recovery,'RECOVERY_ACTIVE');
+      const cc=ccOf(p);if(cc.status==='ruin'||cc.hp<=0){const target=Math.ceil(cc.maxHp*this.params.recovery.emergencyCcPercent/100),hp=Math.max(0,target-cc.hp);const debt=ceilDiv(hp,this.params.recovery.hpPerErg);cc.hp+=hp;cc.repairPaidHp+=hp;cc.status='emergency';p.debt+=debt;}
+      if(!p.units.some(u=>u.alive&&u.type==='worker')) {p.units.push(makeUnit(`WORK-EM-${p.seq}`,'worker',14,10.8,p.cc));p.debt+=micros(this.params.recovery.emergencyWorkerCostErg);}
+      const estimate=repairEstimate(p,this.params), reserve=micros(this.params.recovery.lockedReserveErg);
+      // Isolated lab recovery: existing deposits are not assumed reachable;
+      // the funding gap is limited to debt + repair + reserve, minus actual cash.
+      const gap=Math.max(0,estimate+p.debt+reserve-p.wallet-p.restricted);
+      const issued=ceilDiv(gap,U)*U;
+      p.recovery={id:`REC-${p.seq}`,issued,remaining:issued,spent:0};
+      return clone(p.recovery);
+    }
+    collectRecovery(){
+      const p=this.profile(),r=p.recovery;assert(r,'NO_RECOVERY');
+      p.restricted+=r.remaining;r.remaining=0;
+      let pay=Math.min(p.debt,p.restricted);p.debt-=pay;p.restricted-=pay;r.spent+=pay;
+      const fromWallet=Math.min(p.debt,p.wallet);p.debt-=fromWallet;p.wallet-=fromWallet;pay+=fromWallet;r.spent+=fromWallet;
+      this.finishRecoveryIfReady();return pay;
+    }
+    finishRecoveryIfReady(){
+      const p=this.profile();if(!p.recovery)return false;
+      if(p.debt===0&&p.buildings.every(b=>b.hp>=b.maxHp)){
+        // Unused restricted assistance is reclaimed, never becomes free money.
+        p.restricted=0;p.recovery=null;return true;
+      }return false;
+    }
+    tick(count=1){for(let j=0;j<count;j++) this._tick();}
+    _tick(){
+      const st=this.state,p=st.profile,e=st.event;if(st.paused)return;
+      if(!e||e.plan.kind!=='training')p.elapsedTicks++;
+      if(!e&&p.cooldownTicks>0&&!p.recovery)p.cooldownTicks--;
+      if((p.commander.skills.engineer||0)>0&&!st.repairTarget&&(!e||e.phase==='BREAK')&&!p.recovery){
+        const worker=p.units.find(u=>u.alive&&u.type==='worker'&&u.order.kind==='idle'&&!u.gatherHold&&!u.evacHold);
+        const damaged=p.buildings.filter(b=>b.hp<b.maxHp).sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp)||a.id.localeCompare(b.id)).slice(0,p.commander.skills.engineer)[0];
+        if(worker&&damaged&&p.wallet>0)worker.order={kind:'engineer',owner:'commander',buildingId:damaged.id,target:center(damaged)};
+      }
+      if(st.repairTarget){
+        const b=p.buildings.find(x=>x.id===st.repairTarget);
+        if(!b||b.hp>=b.maxHp)st.repairTarget=null;
+        else {
+          // Exact total 26 HP/s; accumulation stays independent of chunk size.
+          const n=(b.repairTickCarry||0)+this.params.recovery.buildingHpPerSecond*U;const h=Math.floor(n/HZ);b.repairTickCarry=n-h*HZ;
+          const r=paidRepair(p,b,h,!!p.recovery,this.params.recovery.hpPerErg);
+          if(st.lastReport&&!st.lastReport.train){
+            st.lastReport.repairSpent+=r.spent;
+            const stored=p.reports.find(x=>x.id===st.lastReport.id);
+            if(stored&&stored!==st.lastReport)stored.repairSpent+=r.spent;
+          }
+          if(p.recovery)p.recovery.spent+=r.spent;
+          if(!r.hp||b.hp>=b.maxHp)st.repairTarget=null;
+          this.finishRecoveryIfReady();
+        }
+      }
+      this._updateUnits(p,e);
+      if(!e)return;
+      e.elapsedTicks++;
+      if(e.phase==='WARNING'||e.phase==='BREAK'){
+        e.timerTicks--;if(e.timerTicks<=0)this._beginWave(e);return;
+      }
+      if(e.phase!=='WAVE')return;
+      e.waveTicks++;
+      const live=e.enemies.reduce((n,x)=>n+(x.alive?1:0),0);
+      let available=this.params.waveLimits.aliveFromEvent-live;
+      for(const slot of e.pending) if(!slot.spawned&&slot.delay<=e.waveTicks&&available>0){
+        slot.spawned=true;available--;const cfg=ROLE[slot.role],entry=ENTRIES[slot.sector],maxHp=micros(cfg.hp*e.plan.hpBP/10000);
+        const jitter=(slot.ordinal%5-2)*.14;
+        e.enemies.push({id:`${e.id}:${e.waveIndex+1}:${slot.ordinal}`,role:slot.role,sector:slot.sector,x:clamp(entry.x+jitter,.1,W-.1),y:clamp(entry.y+jitter,.1,H-.1),hp:maxHp,maxHp,alive:true,cooldown:0,cargo:0,contactTicks:0,emptySince:null,everTried:false,returning:false,damagedThisTick:false});e.spawned++;
+      }
+      if(e.elapsedTicks%15===0)this._command(p,e);
+      st.visualShots=[];
+      this._alliedFire(p,e);
+      this._enemyActions(p,e);
+      if(!living(ccOf(p))){
+        for(const a of e.enemies)if(a.alive&&a.cargo){e.lootLost+=a.cargo;e.sectors[a.sector].lost+=a.cargo;a.cargo=0;}
+        settle(this,'defeat','ccLost');return;
+      }
+      for(const a of e.enemies)if(a.alive&&a.returning&&dist(a,ENTRIES[a.sector])<.55){
+        a.alive=false;e.escaped++;
+        if(a.cargo>0){
+          // At the immediate loss, remaining live carriers also keep their in-transit cargo.
+          for(const carrier of e.enemies)if(carrier.cargo){e.lootLost+=carrier.cargo;e.sectors[carrier.sector].lost+=carrier.cargo;carrier.cargo=0;}
+          settle(this,'defeat','cargoLost');return;
+        }
+      }
+      if(e.pending.every(s=>s.spawned)&&!e.enemies.some(x=>x.alive)){
+        if(e.waveIndex+1>=e.plan.waves){settle(this,'victory','repelled');return;}
+        // Only units under automatic control regroup during the real inter-wave pause.
+        const positions=[{x:14,y:5.5},{x:18,y:8.2},{x:14,y:12},{x:10,y:8.2},{x:13,y:10.8},{x:15,y:10.8},{x:11,y:7},{x:17,y:7},{x:12,y:10},{x:16,y:10}];
+        let i=0,freed=0;for(const u of p.units)if(u.alive&&u.type==='marine'&&!u.gatherHold&&!u.evacHold&&u.order.owner!=='player'){
+          if(freed<(p.commander.skills.logistics||0)&&u.order.owner==='commander') {u.order={kind:'idle',owner:'none'};freed++;}
+          else u.order={kind:'regroup',owner:'commander',target:positions[i++%positions.length]};
+        }
+        e.phase='BREAK';e.timerTicks=e.plan.breakTicks;e.waveIndex++;
+      }
+    }
+    _beginWave(e){
+      e.phase='WAVE';e.waveTicks=0;e.pending=e.plan.plan[e.waveIndex].slots.map(s=>({...s,spawned:false}));
+    }
+    _command(p,e){
+      const enemies=e.enemies.filter(a=>a.alive&&visibleToPlayer(p,a));
+      const free=p.units.filter(u=>u.alive&&u.type==='marine'&&!u.gatherHold&&!u.evacHold&&u.order.owner!=='player'&&(u.order.kind==='idle'||u.order.owner==='commander'));
+      const skills=p.commander.skills,assigned=new Set();
+      const assign=(target,count)=>{
+        if(!target||!count)return;
+        for(const u of free.filter(x=>!assigned.has(x.id)).sort((a,b)=>dist(a,target)-dist(b,target)||a.id.localeCompare(b.id)).slice(0,count)){
+          u.order={kind:'defend',owner:'commander',targetId:target.id};assigned.add(u.id);
+        }
+      };
+      const artillery=enemies.filter(a=>a.role==='arty').sort((a,b)=>a.hp-b.hp||a.id.localeCompare(b.id))[0];
+      assign(artillery,skills.antiarty||0);
+      const priority=enemies.slice().sort((a,b)=>(b.cargo>0)-(a.cargo>0)||a.hp-b.hp||a.id.localeCompare(b.id))[0];
+      assign(priority,skills.focus||0);
+      const second=e.plan.entries[1];
+      const atSecond=enemies.filter(a=>a.sector===second).sort((a,b)=>a.hp-b.hp||a.id.localeCompare(b.id))[0];
+      assign(atSecond,skills.counter||0);
+      if(second&&!atSecond&&(skills.reserve||0)>0){
+        for(const u of free.filter(x=>!assigned.has(x.id)).slice(0,skills.reserve)){
+          u.order={kind:'regroup',owner:'commander',target:{...SECTOR_POS[second]}};assigned.add(u.id);
+        }
+      }
+      for(const u of free.filter(x=>!assigned.has(x.id))){
+        const closest=enemies.slice().sort((a,b)=>dist(u,a)-dist(u,b)||a.id.localeCompare(b.id))[0];
+        u.order=closest?{kind:'defend',owner:'commander',targetId:closest.id}:{kind:'idle',owner:'none'};
+      }
+      if((skills.scout||0)>0&&enemies.length){
+        for(const u of p.units.filter(x=>x.alive&&x.type==='scout'&&x.order.kind==='idle'&&!x.gatherHold&&!x.evacHold).slice(0,skills.scout))
+          u.order={kind:'scout',owner:'commander',target:{...SECTOR_POS[enemies[0].sector]}};
+      }
+    }
+    _updateUnits(p,e){
+      for(const u of p.units){if(!u.alive)continue;
+        if(u.type==='scout')reveal(p,u.x,u.y,4);
+        if(u.order.kind==='engineer'){
+          const b=p.buildings.find(x=>x.id===u.order.buildingId);
+          if(!b||b.hp>=b.maxHp)u.order={kind:'idle',owner:'none'};
+          else if(travel(u,u.order.target,ROLE.worker.speed,1.4)){if(!this.state.repairTarget){this.state.repairTarget=b.id;u.order={kind:'engineerWait',owner:'commander',buildingId:b.id};}}
+          continue;
+        }
+        if(u.order.kind==='engineerWait'){
+          const b=p.buildings.find(x=>x.id===u.order.buildingId);
+          if(!b||b.hp>=b.maxHp||this.state.repairTarget!==b.id)u.order={kind:'idle',owner:'none'};
+          continue;
+        }
+        if(u.type==='medic'&&!u.gatherHold&&!u.evacHold&&u.order.owner!=='player'){
+          const injured=p.units.filter(x=>x.alive&&x.id!==u.id&&x.hp<x.maxHp&&dist(u,x)<=7)
+            .sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp)||a.id.localeCompare(b.id));
+          const target=(p.commander.skills.triage||0)>0?injured.slice(0,p.commander.skills.triage)[0]:injured.find(x=>dist(u,x)<1.4);
+          if(target){
+            if((p.commander.skills.triage||0)>0&&dist(u,target)>1.1)travel(u,target,ROLE.medic.speed,1.1);
+            if(dist(u,target)<=1.4){const n=(u.healCarry||0)+7*U,amount=Math.floor(n/HZ);u.healCarry=n-amount*HZ;target.hp=Math.min(target.maxHp,target.hp+amount);}
+          }
+        }
+        if(u.order.kind==='assemble'){
+          if(travel(u,u.order.target,ROLE[u.type].speed,.1)){u.gatherHold=true;u.order={kind:'hold',owner:'player'};}continue;
+        }
+        if(u.order.kind==='move'||u.order.kind==='scout'||u.order.kind==='regroup'){
+          if(travel(u,u.order.target,ROLE[u.type].speed,.1)){u.order=(u.order.kind==='scout'||u.order.kind==='regroup')?{kind:'idle',owner:'none'}:{kind:'hold',owner:'player'};}continue;
+        }
+        if(u.type==='worker'&&!u.evacHold&&!u.raidHoldFull&&!u.gatherHold){
+          if(u.order.kind==='idle'){
+            u.autoSearch=(u.autoSearch||0)+1;if(u.autoSearch>=HZ){u.autoSearch=0;const d=knownDeposit(p,u);if(d)u.order={kind:'gather',owner:'auto',depositId:d.id,phase:'out',mineTicks:0};}
+          }
+          const o=u.order;if(o.kind==='gather'&&o.owner==='auto'){
+            const d=p.deposits.find(x=>x.id===o.depositId);
+            if(!d||!p.explored[Math.floor(d.y)*W+Math.floor(d.x)]||(o.phase==='out'&&d.amount<=0)){u.order={kind:'idle',owner:'none'};continue;}
+            if(o.phase==='out'){
+              if(travel(u,d,ROLE.worker.speed,.6)){o.mineTicks++;if(o.mineTicks>=HZ*2){u.carry=Math.min(4,d.amount);d.amount-=u.carry;o.phase='back';}}
+            } else {
+              const c=ccOf(p);if(c&&travel(u,center(c),ROLE.worker.speed,2.1)){
+                p.wallet+=micros(u.carry);p.gatherIncome+=u.carry;if(e)e.gatherIncome+=u.carry;u.carry=0;u.order={kind:'idle',owner:'none'};
+              }
+            }
+          }
+        }
+      }
+    }
+    _alliedFire(p,e){
+      for(const b of p.buildings){if(!living(b)||b.type!=='turret')continue;if(b.cooldown>0){b.cooldown--;continue;}
+        const target=e.enemies.filter(a=>a.alive&&dist(center(b),a)<=BUILDS.turret.range).sort((a,z)=>dist(center(b),a)-dist(center(b),z)||a.id.localeCompare(z.id))[0];
+        if(target){const dmg=BUILDS.turret.dmg*(1+.025*(p.cc-1))*(1+.01*(p.commander.level-1));this._hitEnemy(p,e,target,micros(dmg),center(b));b.cooldown=Math.round(BUILDS.turret.cooldown*HZ);}
+      }
+      for(const u of p.units){if(!u.alive||u.type!=='marine')continue;if(u.cooldown>0){u.cooldown--;continue;}
+        let target=null;
+        if(u.order.owner==='commander'&&u.order.targetId)target=e.enemies.find(a=>a.alive&&a.id===u.order.targetId&&visibleToPlayer(p,a));
+        if(!target && u.order.kind==='hold')target=e.enemies.filter(a=>a.alive&&dist(u,a)<=ROLE.marine.range).sort((a,b)=>dist(u,a)-dist(u,b)||a.id.localeCompare(b.id))[0];
+        if(!target)continue;
+        if(dist(u,target)>ROLE.marine.range*.90&&u.order.owner==='commander'){travel(u,target,ROLE.marine.speed,ROLE.marine.range*.90);}
+        if(dist(u,target)<=ROLE.marine.range){this._hitEnemy(p,e,target,micros(ROLE.marine.dmg*(1+.01*(p.commander.level-1))),u);u.cooldown=Math.round(ROLE.marine.cooldown*HZ);}
+      }
+    }
+    _hitEnemy(p,e,a,damage,source){
+      if(!a.alive)return;a.hp=Math.max(0,a.hp-damage);a.damagedThisTick=true;a.contactTicks=0;
+      this.state.visualShots.push({x1:source.x,y1:source.y,x2:a.x,y2:a.y,enemy:false});
+      if(a.hp<=0){a.alive=false;if(!e.killedIds.includes(a.id)){e.killedIds.push(a.id);e.bounty+=this.params.roleRewardErg[a.role]+(e.plan.tier-1)*this.params.tierRewardErgPerStep;e.sectors[a.sector].kills++;}
+        if(a.cargo){p.wallet+=micros(a.cargo);e.lootReturned+=a.cargo;e.sectors[a.sector].returned+=a.cargo;a.cargo=0;}
+      }
+    }
+    _enemyActions(p,e){
+      for(const a of e.enemies){if(!a.alive)continue;
+        if(a.cooldown>0)a.cooldown--;if(a.returning){travel(a,ENTRIES[a.sector],ROLE[a.role].speed,.1);continue;}
+        const cfg=ROLE[a.role],carryingRole=a.role==='marine'||a.role==='buggy';
+        const validBuildings=p.buildings.filter(living).filter(b=>dist(a,center(b))<=cfg.sight);
+        const validUnits=p.units.filter(u=>u.alive&&dist(a,u)<=cfg.sight);
+        const resource=validBuildings.filter(b=>b.type==='cc'||b.type==='depot').sort((x,y)=>dist(a,center(x))-dist(a,center(y))||x.id.localeCompare(y.id))[0];
+        const defenders=validUnits.filter(u=>u.type==='marine').sort((x,y)=>dist(a,x)-dist(a,y)||x.id.localeCompare(y.id));
+        let target=null;
+        if(!carryingRole){
+          const defensive=validBuildings.filter(b=>b.type==='turret'||b.type==='wall').sort((x,y)=>dist(a,center(x))-dist(a,center(y))||x.id.localeCompare(y.id));
+          target=e.plan.mode==='hard'?defensive[0]||defenders[0]||resource:defenders[0]||defensive[0]||resource;
+        }
+        if(carryingRole&&resource){
+          const c=center(resource),close=dist(a,c)<=Math.max(resource.w,resource.h)/2+.65;
+          if(close){
+            const s=e.sectors[a.sector];if(s.firstContact===null)s.firstContact=e.elapsedTicks;
+            if(!a.everTried){a.everTried=true;e.sectors[a.sector].attempts++;}
+            if(!a.damagedThisTick)a.contactTicks++;else a.contactTicks=0;
+            if(a.contactTicks>=this.params.theft.contactSec*HZ&&a.cargo===0){
+              const take=Math.min(this.params.theft.carrierMaxErg,Math.floor(p.wallet/U));
+              if(take>0){p.wallet-=micros(take);a.cargo=take;a.returning=true;e.lootStolen+=take;s.firstBreach=s.firstBreach===null?e.elapsedTicks:s.firstBreach;}
+              else if(a.emptySince===null)a.emptySince=e.elapsedTicks;
+              a.contactTicks=0;
+            }
+            if(a.emptySince!==null&&e.elapsedTicks-a.emptySince>=this.params.theft.emptyEscapeAfterContactSec*HZ)a.returning=true;
+          } else travel(a,c,cfg.speed,Math.max(resource.w,resource.h)/2+.6);
+          target=defenders.find(u=>dist(a,u)<=cfg.range)||(!close?null:resource);
+        } else if(!target){ travel(a,{x:14,y:8.5},cfg.speed,.1); }
+        if(target){
+          const pos=target.type&&BUILDS[target.type]?center(target):target;
+          if(!carryingRole&&dist(a,pos)>cfg.range*.9)travel(a,pos,cfg.speed,cfg.range*.9);
+          if(a.cooldown<=0&&dist(a,pos)<=cfg.range+((target.w||0)*.25)){
+            const damage=micros(cfg.dmg*e.plan.dmgBP/10000);
+            if(target.w){const actual=Math.min(target.hp,damage);target.hp-=actual;if(e.startIds.includes(target.id)){e.damageMicro+=actual;e.sectors[a.sector].damageMicro+=actual;}if(target.hp<=0){target.hp=0;target.status='ruin';}}
+            else {target.hp-=damage;if(target.hp<=0){target.hp=0;target.alive=false;e.defendersLost++;e.defenderLossCost+=UNIT_COST[target.type]||0;}}
+            a.cooldown=Math.round(cfg.cooldown*HZ);this.state.visualShots.push({x1:a.x,y1:a.y,x2:pos.x,y2:pos.y,enemy:true});
+          }
+        }
+        a.damagedThisTick=false;
+      }
+    }
+  }
+  return {HZ,U,W,H,ROLE,BUILDS,SIDES,SKILLS,ENTRIES,SECTOR_POS,makePlan,matrix,need,rank,guardCount,makeProfile,knownDeposit,repairEstimate,Simulator,money,clone};
+});
+</script>
+  <script>/* Reproducible experiments use the exact same Simulator as the visible stand.
+ * Their assumptions are deliberately explicit; these are not player playtests. */
+(function(root,factory){
+  const core=typeof module==='object'&&module.exports?require('./engine.js'):root.CombatLab;
+  const api=factory(core);if(typeof module==='object'&&module.exports)module.exports=api;else root.CombatAnalysis=api;
+})(typeof globalThis==='object'?globalThis:this,function(C){
+  'use strict';
+  const S=C.HZ, U=C.U;
+  function untilEnd(sim,limitSec=1200,decision=null){
+    let ticks=0;
+    while(sim.state.event&&ticks<limitSec*S){
+      if(decision&&decision(sim)){sim.surrender();break;}
+      sim.tick();ticks++;
+    }
+    return sim.state.lastReport||null;
+  }
+  function service(sim){
+    let hires=0;while(true){try{sim.reinforce();hires++;}catch(_){break;}}
+    let ticks=0;
+    for(const b of sim.profile().buildings.filter(x=>x.hp<x.maxHp)){
+      sim.selectRepair(b.id);let n=0;while(sim.state.repairTarget&&n<18000){sim.tick();n++;}ticks+=n;
+    }
+    return {hires,repairTicks:ticks};
+  }
+  function modeExperiment(params,config){
+    const sim=new C.Simulator(params,{cc:config.cc,level:config.level,defense:'fortified',seed:config.seed});
+    sim.start({mode:config.mode,kind:config.kind,waves:config.waves,seed:config.seed});
+    const r=untilEnd(sim);return {config,report:r};
+  }
+  function l2Experiment(params,cc,defense='fortified'){
+    const sim=new C.Simulator(params,{cc,level:1,defense});
+    // 240 s first timer is accounted for explicitly; background economy is not advanced by skips.
+    sim.profile().elapsedTicks+=params.scheduler.firstSec*S;
+    let wins=0,losses=0,hires=0,repairTicks=0,blocked='';const events=[];
+    for(let attempt=0;attempt<30&&sim.profile().commander.level<2;attempt++){
+      if(sim.profile().cooldownTicks)sim.skipCooldown();
+      const maintenance=service(sim);hires+=maintenance.hires;repairTicks+=maintenance.repairTicks;
+      try{sim.start({mode:'medium',kind:'normal',seed:100+attempt});}catch(e){blocked=e.message;break;}
+      const r=untilEnd(sim);if(!r){blocked='EVENT_TIMEOUT';break;}
+      events.push({id:r.id,result:r.result,b:r.bounty,xp:r.xp,ticks:r.elapsedTicks});
+      if(r.result==='victory')wins++;else losses++;
+    }
+    const p=sim.profile();
+    return {cc,defense,reached:p.commander.level>=2,elapsedTicks:p.firstL2Ticks??p.elapsedTicks,wins,losses,progress:p.commander.progress,hires,repairTicks,wallet:p.wallet/U,blocked,events};
+  }
+  function costAndTime(type,to){
+    const conf=type==='cc'?{cost:240,growth:1.5,time:30,tg:1.13}:type==='wall'?{cost:25,growth:1.5,time:12,tg:1.08}:{cost:60,growth:1.38,time:30,tg:1.10};
+    const raw=Math.round(conf.cost*Math.pow(conf.growth,to-2));
+    const step=raw<100?1:Math.pow(10,String(raw).length-3);
+    return {cost:Math.max(step,Math.round(raw/step)*step),seconds:Math.max(10,Math.round(conf.time*Math.pow(conf.tg,to-2)/5)*5)};
+  }
+  function growExperiment(params){
+    const sim=new C.Simulator(params,{cc:1,level:1,defense:'fortified'}),p=sim.profile();p.elapsedTicks+=params.scheduler.firstSec*S;
+    let wins=0,losses=0,external=0,growthCost=0,growthSeconds=0,hires=0,blocked='';const milestones=[];
+    const upgrade=b=>{
+      const to=b.level+1,ct=costAndTime(b.type,to);
+      if(p.wallet<ct.cost*U||b.status!=='live')return false;
+      p.wallet-=ct.cost*U;growthCost+=ct.cost;growthSeconds+=ct.seconds;sim.tick(ct.seconds*S);
+      const old=b.maxHp;b.level=to;b.maxHp=Math.round(C.BUILDS[b.type].hp*(1+(to-1)*.055)*U);b.hp=Math.min(b.maxHp,b.hp+b.maxHp-old);
+      if(b.type==='cc'){p.cc=to;milestones.push({cc:to,commander:p.commander.level,progress:p.commander.progress,ticks:p.elapsedTicks,wins,losses,cost:growthCost});}
+      return true;
+    };
+    for(let attempt=0;attempt<20&&p.commander.level<2;attempt++){
+      if(p.cooldownTicks){sim.skipCooldown();p.wallet+=200*U;external+=200;}
+      // Representative home economy, not alarm loot: +200 erg per 300-s interval.
+      // CC gate counts the CC itself; cheap walls are upgraded first.
+      if(p.cc<5){
+        const target=p.cc+1;let guard=0;
+        while(p.buildings.filter(b=>b.status==='live'&&b.level>=target-1).length<target&&guard++<30){
+          const candidate=p.buildings.filter(b=>b.type==='wall'&&b.status==='live'&&b.level<target-1).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id))[0];
+          if(!candidate||!upgrade(candidate))break;
+        }
+        if(p.buildings.filter(b=>b.status==='live'&&b.level>=target-1).length>=target)upgrade(p.buildings.find(b=>b.type==='cc'));
+      }
+      const m=service(sim);hires+=m.hires;
+      try{sim.start({mode:'medium',kind:'normal',seed:350+attempt});}catch(e){blocked=e.message;break;}
+      const r=untilEnd(sim);if(!r){blocked='EVENT_TIMEOUT';break;}
+      if(r.result==='victory')wins++;else losses++;
+    }
+    return {reached:p.commander.level>=2,cc:p.cc,level:p.commander.level,progress:p.commander.progress,ticks:p.firstL2Ticks??p.elapsedTicks,wins,losses,external,growthCost,growthSeconds,hires,wallet:p.wallet/U,blocked,milestones};
+  }
+  function lossExperiment(params,seed){
+    const sim=new C.Simulator(params,{cc:1,level:1,defense:'fortified',seed});
+    sim.start({mode:'medium',kind:'normal',seed});
+    const r=untilEnd(sim,1200,s=>s.state.event.phase==='BREAK'&&s.state.event.waveIndex>=1);
+    return {seed,report:r};
+  }
+  function lossSequence(params){
+    const sim=new C.Simulator(params,{cc:1,level:1,defense:'fortified'}),p=sim.profile();
+    const startWallet=p.wallet/U,startMined=p.gatherIncome;let hires=0,repairTicks=0;const events=[];
+    for(const seed of [7,17,27,37,47]){
+      if(p.cooldownTicks)sim.skipCooldown();const m=service(sim);hires+=m.hires;repairTicks+=m.repairTicks;
+      try{sim.start({mode:'medium',kind:'normal',seed});}catch(e){return {events,error:e.message};}
+      const r=untilEnd(sim,1200,s=>s.state.event.phase==='BREAK'&&s.state.event.waveIndex>=1);
+      if(!r)break;events.push({result:r.result,reason:r.reason,b:r.bounty,payout:r.payout,xp:r.xp,damage:r.repairEstimate/U,lossCost:r.defenderLossCost,lootLost:r.lootLost,ticks:r.elapsedTicks});
+    }
+    const m=service(sim);hires+=m.hires;repairTicks+=m.repairTicks;
+    const gathered=p.gatherIncome-startMined;
+    return {events,hires,repairTicks,gathered,walletStart:startWallet,walletEnd:p.wallet/U,netExcludingGather:p.wallet/U-startWallet-gathered,elapsedTicks:p.elapsedTicks};
+  }
+  function recoveryExperiment(params){
+    const sim=new C.Simulator(params,{cc:1,level:1});const p=sim.profile(),cc=p.buildings.find(b=>b.type==='cc');
+    p.wallet=0;for(const d of p.deposits)d.amount=0;for(const u of p.units)if(u.type==='worker')u.alive=false;
+    // An explicit synthetic zero state, not an automatically observed player battle.
+    cc.hp=0;cc.status='ruin';const wall=p.buildings.find(b=>b.type==='wall'),turret=p.buildings.find(b=>b.type==='turret');wall.hp=0;wall.status='ruin';turret.hp=0;turret.status='ruin';
+    const before=[cc,wall,turret].map(b=>({id:b.id,level:b.level}));
+    const first=sim.activateRecovery();const debtBefore=p.debt/U;sim.collectRecovery();
+    let ticks=0;for(const b of p.buildings.filter(x=>x.hp<x.maxHp)){sim.selectRepair(b.id);while(sim.state.repairTarget&&ticks<1000000){sim.tick();ticks++;}}
+    const complete=!p.recovery&&p.debt===0&&p.restricted===0&&[cc,wall,turret].every(b=>b.status==='live'&&b.hp===b.maxHp);
+    const after=[cc,wall,turret].map(b=>({id:b.id,level:b.level}));
+    // A second real obligation is created explicitly; check no recovery cash leaks to wallet.
+    const walletAfterFirst=p.wallet/U;cc.hp=0;cc.status='ruin';p.wallet=0;
+    const second=sim.activateRecovery();sim.collectRecovery();sim.selectRepair(cc.id);while(sim.state.repairTarget&&ticks<1000000){sim.tick();ticks++;}
+    return {synthetic:true,issued:first.issued/U,debtBefore,complete,identitiesMatch:JSON.stringify(before)===JSON.stringify(after),walletAfterFirst,secondIssued:second.issued/U,secondComplete:!p.recovery&&p.restricted===0&&p.debt===0,walletAfterSecond:p.wallet/U,repairTicks:ticks};
+  }
+  function jobs(params){
+    const list=[];
+    for(const [cc,level] of [[1,1],[20,10],[20,20]])for(const [kind,mode,waves] of [['normal','light',2],['normal','medium',3],['normal','hard',4],['siege','medium',5],['siege','medium',10]])for(const seed of [7,17,27]){
+      const config={cc,level,kind,mode,waves,seed};list.push({key:'mode',label:`C${cc}/K${level} ${kind}/${mode} ${waves} seed ${seed}`,run:()=>modeExperiment(params,config)});
+    }
+    for(let cc=1;cc<=5;cc++)list.push({key:'l2',label:`C${cc} → L2`,run:()=>l2Experiment(params,cc)});
+    list.push({key:'l2risk',label:'C1 рискованная оборона',run:()=>l2Experiment(params,1,'balanced')});
+    list.push({key:'growth',label:'Рост КЦ 1–5',run:()=>growExperiment(params)});
+    for(const seed of [7,17,27,37,47])list.push({key:'loss',label:`D2 сдача seed ${seed}`,run:()=>lossExperiment(params,seed)});
+    list.push({key:'lossSequence',label:'D2 пять поражений подряд',run:()=>lossSequence(params)});
+    list.push({key:'recovery',label:'D1 повторный ноль',run:()=>recoveryExperiment(params)});
+    return list;
+  }
+  function aggregate(raw,params){
+    const cooldown=params?.scheduler?.minRealEventCooldownSec??300;
+    const groups={};
+    for(const x of raw.mode){const r=x.report,c=x.config,key=`C${c.cc}-K${c.level}-${c.kind}-${c.mode}-${c.waves}`;(groups[key]??=[]).push(r);}
+    const modes=Object.entries(groups).map(([key,rr])=>{
+      const valid=rr.filter(Boolean),wins=valid.filter(r=>r.result==='victory');
+      const sum=(fn)=>valid.reduce((a,b)=>a+fn(b),0);
+      const duration=sum(r=>r.elapsedTicks/S),session=duration+valid.length*cooldown;
+      const xp=sum(r=>r.xp),payout=sum(r=>r.payout),b=sum(r=>r.bounty),potential=sum(r=>r.potential);
+      return {key,n:valid.length,wins:wins.length,meanSec:duration/Math.max(1,valid.length),minSec:Math.min(...valid.map(r=>r.elapsedTicks/S)),maxSec:Math.max(...valid.map(r=>r.elapsedTicks/S)),b,potential,spawned:sum(r=>r.spawned),kills:sum(r=>r.kills),escaped:sum(r=>r.escaped),unresolved:sum(r=>r.unresolved),unspawned:sum(r=>r.unspawned),xpPerHour:session?xp*3600/session:0,ergPerHour:session?payout*3600/session:0,repair:sum(r=>r.repairEstimate/U),unitLossCost:sum(r=>r.defenderLossCost)};
+    });
+    const losses=raw.loss.map(x=>x.report).filter(Boolean);
+    const lossTotals=losses.reduce((a,r)=>{a.B+=r.bounty;a.payout+=r.payout;a.xp+=r.xp;a.repair+=r.repairEstimate/U;a.replacements+=r.defenderLossCost;a.cargo+=r.lootLost;a.seconds+=r.elapsedTicks/S+cooldown;a.surrenders+=r.reason==='surrender';return a;},{B:0,payout:0,xp:0,repair:0,replacements:0,cargo:0,seconds:0,surrenders:0});
+    lossTotals.net=lossTotals.payout-lossTotals.repair-lossTotals.replacements-lossTotals.cargo;
+    lossTotals.grossPerHour=lossTotals.seconds?lossTotals.payout*3600/lossTotals.seconds:0;
+    lossTotals.netPerHour=lossTotals.seconds?lossTotals.net*3600/lossTotals.seconds:0;
+    return {modes,l2:raw.l2,l2risk:raw.l2risk[0],growth:raw.growth[0],loss:lossTotals,lossSamples:raw.loss,lossSequence:raw.lossSequence[0],recovery:raw.recovery[0]};
+  }
+  function empty(){return {mode:[],l2:[],l2risk:[],growth:[],loss:[],lossSequence:[],recovery:[]};}
+  function runAll(params){const raw=empty();for(const job of jobs(params))raw[job.key].push(job.run());return {assumptions:'FORTIFIED preset; 3 seeds/mode; 300s cooldown; first L2 timer 240s; simulated 30 Hz, not user playtest',raw,summary:aggregate(raw,params)};}
+  return {jobs,empty,aggregate,runAll,untilEnd,l2Experiment,growExperiment,recoveryExperiment};
+});
+</script>
+  <script>(function(){
+  'use strict';
+  const C=window.CombatLab,A=window.CombatAnalysis,params=window.STAND_PARAMS;
+  const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+  const I18N={
+    ru:{repairPaid:'Фактически оплачено за ремонт: {v} эрг.',tacticalView:'ТАКТИЧЕСКАЯ КАРТА',notSpawned:'не вышли',brandCaption:'СТЕНД БОЕВОЙ ТРЕВОГИ',offline:'АВТОНОМНЫЙ РЕЖИМ',kicker:'ОПЕРАЦИОННЫЙ ПОЛИГОН',title:'Боевая тревога <span>v2</span>',subtitle:'Настройте оборону. Проверьте, что произойдёт на поле боя.',modelNote:'Модель для проверки решений,<br>не игровой движок и не финальный арт.',scenario:'СЦЕНАРИЙ',setup:'Настройка',eventType:'ТИП СОБЫТИЯ',alarm:'Тревога',siege:'Осада',training:'Учение',difficulty:'СЛОЖНОСТЬ',light:'Лёгкая',medium:'Средняя',hard:'Тяжёлая',lightDesc:'Один подход · 2 волны',mediumDesc:'Два подхода · 3 волны',hardDesc:'Две группы · 4 волны',waveCount:'ЧИСЛО ВОЛН',labProfile:'ПРОФИЛЬ ПОЛИГОНА',ccLevel:'УРОВЕНЬ КЦ',commanderLevel:'КОМАНДИР',garrison:'НАЧАЛЬНЫЙ ГАРНИЗОН',garrisonLight:'Малый',garrisonBalanced:'Подготовленный',garrisonFortified:'Укреплённый',apply:'Применить новый профиль ↗',applyHint:'Изменения сработают после применения профиля.',attackPlan:'ПЛАН АТАКИ',start:'Запустить тревогу',trainingNote:'Учение проходит на копии: постоянных наград и ущерба нет.',setupFoot:'Смена профиля сбрасывает только этот локальный стенд. Начальные 240 с здесь пропущены.',battlefield:'ПОЛЕ БОЯ',fieldTitle:'Карта обороны <span class="board-title-dot">●</span>',schematic:'СХЕМА · НЕ ИГРОВОЙ АРТ',eventTime:'ВРЕМЯ СОБЫТИЯ',state:'СОСТОЯНИЕ',ready:'Ожидание запуска',commands:'ПРИКАЗЫ',controlSquad:'Управление отрядом',selectDirection:'Выберите направление',northShort:'СЕВЕР',westShort:'ЗАПАД',eastShort:'ВОСТОК',southShort:'ЮГ',auto:'Авто',assemble:'◎ СБОР',release:'Отпустить сбор',scout:'Разведать СЗ ↗',surrender:'Сдаться',commandNote:'Ручной приказ важнее автоматики. СБОР не меняет rally.',commander:'КОМАНДИР',personnel:'Личный состав',commanderRank:'ЗВАНИЕ / УРОВЕНЬ',candidate:'Кандидатная кривая ×8',experience:'ОПЫТ КОМАНДИРА',skills:'Навыки командира',telemetry:'ТЕЛЕМЕТРИЯ',baseStatus:'Состояние базы',balance:'Баланс',guard:'Бойцы',damage:'Смета ремонта',cooldown:'До тревоги',skipWait:'Промотать ожидание',reinforce:'Пополнить отряд',selected:'ВЫБРАННЫЙ ОБЪЕКТ',selectBuilding:'Выберите постройку',selectHelp:'Нажмите на строение на карте, чтобы увидеть состояние и стоимость ремонта.',repair:'Ремонтировать',repairAll:'Ремонтировать всё ↗',recoveryTest:'АВАРИЙНОЕ ВОССТАНОВЛЕНИЕ',recoveryHint:'Руины сохраняют свой id и уровень.',activateRecovery:'Начать восстановление',collectRecovery:'Собрать аварийный ресурс',zeroFixture:'Создать нулевой сценарий ↗',review:'ПОСЛЕ БОЯ',insights:'Разбор и измерения',report:'Разбор',metrics:'6 измерений',about:'О модели',noReport:'Данные появятся после события',noReportText:'Запустите тревогу и посмотрите, какие сектора выдержали удар.',benchKicker:'ДЕТЕРМИНИРОВАННЫЕ ПРОГОНЫ · 30 ГЦ',benchCaveat:'Это расчёты модели стенда, не плейтест владельца и не измерение игры.',runAnalysis:'Повторить измерения ↗',footer:'Самодостаточный HTML · никаких запросов в сеть · данные только этого стенда',skillsIntro:'По одному очку на каждом уровне со второго. Навыки меняют приоритеты приказов, а не урон или доход.',availablePoints:'Доступно очков',resetSkills:'Сбросить распределение ↗',skillsCaveat:'Упрощённые диспетчеры стенда; при отсутствии подходящего юнита или цели навык не действует.',rankCaptain:'Капитан',rankMajor:'Майор',rankColonel:'Полковник',rankGeneral:'Генерал',north:'Север',east:'Восток',south:'Юг',west:'Запад',phaseReady:'ГОТОВНОСТЬ',phaseWarning:'ПРЕДУПРЕЖДЕНИЕ',phaseBreak:'ПЕРЕДЫШКА',phaseWave:'БОЙ',phasePaused:'ПАУЗА',phaseFinished:'ИТОГ',warning:'Атака через {s} с',break:'До волны {w}: {s} с',wave:'Волна {w} / {total} · B {b}',plan:'{waves} волн · тир {tier}',planDetails:'{counts} бойцов по волнам<br>HP ×{hp} · урон ×{dmg}',win:'Оборона успешна',loss:'Оборона не удалась',trainingResult:'УЧЕБНЫЙ РЕЗУЛЬТАТ',victoryTag:'ПОБЕДА',defeatTag:'ПОРАЖЕНИЕ',score:'СЧЁТ',bounty:'B / УБИЙСТВА',payout:'ВЫПЛАТА',xp:'ОПЫТ',actual:'ФАКТИЧЕСКИ',potential:'возможный B: {v}',duration:'ДЛИТЕЛЬНОСТЬ',durationSub:'внутриигровое время',threats:'ПРОТИВНИКИ',threatsSub:'убито / ушло / осталось',repairCost:'РЕМОНТ',repairSub:'оценка, не расход',preservation:'Сохранность: +{p} очков. Они не дают эрги или XP.',lossPolicy:'Поражение: половина заработанного B, XP = 0.',unspawned:'Не вышли: {n}; урон: {damage} HP; груз: украдено {stolen}, возвращено {returned}, потеряно {lost}.',sectorDamage:'урон {damage} HP · попытки {attempts}',sectorCargo:'возвращено {returned} · потеряно {lost}',weak:'СЛАБЫЙ СЕКТОР',noContact:'Контактов с базой не зафиксировано.',reasonRepelled:'Все вышедшие враги остановлены.',reasonCargo:'Груз вывезен.',reasonCc:'КЦ разрушен.',reasonSurrender:'Добровольная сдача.',wallTime:'Время в браузере без пауз: {s} с (зависит от ускорения).',buildingCC:'Командный центр',buildingDepot:'Ресурсная платформа',buildingBarracks:'Казарма',buildingTurret:'Турель',buildingWall:'Стена',ruin:'РУИНА',live:'ДЕЙСТВУЕТ',emergency:'АВАРИЙНАЯ ПЛОЩАДКА',objectInfo:'{status} · id {id} · уровень {level}<br>HP {hp} / {max} · ремонт {cost} эрг',recoveryInfo:'Долг {debt} · ограничено {restricted} · в ресурсе {source} эрг',point:'ступень',locked:'Откроется на уровне {n}',buy:'Купить {n} / 3',maxed:'Максимум 3 / 3',focus:'Фокус',focusDesc:'До 3 свободных бойцов назначаются на видимую приоритетную цель.',triage:'Триаж',triageDesc:'Раненые получают приоритет имеющегося медика.',antiarty:'Антиартиллерия',antiartyDesc:'Свободные бойцы выбирают обнаруженную артиллерию.',engineer:'Инженер',engineerDesc:'Свободный рабочий выбирает повреждённую постройку и оплачивает ремонт.',reserve:'Резерв',reserveDesc:'Свободные бойцы занимают второй известный подход.',scoutSkill:'Разведка',scoutSkillDesc:'Свободный разведчик идёт к известному подходу; скрытые жилы не раскрываются из воздуха.',counter:'Контрманёвр',counterDesc:'До 3 свободных бойцов назначаются на угрозу второго сектора.',logistics:'Логистика',logisticsDesc:'До 3 автоматических бойцов освобождаются после волны.',toastApplied:'Новый локальный профиль создан.',toastSquad:'Приказ отдан: бойцов {n}.',toastAuto:'Возвращено в автоматику: {n}.',toastAssemble:'СБОР: назначено {n}; нет отдельной позиции {m}.',toastRelease:'Сбор отпущен: {n}.',toastScout:'Разведчик направлен к северо-западу.',toastNoScout:'Свободный разведчик недоступен.',toastCooldown:'Ожидание промотано на {s} с. Добыча во время промотки не моделируется.',toastRepair:'Запущен ремонт объекта {id}.',toastRepairAll:'Ремонт выполняется последовательно.',toastNoFunds:'Не хватает эргов на следующий ремонт.',toastReinforce:'Боец добавлен за 50 эрг.',toastRecovery:'Источник создан: {n} эрг, только долг и ремонт.',toastCollected:'Аварийный ресурс собран; остаток ограничен.',toastZero:'Лабораторный нулевой сценарий создан.',toastSkill:'Навык улучшен до ступени {n}.',toastResetSkills:'Очки возвращены.',toastSave:'Локальное сохранение недоступно; стенд продолжает работать в памяти.',confirmApply:'Создать новый профиль? Текущая локальная база и отчёты стенда будут сброшены.',confirmZero:'Создать тестовый ноль? Баланс, рабочие и три постройки текущего профиля стенда будут изменены.',confirmSurrender:'Сдаться? Начислятся 50% заработанных эргов и 0 XP.',errorEvent:'Сначала завершите событие.',errorCooldown:'Сначала дождитесь или промотайте cooldown.',errorRecovery:'Сначала завершите аварийное восстановление.',errorCc:'Нужен действующий КЦ.',errorFunds:'Недостаточно эргов.',errorFull:'Отряд укомплектован.',errorSkill:'Навык недоступен или нет свободных очков.',errorGeneral:'Действие сейчас недоступно.',running:'Измерение {n} / {total}: {name}',done:'Готово: {n} прогонов. Текущая база не изменена.',metric1:'01 / РИТМ',metric1body:'Средняя тревога C1/K1: {s} с; предупреждение, бой и паузы включены. В таблице также 5 и 10 волн.',metric2:'02 / РЕАЛЬНЫЙ B',metric2body:'C1/K1, средняя: B {b} из {p}; убито {k}, ушло {e}, осталось {u}. Не вышедшие считаются отдельно.',metric3:'03 / ВРЕМЯ ДО L2',metric3body:'C1–4: 14 побед / {min}–{max}; C5: {c5}. Включены первые 240 с и cooldown 300 с.',metric4:'04 / РОСТ КЦ',metric4body:'КЦ1 → КЦ{cc}, L2 за {time}. Внешнее хозяйство: +{external} эрг; затраты на грейды {cost}.',metric5:'05 / БАЛАНС РЕЖИМОВ',metric5body:'C1/K1: лёгкая {light}, средняя {medium}, тяжёлая {hard} XP/ч. Ориентир ±25% не выдержан.',metric6:'06 / НАМЕРЕННЫЕ ПОРАЖЕНИЯ',metric6body:'5 последовательных сдач: выплата {pay}, замены {replacement}, ремонт {repair}; итог без добычи {net} эрг.',metricRhythm:'Длительность события',metricB:'B и выжившие',metricL2:'Время до уровня 2',metricGrowth:'КЦ растёт вместе с командиром',metricBalance:'Награда за час',metricLoss:'D2 и повторный ноль',matrixTitle:'Режимы и исходы',matrixCaption:'По 3 seed на строку; укреплённый гарнизон, каждый старт с новой базой. XP/ч и эрг/ч: сумма выплат / (сумма длительностей + 300 с на событие), включая поражения. K20: XP capped.',tableMode:'КЦ/К · РЕЖИМ',tableWin:'ПОБЕДЫ',tableTime:'СЕК, СРЕДН.',tableB:'B / ВОЗМОЖНЫЙ',tableUnits:'УБИТО / УШЛО / ЖИВО',tableRate:'XP/Ч · ЭРГ/Ч',l2Title:'L1 → L2, укреплённый гарнизон',l2Caption:'Непрерывная серия средних тревог: начальные 240 с, далее фактический бой и 300 с между событиями, платные подкрепления и ремонт. Промотка cooldown не запускает добычу. По одному seed-потоку на КЦ.',notReached:'не достигнут',growthTitle:'Сценарий растущей базы',growthText:'Грейды КЦ и стен оплачены по якорям игры; соблюдён упрощённый gate. Предположено +200 эрг внешнего хозяйства за каждый 300-с интервал — это не измерение экономики игры. Дополнительные условия, supply и строительство в модели не воспроизведены.',lossTitle:'Намеренное поражение и аварийный ноль',lossText:'В пяти изолированных сдачах после первой волны: B={b}, выплата={pay}, XP={xp}, оценка ремонта={repair}, замены={repl}. В одной непрерывной серии: {events} сдач, доход выплат {seqPay}, платные замены {seqCost}, независимая добыча {gather}; изменение кошелька без добычи {net}. Это сценарии, а не доказательство защиты от фарма.',recoveryText:'Синтетический полный ноль: источник {issued}, долг {debt}, восстановление {complete}; повторный источник {second}, повторное восстановление {secondComplete}. Неиспользованный ограниченный остаток не становится свободным доходом.',yes:'завершено',no:'не завершено',baseline:'Встроенный воспроизводимый прогон',samples:'прогонов',reportTraining:'Учебная копия отброшена: база и её таймеры восстановлены.',modelTitle:'Что моделируется',modelP1:'Формулы состава, тира, предупреждения, пауз и XP берутся из parameters.json. Бой идёт на 30 Гц: видимость, перемещение, выстрелы, уникальные убийства, кража, руины и ремонт наблюдаемы. Событие осады имеет один итог.',modelTitle2:'Что намеренно упрощено',modelP2:'Это не движок игры: нет коллизий и настоящего поиска пути, гарнизонов, двух фракций, вылазок и импорта старых сейвов. Гарнизон и рост HP обороны — стендовые допущения. Аварийный ресурс собирается кнопкой. Заявленные навыки используют упрощённые локальные диспетчеры, не игровую реализацию.',modelTitle3:'Как читать результаты',modelP3:'Встроенные прогоны — автоматические эксперименты на фиксированных seed, а не плейтест владельца. Промотка ожидания не симулирует добычу. Ускорение меняет экранное время, но не количество игровых тиков. Баланс и ×8 не утверждены.',modelTitle4:'Безопасность и границы',modelP4:'HTML не обращается к сети и сохраняет только собственный локальный ключ. Не читает и не записывает игровые профили/S1. Нагрузка, старый writer, реальный сейв и интеграционные регрессии здесь не доказаны.',storageFailed:'Сохранение недоступно',timeSec:'с',sec:'с',seconds:'сек',unknown:'—',base:'база',lvl:'ур.',wall:'стена',max:'МАКС',seed:'seed'},
+    en:{repairPaid:'Actually paid for repairs: {v} erg.',tacticalView:'TACTICAL VIEW',notSpawned:'unspawned',brandCaption:'COMBAT ALERT LAB',offline:'OFFLINE MODE',kicker:'OPERATIONS LAB',title:'Combat alert <span>v2</span>',subtitle:'Set up a defense. See what happens on the battlefield.',modelNote:'A decision model,<br>not the game engine or final art.',scenario:'SCENARIO',setup:'Setup',eventType:'EVENT TYPE',alarm:'Alert',siege:'Siege',training:'Practice',difficulty:'DIFFICULTY',light:'Light',medium:'Medium',hard:'Hard',lightDesc:'One approach · 2 waves',mediumDesc:'Two approaches · 3 waves',hardDesc:'Two groups · 4 waves',waveCount:'WAVE COUNT',labProfile:'LAB PROFILE',ccLevel:'CC LEVEL',commanderLevel:'COMMANDER',garrison:'STARTING GARRISON',garrisonLight:'Small',garrisonBalanced:'Prepared',garrisonFortified:'Fortified',apply:'Apply new profile ↗',applyHint:'Apply the profile to use these changes.',attackPlan:'ATTACK PLAN',start:'Start alert',trainingNote:'Practice uses a copy: no permanent rewards or damage.',setupFoot:'Changing the profile resets only this lab. The initial 240 s is skipped here.',battlefield:'BATTLEFIELD',fieldTitle:'Defense map <span class="board-title-dot">●</span>',schematic:'SCHEMATIC · NOT GAME ART',eventTime:'EVENT TIME',state:'STATE',ready:'Ready to start',commands:'ORDERS',controlSquad:'Squad control',selectDirection:'Choose a direction',northShort:'NORTH',westShort:'WEST',eastShort:'EAST',southShort:'SOUTH',auto:'Auto',assemble:'◎ ASSEMBLE',release:'Release assembly',scout:'Scout NW ↗',surrender:'Surrender',commandNote:'Manual orders override automation. Assemble does not change rally.',commander:'COMMANDER',personnel:'Personnel',commanderRank:'RANK / LEVEL',candidate:'Candidate ×8 curve',experience:'COMMANDER XP',skills:'Commander skills',telemetry:'TELEMETRY',baseStatus:'Base status',balance:'Balance',guard:'Fighters',damage:'Repair estimate',cooldown:'Next alert',skipWait:'Skip waiting',reinforce:'Reinforce squad',selected:'SELECTED OBJECT',selectBuilding:'Select a building',selectHelp:'Click a building on the map to inspect its condition and repair cost.',repair:'Repair',repairAll:'Repair all ↗',recoveryTest:'EMERGENCY RECOVERY',recoveryHint:'Ruins retain their id and level.',activateRecovery:'Start recovery',collectRecovery:'Collect emergency resource',zeroFixture:'Create zero-state fixture ↗',review:'AFTER ACTION',insights:'Debrief & measurements',report:'Debrief',metrics:'6 measurements',about:'About the model',noReport:'Your report appears here',noReportText:'Start an alert to see which sectors held.',benchKicker:'DETERMINISTIC RUNS · 30 HZ',benchCaveat:'These are lab-model calculations, not an owner playtest or measurements from the game.',runAnalysis:'Rerun measurements ↗',footer:'Self-contained HTML · no network requests · lab data only',skillsIntro:'One point per level starting at level 2. Skills change order priorities, not damage or income.',availablePoints:'Available points',resetSkills:'Reset allocation ↗',skillsCaveat:'Simplified lab dispatchers; without a suitable unit or target a skill does nothing.',rankCaptain:'Captain',rankMajor:'Major',rankColonel:'Colonel',rankGeneral:'General',north:'North',east:'East',south:'South',west:'West',phaseReady:'READY',phaseWarning:'WARNING',phaseBreak:'INTERVAL',phaseWave:'COMBAT',phasePaused:'PAUSED',phaseFinished:'RESULT',warning:'Attack in {s} s',break:'Wave {w} in {s} s',wave:'Wave {w} / {total} · B {b}',plan:'{waves} waves · tier {tier}',planDetails:'{counts} units by wave<br>HP ×{hp} · damage ×{dmg}',win:'Defense successful',loss:'Defense failed',trainingResult:'PRACTICE RESULT',victoryTag:'VICTORY',defeatTag:'DEFEAT',score:'SCORE',bounty:'B / KILLS',payout:'PAYOUT',xp:'EXPERIENCE',actual:'ACTUAL',potential:'possible B: {v}',duration:'DURATION',durationSub:'in-game time',threats:'ENEMIES',threatsSub:'killed / escaped / alive',repairCost:'REPAIRS',repairSub:'estimate, not expenditure',preservation:'Preservation: +{p} points. These do not grant erg or XP.',lossPolicy:'Defeat pays half of earned B and grants 0 XP.',unspawned:'Not spawned: {n}; damage: {damage} HP; cargo: stolen {stolen}, returned {returned}, lost {lost}.',sectorDamage:'damage {damage} HP · attempts {attempts}',sectorCargo:'recovered {returned} · lost {lost}',weak:'WEAK SECTOR',noContact:'No base contact recorded.',reasonRepelled:'All spawned enemies stopped.',reasonCargo:'Cargo extracted.',reasonCc:'Command center destroyed.',reasonSurrender:'Voluntary surrender.',wallTime:'Unpaused browser time: {s} s (depends on speed).',buildingCC:'Command center',buildingDepot:'Resource platform',buildingBarracks:'Barracks',buildingTurret:'Turret',buildingWall:'Wall',ruin:'RUIN',live:'OPERATIONAL',emergency:'EMERGENCY PAD',objectInfo:'{status} · id {id} · level {level}<br>HP {hp} / {max} · repairs {cost} erg',recoveryInfo:'Debt {debt} · restricted {restricted} · in deposit {source} erg',point:'rank',locked:'Unlocks at level {n}',buy:'Buy {n} / 3',maxed:'Maximum 3 / 3',focus:'Focus',focusDesc:'Up to 3 free fighters target a visible priority threat.',triage:'Triage',triageDesc:'Injured allies get priority from the available medic.',antiarty:'Anti-artillery',antiartyDesc:'Free fighters choose detected artillery.',engineer:'Engineer',engineerDesc:'A free worker selects a damaged building and pays for repairs.',reserve:'Reserve',reserveDesc:'Free fighters guard a second known approach.',scoutSkill:'Recon',scoutSkillDesc:'A free scout visits a known approach; hidden deposits are not magically revealed.',counter:'Countermaneuver',counterDesc:'Up to 3 free fighters target a threat in the second sector.',logistics:'Logistics',logisticsDesc:'Up to 3 automated fighters are released after a wave.',toastApplied:'A new local profile was created.',toastSquad:'Order issued to {n} fighters.',toastAuto:'Returned to automation: {n}.',toastAssemble:'ASSEMBLE: assigned {n}; no separate position for {m}.',toastRelease:'Assembly released: {n}.',toastScout:'Scout sent northwest.',toastNoScout:'No free scout is available.',toastCooldown:'Skipped {s} s. Gathering does not run during skips.',toastRepair:'Repair started: {id}.',toastRepairAll:'Repairs will run sequentially.',toastNoFunds:'Not enough erg for the next repair.',toastReinforce:'Fighter added for 50 erg.',toastRecovery:'Deposit created: {n} erg, restricted to debt and repairs.',toastCollected:'Emergency resource collected; remaining funds are restricted.',toastZero:'A lab zero-state fixture was created.',toastSkill:'Skill upgraded to rank {n}.',toastResetSkills:'Points returned.',toastSave:'Local storage is unavailable; the lab will continue in memory.',confirmApply:'Create a new profile? The current local lab base and reports will be reset.',confirmZero:'Create the zero-state fixture? Balance, workers and three buildings in this lab will be changed.',confirmSurrender:'Surrender? You receive 50% of earned erg and 0 XP.',errorEvent:'Finish the current event first.',errorCooldown:'Wait for or skip the cooldown first.',errorRecovery:'Finish emergency recovery first.',errorCc:'An operational command center is required.',errorFunds:'Not enough erg.',errorFull:'The squad is full.',errorSkill:'The skill is locked or no points are available.',errorGeneral:'That action is unavailable right now.',running:'Measurement {n} / {total}: {name}',done:'Completed {n} runs. Your current base was not changed.',metric1:'01 / PACING',metric1body:'Medium alert C1/K1: {s} s; warning, combat and intervals included. The table also covers 5 and 10 waves.',metric2:'02 / ACTUAL B',metric2body:'C1/K1 medium: B {b} of {p}; killed {k}, escaped {e}, alive {u}. Unspawned enemies are separate.',metric3:'03 / TIME TO L2',metric3body:'C1–4: 14 wins / {min}–{max}; C5: {c5}. Includes initial 240 s and 300 s cooldowns.',metric4:'04 / CC GROWTH',metric4body:'CC1 → CC{cc}, L2 in {time}. External economy: +{external} erg; upgrade costs {cost}.',metric5:'05 / MODE BALANCE',metric5body:'C1/K1: light {light}, medium {medium}, hard {hard} XP/h. The ±25% reference is not met.',metric6:'06 / INTENTIONAL LOSSES',metric6body:'5 consecutive surrenders: payout {pay}, replacements {replacement}, repairs {repair}; net excluding gathering {net} erg.',metricRhythm:'Event duration',metricB:'B and survivors',metricL2:'Time to level 2',metricGrowth:'CC grows with commander',metricBalance:'Reward per hour',metricLoss:'D2 and repeated zero',matrixTitle:'Modes and outcomes',matrixCaption:'3 seeds per row; fortified garrison, each starts from a new base. XP/h and erg/h: total payout / (total duration + 300 s per event), including defeats. K20: XP capped.',tableMode:'CC/K · MODE',tableWin:'WINS',tableTime:'SEC, MEAN',tableB:'B / POSSIBLE',tableUnits:'KILLED / ESCAPED / ALIVE',tableRate:'XP/H · ERG/H',l2Title:'L1 → L2, fortified garrison',l2Caption:'Continuous medium alerts: initial 240 s, actual combat and 300 s between events, paid reinforcements and repairs. Skipping cooldown does not run gathering. One seed stream per CC.',notReached:'not reached',growthTitle:'A growing base scenario',growthText:'CC and wall upgrades are paid at game anchor prices; a simplified gate is enforced. Assumes +200 erg of external economy per 300 s interval — not a measurement of the game. Additional requirements, supply and construction are not modeled.',lossTitle:'Intentional defeat and emergency zero',lossText:'In five isolated surrenders after wave one: B={b}, payout={pay}, XP={xp}, repair estimate={repair}, replacements={repl}. One continuous series: {events} surrenders, payout {seqPay}, paid replacements {seqCost}, independent gathering {gather}; wallet change excluding gathering {net}. These are scenarios, not proof of anti-farming.',recoveryText:'Synthetic zero: source {issued}, debt {debt}, recovery {complete}; repeated source {second}, recovery {secondComplete}. Unused restricted funds do not become free income.',yes:'complete',no:'incomplete',baseline:'Embedded reproducible run',samples:'runs',reportTraining:'Practice copy discarded: base and timers restored.',modelTitle:'What is modeled',modelP1:'Composition, tier, warnings, breaks and XP formulas come from parameters.json. Combat runs at 30 Hz: visibility, movement, fire, unique kills, theft, ruins and repairs are observable. A siege has one outcome.',modelTitle2:'Deliberate simplifications',modelP2:'This is not the game engine: no collision/pathfinding, garrisons, two factions, expeditions or old-save import. Garrison size and defensive HP scaling are lab assumptions. The emergency deposit is collected by button. Skills use simplified local dispatchers, not the game implementation.',modelTitle3:'How to read results',modelP3:'Embedded runs are automated experiments with fixed seeds, not an owner playtest. Skipping waiting does not simulate gathering. Speed affects screen time, not the number of game ticks. Balance and ×8 are not approved.',modelTitle4:'Safety and boundaries',modelP4:'The HTML makes no network calls and stores only its own local key. It does not read or write game profiles/S1. Load, old-writer compatibility, real saves and integration regressions are not proven here.',storageFailed:'Saving unavailable',timeSec:'s',sec:'s',seconds:'sec',unknown:'—',base:'base',lvl:'lv.',wall:'wall',max:'MAX',seed:'seed'}
+  };
+  let lang='ru',kind='normal',mode='medium',speed=4,selected=null,repairQueue=[],lastRender=0,lastSave=0,lastReportKey='',lastFrame=performance.now(),acc=0,toastTimer=null,storageOK=true,analysisSummary=window.STAND_BASELINE;
+  const KEY='ace10-offline-stand-v1';
+  const tr=(key,vars={})=>(I18N[lang][key]??I18N.ru[key]??key).replace(/\{(\w+)\}/g,(_,k)=>String(vars[k]??''));
+  const fmt=(n,d=0)=>Number(n||0).toLocaleString(lang==='ru'?'ru-RU':'en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const ergs=m=>fmt(m/C.U, m%C.U===0?0:2);
+  const secText=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;};
+  const esc=s=>String(s).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
+  function toast(key,vars={}){const t=$('#toast');t.textContent=tr(key,vars);t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),4200);}
+  function attempt(fn){try{const r=fn();save();render();return r;}catch(e){const key=({EVENT_ACTIVE:'errorEvent',COOLDOWN:'errorCooldown',RECOVERY_ACTIVE:'errorRecovery',CC_UNAVAILABLE:'errorCc',NO_FUNDS:'errorFunds',SQUAD_FULL:'errorFull',NO_SKILL_POINTS:'errorSkill',SKILL_LOCKED:'errorSkill',SKILL_MAX:'errorSkill'})[e.message]||'errorGeneral';toast(key);return undefined;}}
+  function load(){
+    try{const text=localStorage.getItem(KEY);if(text){const snap=JSON.parse(text);if(snap.state?.event?.plan?.kind==='training'){snap.state.profile=snap.state.event.trainingSnapshot;snap.state.event=null;snap.state.paused=false;}return C.Simulator.fromSnapshot(params,snap);}}catch(_){storageOK=false;}
+    return new C.Simulator(params);
+  }
+  let sim=load();
+  mode=sim.state.event?.plan?.mode||sim.profile().selectedDifficulty||'medium';
+  if(sim.state.event){kind=sim.state.event.plan.kind;if(kind==='siege')$('#waves').value=sim.state.event.plan.waves;}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(sim.snapshot()));storageOK=true;}catch(_){if(storageOK){storageOK=false;toast('toastSave');}}}
+  function syncInputs(){const p=sim.profile();$('#cc-range').value=p.cc;$('#level-range').value=p.commander.level;$('#defense').value=p.defense||'balanced';$('#seed').value=p.seed;$('#cc-value').textContent=String(p.cc).padStart(2,'0');$('#level-value').textContent=String(p.commander.level).padStart(2,'0');}
+  function localize(){
+    document.documentElement.lang=lang;document.title=lang==='ru'?'Боевой полигон · ace#10':'Combat alert lab · ace#10';
+    $$('[data-t]').forEach(el=>{const value=tr(el.dataset.t);if(['title','modelNote','fieldTitle'].includes(el.dataset.t))el.innerHTML=value;else el.textContent=value;});
+    $$('[data-lang]').forEach(el=>el.classList.toggle('selected',el.dataset.lang===lang));
+    render();renderAnalysis();renderModel();if($('#skills-dialog').open)renderSkills();
+  }
+  function isDirty(){const p=sim.profile();return Number($('#cc-range').value)!==p.cc||Number($('#level-range').value)!==p.commander.level||$('#defense').value!==p.defense||Number($('#seed').value)!==p.seed;}
+  function render(){
+    const p=sim.profile(),e=sim.state.event,c=p.commander;
+    $('#cc-value').textContent=String($('#cc-range').value).padStart(2,'0');$('#level-value').textContent=String($('#level-range').value).padStart(2,'0');$('#waves-value').textContent=$('#waves').value;
+    $('#profile-dirty').classList.toggle('hidden',!isDirty());$('#siege-control').classList.toggle('hidden',kind!=='siege');$('#training-note').classList.toggle('hidden',kind!=='training');
+    $$('[data-kind]').forEach(b=>b.classList.toggle('active',b.dataset.kind===kind));$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
+    $$('[data-speed]').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===speed));
+    try{const plan=sim.preview({mode,kind,waves:Number($('#waves').value),seed:Number($('#seed').value)||1027});$('#plan-summary').textContent=tr('plan',{waves:plan.waves,tier:plan.tier});$('#plan-details').innerHTML=tr('planDetails',{counts:plan.plan.map(w=>w.n).join(' · '),hp:(plan.hpBP/10000).toFixed(2),dmg:(plan.dmgBP/10000).toFixed(2)});}catch(_){$('#plan-summary').textContent='—';$('#plan-details').textContent='';}
+    $('#start').disabled=!!e||(kind!=='training'&&(p.cooldownTicks>0||!!p.recovery))||(!p.buildings.some(b=>b.type==='cc'&&b.status==='live')&&!(kind==='training'&&p.recovery));
+    $('#start span:first-child').textContent=tr('start');$('#surrender').classList.toggle('hidden',!e);$('#skip').classList.toggle('hidden',!!e||!p.cooldownTicks||!!p.recovery);
+    $('#pause').textContent=sim.state.paused?'▶':'Ⅱ';$('#pause').title=sim.state.paused?'Resume':'Pause';
+    const phase=sim.state.paused?'phasePaused':e?(e.phase==='WARNING'?'phaseWarning':e.phase==='BREAK'?'phaseBreak':'phaseWave'):sim.state.lastReport?'phaseFinished':'phaseReady';$('#phase').textContent=tr(phase);
+    $('#event-time').textContent=secText(e?e.elapsedTicks/C.HZ:sim.state.lastReport?sim.state.lastReport.elapsedTicks/C.HZ:0);
+    $('#wave-label').textContent=e?`${String(Math.min(e.waveIndex+1,e.plan.waves)).padStart(2,'0')} : ${String(e.plan.waves).padStart(2,'0')}`:'00 : 00';
+    $('#status-text').textContent=e?(e.phase==='WARNING'?tr('warning',{s:Math.ceil(e.timerTicks/C.HZ)}):e.phase==='BREAK'?tr('break',{w:e.waveIndex+1,s:Math.ceil(e.timerTicks/C.HZ)}):tr('wave',{w:e.waveIndex+1,total:e.plan.waves,b:e.bounty})):tr('ready');
+    $('#rank').textContent=tr({captain:'rankCaptain',major:'rankMajor',colonel:'rankColonel',general:'rankGeneral'}[C.rank(c.level)]);$('#commander-lvl').textContent=String(c.level).padStart(2,'0');$('#xp-label').textContent=c.level===20?`${tr('max')} · 20`:`${fmt(c.progress)} / ${fmt(C.need(c.level,params))} XP`;$('#xp-bar').style.width=c.level===20?'100%':`${Math.min(100,100*c.progress/C.need(c.level,params))}%`;$('#skill-points').textContent=`${c.unspent} ↗`;
+    $('#wallet').textContent=ergs(p.wallet);const alive=p.units.filter(u=>u.alive&&u.type==='marine').length;$('#guard-count').textContent=`${alive} / ${C.guardCount(p.cc,p.defense)}`;$('#repair-estimate').textContent=ergs(C.repairEstimate(p,params));$('#cooldown').textContent=p.recovery?'—':secText(p.cooldownTicks/C.HZ);
+    const b=p.buildings.find(x=>x.id===selected);$('#repair').disabled=!b||b.hp>=b.maxHp;
+    if(b){$('#object-name').textContent=tr({cc:'buildingCC',depot:'buildingDepot',barracks:'buildingBarracks',turret:'buildingTurret',wall:'buildingWall'}[b.type]);const status=tr(b.status==='ruin'?'ruin':b.status==='emergency'?'emergency':'live');$('#object-detail').innerHTML=tr('objectInfo',{status,id:esc(b.id),level:b.level,hp:fmt(b.hp/C.U),max:fmt(b.maxHp/C.U),cost:fmt((b.maxHp-b.hp)/C.U/params.recovery.hpPerErg,2)});}else{$('#object-name').textContent=tr('selectBuilding');$('#object-detail').textContent=tr('selectHelp');}
+    const canRecovery=!e&&!p.recovery&&p.buildings.some(x=>x.hp<x.maxHp);$('#recovery').classList.toggle('hidden',!canRecovery);$('#collect').classList.toggle('hidden',!p.recovery||(!p.recovery.remaining&&!p.debt));$('#recovery-status').textContent=p.recovery?tr('recoveryInfo',{debt:ergs(p.debt),restricted:ergs(p.restricted),source:ergs(p.recovery.remaining)}):tr('recoveryHint');
+    const r=sim.state.lastReport,reportKey=r?`${lang}:${r.id}:${r.repairSpent}`:`${lang}:empty`;
+    if(reportKey!==lastReportKey){
+      lastReportKey=reportKey;
+      if(r)renderReport(r);
+      else {const node=$('#report-content');node.className='empty-report';node.innerHTML=`<span class="empty-icon">⌁</span><div><h3>${esc(tr('noReport'))}</h3><p>${esc(tr('noReportText'))}</p></div>`;}
+    }
+  }
+  function renderReport(r){
+    const hasContact=C.SIDES.some(s=>r.sectors[s].attempts||r.sectors[s].damageMicro||r.sectors[s].lost);
+    const weak=hasContact?C.SIDES.slice().sort((a,b)=>(r.sectors[b].lost-r.sectors[a].lost)||(r.sectors[b].damageMicro-r.sectors[a].damageMicro)||(r.sectors[b].attempts-r.sectors[a].attempts))[0]:null;
+    const reason=tr({repelled:'reasonRepelled',cargoLost:'reasonCargo',ccLost:'reasonCc',surrender:'reasonSurrender'}[r.reason]||'reasonRepelled');
+    const sectorHtml=C.SIDES.map(s=>{const x=r.sectors[s];return `<div class="sector-card ${weak===s?'weak':''}"><b>${esc(tr(s).toUpperCase())}${weak===s?' · '+esc(tr('weak')):''}</b><p>${esc(tr('sectorDamage',{damage:fmt(x.damageMicro/C.U),attempts:x.attempts}))}<br>${esc(tr('sectorCargo',{returned:x.returned,lost:x.lost}))}</p></div>`;}).join('');
+    const cell=(label,value,sub='')=>`<div class="report-cell"><span>${esc(label)}</span><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:''}</div>`;
+    $('#report-content').className='';$('#report-content').innerHTML=`<div class="report-head"><div><span class="result-tag ${r.result==='defeat'?'defeat':''}">${esc(tr(r.train?'trainingResult':r.result==='victory'?'victoryTag':'defeatTag'))}</span><h3>${esc(tr(r.result==='victory'?'win':'loss'))}</h3><p>${esc(reason)} ${r.train?esc(tr('reportTraining')):''}</p></div><div class="report-score">${fmt(r.score)}<small>${esc(tr('score'))}</small></div></div><div class="report-grid">${cell(tr('bounty'),r.bounty,tr('potential',{v:r.potential}))}${cell(tr('payout'),`${r.payout} ERG`,r.result==='defeat'?tr('lossPolicy'):'')}${cell(tr('xp'),`+${r.xp} XP`)}${cell(tr('duration'),secText(r.elapsedTicks/C.HZ),tr('durationSub'))}${cell(tr('threats'),`${r.kills} / ${r.escaped} / ${r.unresolved}`,tr('threatsSub'))}${cell(tr('repairCost'),`${fmt(r.repairEstimate/C.U,2)} ERG`,tr('repairSub'))}</div><div class="sector-strip">${sectorHtml}</div><p class="report-foot">${esc(tr('preservation',{p:r.preservation}))} ${esc(tr('unspawned',{n:r.unspawned,damage:fmt(r.damageMicro/C.U),stolen:r.lootStolen,returned:r.lootReturned,lost:r.lootLost}))} ${weak?'':esc(tr('noContact'))} ${esc(tr('repairPaid',{v:fmt(r.repairSpent/C.U,2)}))} ${r.wallActiveMs?esc(tr('wallTime',{s:fmt(r.wallActiveMs/1000,1)})):''}</p>`;
+  }
+  function renderSkills(){const c=sim.profile().commander;$('#dialog-points').textContent=c.unspent;$('#skill-grid').innerHTML=Object.entries(C.SKILLS).map(([name,unlock])=>{const n=c.skills[name]||0,disabled=c.level<unlock||c.unspent<=0||n>=3;const label=n>=3?tr('maxed'):c.level<unlock?tr('locked',{n:unlock}):tr('buy',{n:n+1});const title=name==='scout'?'scoutSkill':name;const desc=name==='scout'?'scoutSkillDesc':name+'Desc';return `<div class="skill-card"><h3>${esc(tr(title))} <span class="dim">${n}/3</span></h3><p>${esc(tr(desc))}</p><button type="button" data-skill="${name}" ${disabled?'disabled':''}>${esc(label)}</button></div>`;}).join('');$$('[data-skill]').forEach(b=>b.addEventListener('click',()=>attempt(()=>{const n=sim.buySkill(b.dataset.skill);toast('toastSkill',{n});renderSkills();})));}
+  function renderModel(){const target=$('#model-copy');target.innerHTML=['','2','3','4'].map(n=>`<h3>${esc(tr('modelTitle'+n))}</h3><p>${esc(tr('modelP'+(n||'1')))}</p>`).join('');}
+  function renderAnalysis(){
+    const s=analysisSummary;if(!s||!s.modes?.length)return;
+    const find=k=>s.modes.find(x=>x.key===k)||{meanSec:0,b:0,potential:0,kills:0,escaped:0,unresolved:0,xpPerHour:0};
+    const light=find('C1-K1-normal-light-2'),med=find('C1-K1-normal-medium-3'),hard=find('C1-K1-normal-hard-4');
+    const seq=s.lossSequence||{events:[],hires:0,gathered:0,netExcludingGather:0};const seqPay=seq.events.reduce((a,x)=>a+x.payout,0),l=s.l2;
+    const cards=[['metric1','metricRhythm',tr('metric1body',{s:fmt(med.meanSec,1)})],['metric2','metricB',tr('metric2body',{b:med.b,p:med.potential,k:med.kills,e:med.escaped,u:med.unresolved})],['metric3','metricL2',tr('metric3body',{min:secText(Math.min(...l.slice(0,4).map(x=>x.elapsedTicks/C.HZ))),max:secText(Math.max(...l.slice(0,4).map(x=>x.elapsedTicks/C.HZ))),c5:secText(l[4].elapsedTicks/C.HZ)})],['metric4','metricGrowth',tr('metric4body',{cc:s.growth.cc,time:secText(s.growth.ticks/C.HZ),external:s.growth.external,cost:s.growth.growthCost})],['metric5','metricBalance',tr('metric5body',{light:fmt(light.xpPerHour),medium:fmt(med.xpPerHour),hard:fmt(hard.xpPerHour)})],['metric6','metricLoss',tr('metric6body',{pay:seqPay,replacement:seq.hires*50,repair:fmt(s.loss.repair,2),net:fmt(seq.netExcludingGather,2)})]];
+    const cardsHtml=cards.map(([num,title,body])=>`<article class="metric-card"><div class="metric-num">${esc(tr(num))}</div><h3>${esc(tr(title))}</h3><p>${esc(body)}</p></article>`).join('');
+    const rows=s.modes.map(m=>`<tr><td>${esc(m.key.replaceAll('-', ' / '))}</td><td>${m.wins}/${m.n}</td><td>${fmt(m.meanSec,1)}<br><span class="dim">${fmt(m.minSec,1)}–${fmt(m.maxSec,1)}</span></td><td>${fmt(m.b)} / ${fmt(m.potential)}</td><td>${m.kills} / ${m.escaped} / ${m.unresolved}<br><span class="dim">+ ${m.unspawned} ${esc(tr('notSpawned'))}</span></td><td>${m.key.includes('K20')?tr('max'):fmt(m.xpPerHour)} / ${fmt(m.ergPerHour)}</td></tr>`).join('');
+    const table=`<div class="metrics-table-wrap"><table class="metrics-table"><thead><tr>${['tableMode','tableWin','tableTime','tableB','tableUnits','tableRate'].map(k=>`<th>${esc(tr(k))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    const l2=l.map(x=>`<div class="metric-card"><div class="metric-num">CC ${x.cc} / K1</div><h3>${x.reached?secText(x.elapsedTicks/C.HZ):esc(tr('notReached'))}</h3><p>${x.wins} W · ${x.losses} L · ${x.hires} × 50 ERG</p></div>`).join('');
+    const milestones=s.growth.milestones.map(x=>`CC${x.cc} / K${x.commander} · ${secText(x.ticks/C.HZ)} · ${x.wins} W`).join(' → ');
+    const rec=s.recovery;
+    $('#analysis-content').innerHTML=`<div class="metric-cards">${cardsHtml}</div><h3 class="table-title">${esc(tr('matrixTitle'))}</h3><p class="table-caption">${esc(tr('matrixCaption'))}</p>${table}<h3 class="table-title">${esc(tr('l2Title'))}</h3><p class="table-caption">${esc(tr('l2Caption'))}</p><div class="metric-cards">${l2}</div><h3 class="table-title">${esc(tr('growthTitle'))}</h3><p class="table-caption">${esc(tr('growthText'))}</p><p class="report-foot">${esc(milestones)} · L${s.growth.level} ${secText(s.growth.ticks/C.HZ)} · ${s.growth.wins} W / ${s.growth.losses} L</p><h3 class="table-title">${esc(tr('lossTitle'))}</h3><p class="table-caption">${esc(tr('lossText',{b:s.loss.B,pay:s.loss.payout,xp:s.loss.xp,repair:fmt(s.loss.repair,2),repl:s.loss.replacements,events:seq.events.length,seqPay,seqCost:seq.hires*50,gather:seq.gathered,net:fmt(seq.netExcludingGather,2)}))}</p><p class="report-foot">${esc(tr('recoveryText',{issued:rec.issued,debt:rec.debtBefore,complete:tr(rec.complete?'yes':'no'),second:rec.secondIssued,secondComplete:tr(rec.secondComplete?'yes':'no')}))}</p>`;
+  }
+  const canvas=$('#battle'),ctx=canvas.getContext('2d'),T=32;
+  function visibleEnemy(p,a){return p.units.some(u=>u.alive&&Math.hypot(u.x-a.x,u.y-a.y)<=C.ROLE[u.type].sight)||p.buildings.some(b=>b.status==='live'&&b.hp>0&&Math.hypot(b.x+b.w/2-a.x,b.y+b.h/2-a.y)<=(b.type==='cc'?9:b.type==='turret'?9:5));}
+  function ground(p){
+    ctx.fillStyle='#182a28';ctx.fillRect(0,0,canvas.width,canvas.height);
+    for(let y=0;y<C.H;y++)for(let x=0;x<C.W;x++){
+      const n=(x*19+y*37+x*y*3)%11;ctx.fillStyle=n<2?'#1c302c':n>8?'#172623':'#1a2b28';ctx.fillRect(x*T,y*T,T,T);
+      ctx.strokeStyle='#35463a55';ctx.lineWidth=.5;ctx.strokeRect(x*T+.5,y*T+.5,T,T);
+      if((x*31+y*17)%23===0){ctx.strokeStyle='#54624a66';ctx.beginPath();ctx.moveTo(x*T+3,y*T+24);ctx.lineTo(x*T+12,y*T+20);ctx.lineTo(x*T+17,y*T+21);ctx.stroke();}
+    }
+    ctx.save();ctx.strokeStyle='#7b9d7540';ctx.lineWidth=1;ctx.setLineDash([5,8]);ctx.beginPath();ctx.arc(14*T,8.5*T,6.2*T,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.arc(14*T,8.5*T,9.2*T,0,Math.PI*2);ctx.stroke();ctx.restore();
+    for(const d of p.deposits)if(d.explored&&d.amount>0){const x=d.x*T,y=d.y*T;ctx.fillStyle='#30524a';ctx.fillRect(x-15,y-12,30,26);ctx.fillStyle=d.type==='trophy'?'#dfb780':'#9fdcbd';ctx.beginPath();ctx.moveTo(x,y-12);ctx.lineTo(x+8,y-2);ctx.lineTo(x+3,y+11);ctx.lineTo(x-8,y+4);ctx.closePath();ctx.fill();ctx.fillStyle='#d9ead0';ctx.fillRect(x-1,y-7,2,8);}
+    for(let y=0;y<C.H;y++)for(let x=0;x<C.W;x++)if(!p.explored[y*C.W+x]){ctx.fillStyle='#07100fd6';ctx.fillRect(x*T,y*T,T+.5,T+.5);}
+    const e=sim.state.event;if(e&&(e.phase==='WARNING'||e.phase==='BREAK')){
+      ctx.save();ctx.setLineDash([7,7]);ctx.lineWidth=1;ctx.strokeStyle='#df936b99';const entries=e.plan.mode==='light'?[e.plan.entries[0]]:e.plan.entries;
+      for(const side of entries){const pos=C.ENTRIES[side];ctx.beginPath();ctx.moveTo(pos.x*T,pos.y*T);ctx.lineTo(14*T,8.5*T);ctx.stroke();ctx.fillStyle='#e7a17d';ctx.beginPath();ctx.arc(pos.x*T,pos.y*T,4,0,Math.PI*2);ctx.fill();}ctx.restore();
+    }
+  }
+  function drawBuilding(b){
+    const x=b.x*T,y=b.y*T,w=b.w*T,h=b.h*T,ruin=b.status==='ruin';
+    ctx.fillStyle='#07140f99';ctx.fillRect(x+4,y+5,w,h);ctx.fillStyle=ruin?'#503e31':b.type==='wall'?'#53685a':'#405a4c';ctx.fillRect(x,y+3,w,h-2);
+    ctx.fillStyle=ruin?'#76624a':b.type==='wall'?'#8aa18b':'#6b8e79';ctx.fillRect(x,y,w,h-3);
+    ctx.fillStyle=ruin?'#47382c':b.type==='wall'?'#30463b':'#293f35';ctx.fillRect(x,y+h-3,w,3); // separate 3px south face at a 32px tile
+    ctx.strokeStyle=ruin?'#a08363':'#abc3a5';ctx.lineWidth=1;ctx.strokeRect(x+.5,y+.5,w-1,h-3.5);
+    ctx.fillStyle=ruin?'#493c30':'#38574a';ctx.fillRect(x+5,y+5,Math.max(1,w-10),Math.max(1,h-14));
+    if(ruin){ctx.strokeStyle='#d5ab7a';ctx.beginPath();ctx.moveTo(x+5,y+5);ctx.lineTo(x+w-5,y+h-10);ctx.moveTo(x+w-8,y+5);ctx.lineTo(x+6,y+h-9);ctx.stroke();}
+    else if(b.type==='turret'){ctx.fillStyle='#aecab0';ctx.beginPath();ctx.arc(x+w/2,y+h/2-2,7,0,Math.PI*2);ctx.fill();ctx.fillStyle='#29483b';ctx.fillRect(x+w/2-2,y+4,4,10);}
+    else if(b.type==='wall'){ctx.fillStyle='#b0c8ac';ctx.fillRect(x+w/2-3,y+5,6,h-15);ctx.fillRect(x+5,y+h/2-5,w-10,5);}
+    else {ctx.strokeStyle='#95bba0';ctx.lineWidth=1;ctx.strokeRect(x+9,y+9,w-18,h-21);ctx.fillStyle='#d5e7cf';ctx.font='bold 11px ui-monospace,monospace';ctx.textAlign='center';ctx.fillText(b.type==='cc'?'CC':b.type==='barracks'?'B':'R',x+w/2,y+h/2+2);}
+  }
+  function drawUnit(u,enemy=false){
+    const x=u.x*T,y=u.y*T;ctx.fillStyle='#07110fc0';ctx.beginPath();ctx.ellipse(x+1,y+3,enemy?6:5,3,0,0,Math.PI*2);ctx.fill();
+    if(enemy){ctx.fillStyle=u.returning?'#ffd5a9':'#ed9878';ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.closePath();ctx.fill();ctx.fillStyle='#744531';ctx.fillRect(x-1,y-1,2,4);}
+    else{ctx.fillStyle=u.type==='worker'?'#e7d19a':u.type==='medic'?'#ecb8ac':u.type==='scout'?'#b6cfee':'#bcdfbf';ctx.beginPath();ctx.arc(x,y-2,u.type==='marine'?3.4:4.3,0,Math.PI*2);ctx.fill();ctx.fillStyle='#446959';ctx.fillRect(x-1,y-1,2,4);}
+  }
+  function draw(){
+    const p=sim.profile(),e=sim.state.event;ground(p);
+    const items=[];for(const b of p.buildings)items.push({y:b.y+b.h,kind:'building',value:b});for(const u of p.units)if(u.alive)items.push({y:u.y,kind:'unit',value:u});if(e)for(const a of e.enemies)if(a.alive&&visibleEnemy(p,a))items.push({y:a.y,kind:'enemy',value:a});items.sort((a,b)=>a.y-b.y||(a.kind==='building'?-1:1));
+    for(const item of items)if(item.kind==='building')drawBuilding(item.value);else drawUnit(item.value,item.kind==='enemy');
+    // Selection, HP and projectiles are an independent overlay pass after depth sorting.
+    if(selected){const b=p.buildings.find(x=>x.id===selected);if(b){ctx.strokeStyle='#e1f6cb';ctx.lineWidth=2;ctx.strokeRect(b.x*T-3,b.y*T-3,b.w*T+6,b.h*T+2);}}
+    for(const b of p.buildings)if(b.hp<b.maxHp){const x=b.x*T,y=b.y*T-6,w=b.w*T;ctx.fillStyle='#21332a';ctx.fillRect(x,y,w,3);ctx.fillStyle=b.hp/b.maxHp<.35?'#e39773':'#b5dfb0';ctx.fillRect(x,y,w*Math.max(0,b.hp/b.maxHp),3);}
+    if(e)for(const a of e.enemies)if(a.alive&&a.hp<a.maxHp&&visibleEnemy(p,a)){ctx.fillStyle='#34231c';ctx.fillRect(a.x*T-6,a.y*T-11,12,2);ctx.fillStyle='#eba580';ctx.fillRect(a.x*T-6,a.y*T-11,12*a.hp/a.maxHp,2);}
+    for(const s of sim.state.visualShots||[]){ctx.strokeStyle=s.enemy?'#f2a680bb':'#c8f3c9aa';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(s.x1*T,s.y1*T);ctx.lineTo(s.x2*T,s.y2*T);ctx.stroke();}
+    ctx.fillStyle='#afc8ad99';ctx.font='9px ui-monospace,monospace';ctx.textAlign='center';ctx.fillText('N',canvas.width/2,23);ctx.fillText('S',canvas.width/2,canvas.height-17);ctx.textAlign='left';ctx.fillText('W',15,canvas.height/2);ctx.textAlign='right';ctx.fillText('E',canvas.width-15,canvas.height/2);
+  }
+  function pumpRepair(){
+    if(sim.state.repairTarget||!repairQueue.length)return;
+    const p=sim.profile();if(p.wallet+p.restricted<=0){repairQueue=[];toast('toastNoFunds');return;}
+    let id;while((id=repairQueue.shift())){const b=p.buildings.find(x=>x.id===id);if(b&&b.hp<b.maxHp){try{sim.selectRepair(id);}catch(_){}break;}}
+  }
+  let lastCommanderLevel=sim.profile().commander.level;
+  function frame(now){
+    const raw=Math.max(0,(now-lastFrame)/1000),delta=Math.min(.1,raw);lastFrame=now;
+    if(!sim.state.paused){
+      if(sim.state.event)sim.state.event.wallActiveMs=(sim.state.event.wallActiveMs||0)+delta*1000;
+      acc+=delta*speed*C.HZ;let n=Math.min(180,Math.floor(acc));acc-=n;
+      while(n-->0){sim.tick();pumpRepair();}
+    }
+    if(sim.profile().commander.level!==lastCommanderLevel){if(Number($('#level-range').value)===lastCommanderLevel)$('#level-range').value=sim.profile().commander.level;lastCommanderLevel=sim.profile().commander.level;}
+    draw();if(now-lastRender>180){render();lastRender=now;}if(now-lastSave>1500){save();lastSave=now;}requestAnimationFrame(frame);
+  }
+  $$('#cc-range,#level-range,#waves,#defense,#seed').forEach(el=>el.addEventListener('input',render));
+  $$('[data-kind]').forEach(b=>b.addEventListener('click',()=>{kind=b.dataset.kind;render();}));
+  $$('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;render();}));
+  $$('[data-lang]').forEach(b=>b.addEventListener('click',()=>{lang=b.dataset.lang;localize();}));
+  $$('[data-speed]').forEach(b=>b.addEventListener('click',()=>{speed=Number(b.dataset.speed);if(sim.state.event&&speed>1)sim.state.accelerated=true;render();}));
+  $$('[data-sector]').forEach(b=>b.addEventListener('click',()=>attempt(()=>{const n=sim.moveSquad(b.dataset.sector);toast('toastSquad',{n});})));
+  $$('[data-tab]').forEach(b=>b.addEventListener('click',()=>{$$('[data-tab]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-selected',String(x===b));});$$('.tab-content').forEach(x=>x.classList.add('hidden'));$('#tab-'+b.dataset.tab).classList.remove('hidden');}));
+  $('#apply').addEventListener('click',()=>{if(sim.state.event){toast('errorEvent');return;}if(!confirm(tr('confirmApply')))return;attempt(()=>{const seed=Number($('#seed').value);if(!Number.isInteger(seed)||seed<1||seed>4294967295)throw new Error('SEED');sim.reset(Number($('#cc-range').value),Number($('#level-range').value),seed,$('#defense').value);selected=null;repairQueue=[];lastCommanderLevel=sim.profile().commander.level;toast('toastApplied');});});
+  $('#start').addEventListener('click',()=>attempt(()=>{if(isDirty()){toast('applyHint');return;}sim.start({mode,kind,waves:Number($('#waves').value),seed:Number($('#seed').value)});sim.state.accelerated=speed>1;acc=0;}));
+  $('#surrender').addEventListener('click',()=>{if(confirm(tr('confirmSurrender')))attempt(()=>sim.surrender());});
+  $('#pause').addEventListener('click',()=>attempt(()=>sim.setPaused(!sim.state.paused)));
+  $('#skip').addEventListener('click',()=>attempt(()=>{const n=sim.skipCooldown();toast('toastCooldown',{s:Math.round(n/C.HZ)});}));
+  $('#auto').addEventListener('click',()=>attempt(()=>toast('toastAuto',{n:sim.autoSquad()})));
+  $('#assemble').addEventListener('click',()=>attempt(()=>{const r=sim.assemble();toast('toastAssemble',{n:r.assembled,m:r.unreachable});}));
+  $('#release').addEventListener('click',()=>attempt(()=>toast('toastRelease',{n:sim.releaseGather()})));
+  $('#scout').addEventListener('click',()=>attempt(()=>toast(sim.scoutTrophy()?'toastScout':'toastNoScout')));
+  $('#reinforce').addEventListener('click',()=>attempt(()=>{sim.reinforce();toast('toastReinforce');}));
+  canvas.addEventListener('click',ev=>{const rect=canvas.getBoundingClientRect(),x=(ev.clientX-rect.left)/rect.width*C.W,y=(ev.clientY-rect.top)/rect.height*C.H;const b=sim.profile().buildings.filter(v=>x>=v.x&&x<v.x+v.w&&y>=v.y&&y<v.y+v.h).sort((a,z)=>(z.y+z.h)-(a.y+a.h))[0];selected=b?b.id:null;render();});
+  $('#repair').addEventListener('click',()=>attempt(()=>{sim.selectRepair(selected);toast('toastRepair',{id:selected});}));
+  $('#repair-all').addEventListener('click',()=>attempt(()=>{repairQueue=sim.profile().buildings.filter(b=>b.hp<b.maxHp).map(b=>b.id);pumpRepair();toast('toastRepairAll');}));
+  $('#recovery').addEventListener('click',()=>attempt(()=>{const r=sim.activateRecovery();toast('toastRecovery',{n:fmt(r.issued/C.U)});}));
+  $('#collect').addEventListener('click',()=>attempt(()=>{sim.collectRecovery();toast('toastCollected');}));
+  $('#zero').addEventListener('click',()=>{if(sim.state.event){toast('errorEvent');return;}if(!confirm(tr('confirmZero')))return;attempt(()=>{const p=sim.profile();p.wallet=0;p.restricted=0;p.debt=0;p.recovery=null;p.deposits.forEach(d=>d.amount=0);p.units.filter(u=>u.type==='worker').forEach(u=>u.alive=false);for(const type of ['cc','wall','turret']){const b=p.buildings.find(x=>x.type===type);b.hp=0;b.status='ruin';}selected=p.buildings.find(x=>x.type==='cc').id;toast('toastZero');});});
+  $('#skills').addEventListener('click',()=>{renderSkills();$('#skills-dialog').showModal();});$('#close-skills').addEventListener('click',()=>$('#skills-dialog').close());$('#reset-skills').addEventListener('click',()=>attempt(()=>{sim.resetSkills();renderSkills();toast('toastResetSkills');}));
+  $('#run-analysis').addEventListener('click',async()=>{
+    const b=$('#run-analysis'),progress=$('#analysis-progress');b.disabled=true;progress.classList.remove('hidden');const jobs=A.jobs(params),raw=A.empty();
+    try{for(let i=0;i<jobs.length;i++){progress.textContent=tr('running',{n:i+1,total:jobs.length,name:jobs[i].label});await new Promise(resolve=>setTimeout(resolve,0));raw[jobs[i].key].push(jobs[i].run());}analysisSummary=A.aggregate(raw,params);renderAnalysis();progress.textContent=tr('done',{n:jobs.length});}
+    catch(err){progress.textContent=`Error: ${err.message}`;console.error(err);}finally{b.disabled=false;}
+  });
+  window.addEventListener('beforeunload',save);
+  // Test hooks expose the same live model; there is no game profile or network access.
+  window.__ACE10_LAB__={get sim(){return sim;},get lang(){return lang;},get summary(){return analysisSummary;},render,draw,save,runAnalysis:()=>A.runAll(params)};
+  syncInputs();localize();if(!storageOK)setTimeout(()=>toast('toastSave'),500);requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
