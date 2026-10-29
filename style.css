@@ -1294,35 +1294,53 @@ body.menu-active #zoom-controls { display: none; }
   }
 }
 
-/* Сезон 3: Alien Cosmic: Expedition — баннер рядом с «Быстрой игрой» */
-.season3-section { background: linear-gradient(180deg, #08161c, #0a1b21); padding: 18px 0 26px; }
-.season3-banner {
-  position: relative; display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap; max-width: 980px; margin: 0 auto; padding: 22px 26px;
-  background: linear-gradient(120deg, rgba(20, 46, 54, 0.85), rgba(10, 27, 33, 0.92));
-  border: 1px solid rgba(118, 227, 215, 0.28); border-radius: 14px;
-  box-shadow: 0 0 28px rgba(0, 0, 0, 0.35), inset 0 0 40px rgba(118, 227, 215, 0.05);
-  text-decoration: none; color: inherit; overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+/* Сезон 3: Alien Cosmic: Expedition — полноценная секция лендинга (канон section-heading) */
+.season3-section {
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #08161c, #0a1b21);
+}
+/* Планета Брок-Тхаал — приглушённое глоу в правом верхнем углу секции */
+.season3-section::before {
+  content: ''; position: absolute; right: -120px; top: -160px; width: 420px; height: 420px;
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 35%, rgba(198, 106, 62, 0.4), rgba(90, 32, 22, 0.55) 55%, rgba(46, 16, 16, 0.85));
+  box-shadow: 0 0 90px rgba(198, 106, 62, 0.2);
+}
+.season3-section .page-shell { position: relative; }
+
+.season3-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+  margin-bottom: 22px;
+}
+.season3-card {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 18px 18px 16px; border-radius: 12px;
+  background: linear-gradient(150deg, rgba(20, 46, 54, 0.72), rgba(10, 27, 33, 0.9));
+  border: 1px solid rgba(118, 227, 215, 0.22);
+  text-decoration: none; color: inherit;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 @media (hover: hover) {
-  .season3-banner:hover, .season3-banner:focus-visible {
-    border-color: rgba(118, 227, 215, 0.55);
-    box-shadow: 0 0 34px rgba(118, 227, 215, 0.12), inset 0 0 46px rgba(118, 227, 215, 0.08);
-    transform: translateY(-1px);
+  .season3-card:hover, .season3-card:focus-visible {
+    border-color: rgba(118, 227, 215, 0.5);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), inset 0 0 30px rgba(118, 227, 215, 0.05);
+    transform: translateY(-2px);
   }
 }
-.season3-banner::before {
-  content: ''; position: absolute; right: -60px; top: -80px; width: 240px; height: 240px;
-  border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle at 35% 35%, rgba(198, 106, 62, 0.5), rgba(90, 32, 22, 0.65) 55%, rgba(46, 16, 16, 0.9));
-  box-shadow: 0 0 60px rgba(198, 106, 62, 0.25);
+.season3-kicker {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--amber);
 }
-.season3-copy { max-width: 640px; position: relative; }
-.season3-copy h2 { margin: 2px 0 6px; letter-spacing: 0.02em; }
-.season3-sub { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.season3-cta { position: relative; white-space: nowrap; pointer-events: none; }
-@media (max-width: 700px) {
-  .season3-banner { padding: 18px; }
-  .season3-banner::before { width: 160px; height: 160px; right: -70px; top: -60px; opacity: 0.7; }
+.season3-card-title { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -.01em; }
+.season3-card-text { font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+.season3-actions {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  max-width: 980px;
 }
+.season3-actions .big-btn {
+  text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 46px; padding: 10px 24px;
+}
+.season3-note { margin: 0; font-size: 11.5px; color: var(--muted); }
+@media (max-width: 900px) { .season3-grid { grid-template-columns: 1fr; } }
