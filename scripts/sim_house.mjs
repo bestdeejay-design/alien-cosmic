@@ -77,19 +77,24 @@ function revealAndGather(st) {
 }
 
 // ---------- H1: перелёт Дома обновляет мировой центр ----------
+// Канон владельца 30.10: полёт «как юнит» — шаттл реально летит над помехами
+// (клетка взлёта свободна сразу), точка назначения занимается при посадке.
 try {
   const st = boot();
   const b = st._depot;
   const oldX = b.x, oldY = b.y;
-  game.moveHouse(b, (b.tx + 8) * TILE, (b.ty + 6) * TILE);
-  const expectX = (b.tx + b.w / 2) * TILE, expectY = (b.ty + b.h / 2) * TILE;
-  assert(Math.abs(b.x - expectX) <= 1 && Math.abs(b.y - expectY) <= 1,
-    `центр не обновился: (${b.x},${b.y}) вместо (${expectX},${expectY})`);
-  assert(Math.hypot(b.x - oldX, b.y - oldY) > TILE * 3, 'Дом не сдвинулся');
-  ticks(200);
+  const dtx = b.tx + 8, dty = b.ty + 6;
+  game.moveHouse(b, dtx * TILE, dty * TILE); // приказ угловой точкой (floor по тайлу)
+  assert(b.airborne && b.flight, 'после приказа шаттл не в воздухе');
+  ticks(10);
+  assert(Math.abs(b.x - oldX) > 0.5 || Math.abs(b.y - oldY) > 0.5, 'шаттл не тронулся');
+  const mid = Math.hypot(b.x - oldX, b.y - oldY);
+  assert(mid > 1 && mid < TILE * 14, `полёт идёт не по маршруту: ${mid.toFixed(0)}px`);
+  ticks(400);
+  const expectX = (dtx + b.w / 2) * TILE, expectY = (dty + b.h / 2) * TILE;
   assert(Math.abs(b.x - expectX) <= 1 && Math.abs(b.y - expectY) <= 1, 'после полёта центр уехал');
-  assert(!b.flight, 'визуальный полёт не завершился');
-  pass(`H1 перелёт Дома: b.x/b.y = новый центр (${Math.round(b.x)},${Math.round(b.y)})`);
+  assert(!b.flight && !b.airborne, 'полёт не завершился посадкой');
+  pass(`H1 перелёт Дома: взлетел, пролетел над картой, сел (${Math.round(b.x)},${Math.round(b.y)})`);
 } catch (e) { fail('H1 центр Дома после перелёта', e); }
 
 // ---------- H2: отсек выпускается у нового места ----------
@@ -98,7 +103,8 @@ try {
   const b = st._depot;
   const oldCenter = { x: b.x, y: b.y };
   game.moveHouse(b, (b.tx + 8) * TILE, (b.ty + 6) * TILE);
-  ticks(5);
+  ticks(500); // полёт «как юнит» — ждём посадку (канон 30.10)
+  assert(!b.airborne, 'Дом не сел — выпуск отсека не у посадки');
   const u = U.spawnUnit(st, 'player', 'marine', b.x, b.y + 40, false);
   u.garrison = b;
   u.x = b.x; u.y = b.y;
