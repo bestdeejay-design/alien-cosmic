@@ -24,6 +24,7 @@ const CUI = await import('../r/js/commander-ui.js' + V);
 const U = await import('../r/js/units.js' + V);
 const cfg = await import('../r/js/config.js' + V);
 const R = await import('../r/js/raid.js' + V);
+const MIG = await import('../r/js/alarm-v2-migration.js' + V);
 
 const failures = [];
 const fail = (phase, err) => { failures.push(phase); console.log(`FAIL  ${phase}: ${String((err && err.message) || err)}`); };
@@ -38,10 +39,20 @@ const boot = () => {
   ticks(3);
   return game.state;
 };
+// ace#10: новая база — schema 2 (боевая тревога v2). Для legacy-веток сима
+// (домашние волны, старая XP-кривая) сохранён контекст schema 1 — старые
+// инварианты не удаляются, они проверяются на legacy-сессии.
+const bootLegacy = () => {
+  const st = boot();
+  game.raidSession.schema = 1;
+  game.raidSession.alarmV2 = undefined;
+  st.commander = C.createCommander();
+  return st;
+};
 
 // ---------- C1: звания и опыт ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   const c = C.ensureCommander(st);
   assert(c.level === 1 && C.rankName(1) === 'Капитан', 'старт не капитан: ' + C.rankName(c.level));
   assert(C.xpNeed(1) === 100, 'нужно 100 XP на 2 уровень, а не ' + C.xpNeed(1));
@@ -68,12 +79,35 @@ try {
   assert(max.gained === 0 && c.level === 20, 'после 20 уровня опыт не должен капать');
   assert(C.bonuses(20).supply === 9 && C.bonuses(20).defense === 1.19,
     'бонусы генерала неверны: ' + JSON.stringify(C.bonuses(20)));
-  pass(`C1 звания: 1→20, ${jumps.join(' → ')}, путь ${C.totalXpTo20()} XP, на 20 опыт капается`);
+  pass(`C1 звания (legacy): 1→20, ${jumps.join(' → ')}, путь ${C.totalXpTo20()} XP, на 20 опыт капается`);
+
+  // ace#10 (ECONOMY §2/§4): v2 — новый XP только через settle; старый addXp
+  // не добавляет XP; порог ×8; очки навыков выдаются по уровням.
+  const st2 = boot();
+  const c2 = C.ensureCommander(st2);
+  assert(c2.schema === 2, 'новая база должна быть schema 2');
+  assert(C.xpNeed(1, 2) === 800, 'xpNeed×8: ожидали 800, получили ' + C.xpNeed(1, 2));
+  const blocked = C.addXp(st2, 5000);
+  assert(blocked.gained === 0 && c2.level === 1, 'addXp на v2 должен быть no-op (ECONOMY §2)');
+  const award = MIG.prepareAlarmXpAward(c2, (BigInt(800) * 1000000n).toString());
+  assert(award.levels === 1 && award.commander.level === 2, 'prepareAlarmXpAward не поднял уровень');
+  assert(award.commander.unspent === 1, 'за новый уровень не выдано очко навыка');
+  let lvl = 0;
+  while (lvl < 18) {
+    const need = C.xpNeed(award.commander.level, 2);
+    const r = MIG.prepareAlarmXpAward(award.commander, (BigInt(need) * 1000000n).toString());
+    award.commander = r.commander; lvl += r.levels;
+  }
+  assert(award.commander.level === 20, 'v2: путь до 20 уровня не сходится');
+  const cap = MIG.prepareAlarmXpAward(award.commander, (BigInt(500) * 1000000n).toString());
+  assert(cap.gainedMicro === '0' && cap.commander.level === 20, 'v2: на 20 уровне XP капается');
+  assert(award.commander.unspent === 19, 'всего очков навыка должно быть 19: ' + award.commander.unspent);
+  pass('C1 звания (v2): ×8-кривая, addXp no-op, очки за уровни, кап 20');
 } catch (e) { fail('C1 звания и опыт', e); }
 
 // ---------- C2: бонусы и население ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   const cc = st.buildings.find((b) => b.side === 'player' && b.type === 'cc');
   const baseCap = st.buildings.filter((b) => !b.dead && b.side === 'player' && b.done)
     .reduce((a, b) => a + (b.cfg.supplyGain || 0), 0);
@@ -103,7 +137,7 @@ try {
 
 // ---------- C3: входящий рейд и автооборона ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   HR.initHomeRaid(st);
   const hr = st.homeRaid;
   assert(hr.nextAt === HR.HOME_RAID.first && hr.t === 0, 'таймер первого рейда не выставлен');
@@ -156,7 +190,7 @@ try {
 
 // ---------- C4: учебная тревога ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   HR.initHomeRaid(st);
   const res = HR.spawnHomeWave(st, { training: true });
   assert(res.ok && res.training, 'учебная тревога не запустилась');
@@ -191,7 +225,7 @@ try {
 
 // ---------- C6: карточка командира ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   C.hydrateCommander(st, { level: 6, xp: 10, autoDefense: true, stats: { raids: 4, defenses: 1, kills: 9 }, log: [] });
   C.logEvent(st, 'Входящий рейд: волна 1', 'warn');
   CUI.openCommander(game);
@@ -217,7 +251,7 @@ try {
 
 // ---------- C8: карточка командира — посты и трофеи (Э7 ч.2) ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   C.ensureCommander(st).level = 8;
   st.selection = [];
   const a = U.spawnUnit(st, 'player', 'marine', 620, 620);
@@ -249,7 +283,7 @@ try {
 
 // ---------- C7: движок крутит оборону сам (интеграция в tick) ----------
 try {
-  const st = boot();
+  const st = bootLegacy();
   HR.initHomeRaid(st);
   st.homeRaid.t = st.homeRaid.nextAt - 0.1; // рейд вот-вот
   ticks(10);

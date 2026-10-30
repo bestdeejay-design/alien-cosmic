@@ -38,6 +38,12 @@ assert(game, 'движок полигона не поднялся');
 const ticks = (n) => { for (let i = 0; i < n; i++) game.tick(); };
 const boot = () => {
   game.startRaidHome('human', { forceNew: true });
+  // ace#10: сим отрядов проверяет legacy-механику Э7 (домашние волны,
+  // трофеи, настройки рейдов) — контекст schema 1; боевая тревога v2
+  // проверяется отдельными sim_alarm_*_v2 (ACCEPTANCE §2).
+  game.raidSession.schema = 1;
+  game.raidSession.alarmV2 = undefined;
+  game.state.commander = C.createCommander();
   ticks(3);
   return game.state;
 };

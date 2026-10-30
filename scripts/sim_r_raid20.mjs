@@ -31,6 +31,14 @@ const U = await import('../r/js/units.js' + V);
 const B = await import('../r/js/buildings.js' + V);
 const R = await import('../r/js/raid.js' + V);
 const ui = await import('../r/js/ui.js' + V);
+// ace#10 Ф-3 (ревизия SZ m2): на v2-базе кошелёк (walletMicro) авторитарен,
+// прямая запись в view не доходит до расходов (startGrade тратит из кошелька).
+// Посев денег сима идёт через единую точку дохода creditMinerals.
+const W = await import('../r/js/alarm-v2-wallet.js' + V);
+function giveMoney(s, amount) {
+  const need = amount - (s.minerals.player || 0);
+  if (need > 0) W.creditMinerals(s, 'player', need);
+}
 const game = globalThis.game;
 if (!game) { console.log('FAIL  boot: window.game не создан'); process.exit(1); }
 assert(E.MAX_LEVEL === 20, 'MAX_LEVEL не 20');
@@ -77,7 +85,7 @@ try {
   ticks(3);
   const s = st();
   assert(s.raidMode === 'home', 'не рейд-хоум');
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   assert(cc && cc.level === 1, 'КЦ не Г1');
 
@@ -101,7 +109,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   const tur = placeDone(s, 'player', 'turret', cc.tx, cc.ty);
   gradeTo(s, tur, 1); // остаётся Г1
@@ -129,7 +137,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   selectOnly(cc);
   paint();
@@ -177,7 +185,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   const lab = placeDone(s, 'player', 'lab', cc.tx, cc.ty);
   selectOnly(lab);
@@ -208,7 +216,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   const house = placeDone(s, 'player', 'depot', cc.tx, cc.ty);
 
@@ -232,7 +240,7 @@ try {
   assert(E.raidTierAt(20).unlockCC === 20, 'тир 20 не требует КЦ 20');
 
   // Запуск вылазки: трюм = грейд Дома, бур = тир.
-  s.minerals.player = 5000;
+  giveMoney(s, 5000);
   const squad = { worker: 2 };
   const v1 = R.validateRaidLoadout(s, { tier: 1, units: squad, budget: 0, seed: 12345 });
   assert(v1.ok, 'валидная вылазка отклонена: ' + (v1.reasonKey || ''));
@@ -284,7 +292,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 50_000_000;
+  giveMoney(s, 50_000_000);
   const cc = ccOf(s);
   const tur = placeDone(s, 'player', 'turret', cc.tx, cc.ty);
   // E7 — про сериализацию: уровни ставим напрямую (правила гейтов проверены выше).
@@ -303,7 +311,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   const house = placeDone(s, 'player', 'depot', cc.tx, cc.ty);
   gradeTo(s, cc, 2);
@@ -351,7 +359,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 1_000_000_000;
+  giveMoney(s, 1_000_000_000);
   const cc = ccOf(s);
   cc.level = 10; // низкие уровни проверены в E3/E4, здесь только новое условие
   for (let i = 0; i < 10; i++) { const t = placeDone(s, 'player', 'turret', cc.tx, cc.ty); t.level = 10; }
@@ -386,7 +394,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s = st();
-  s.minerals.player = 5_000_000;
+  giveMoney(s, 5_000_000);
   const cc = ccOf(s);
   const house = placeDone(s, 'player', 'depot', cc.tx, cc.ty);
   gradeTo(s, cc, 2);
@@ -417,7 +425,7 @@ try {
   assert(U.orderGarrison && U.unitCapOf(house) === 10, 'кап отсека изменился');
 
   // Запуск вылазки берёт отряд ИЗ ОТСЕКА в первую очередь.
-  s.minerals.player = 5000;
+  giveMoney(s, 5000);
   const v = game.launchRaidExpedition({ tier: 2, units: { marine: 4 }, budget: 0, seed: 777 });
   assert(v.ok, 'вылазка из отсека не стартовала');
   ticks(5);
@@ -521,7 +529,7 @@ try {
   game.startRaidHome('human', { forceNew: true });
   ticks(3);
   const s2 = st();
-  s2.minerals.player = 1000;
+  giveMoney(s2, 1000);
   const cc2 = ccOf(s2);
   cc2.level = 6; // для проверки выдачи грейда достаточно уровня КЦ
   const house2 = placeDone(s2, 'player', 'depot', cc2.tx, cc2.ty);

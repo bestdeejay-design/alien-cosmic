@@ -30,7 +30,8 @@ await import('../r/js/game.js');
 const g=window.game;
 g.startRaidHome('human',{forceNew:true});
 const cc=()=>g.state.buildings.find(b=>!b.dead&&b.side==='player'&&b.type==='cc');
-cc().level=16;cc().maxHp=3750;cc().hp=3750;g.state.minerals.player=336692;g.raidSession.raidSeq=18;g.syncRaidHomeSnapshot();
+const setErg=(n)=>{g.state.minerals.player=n;if(g.raidSession&&g.raidSession.schema===2&&g.raidSession.alarmV2){g.raidSession.alarmV2.walletMicro=(BigInt(Math.round(n))*1000000n).toString();}};
+cc().level=16;cc().maxHp=3750;cc().hp=3750;setErg(336692);g.raidSession.raidSeq=18;g.syncRaidHomeSnapshot();
 cloud=JSON.stringify(g.raidSession);const originalCloud=cloud;
 g.raidSession=null;g.started=false;localStorage.removeItem(KEY);
 if(mode==='remembered'){localStorage.setItem('ac_save_nick','test');localStorage.setItem('ac_save_pin','1234');}
@@ -61,12 +62,13 @@ if(['cloud','remembered','empty','corrupt'].includes(mode)){
  if(mode==='skip'||mode==='escape'){
   await save.pushKey(KEY);fireWindow('pagehide');assert.equal(raidSaves,0);assert(localStorage.getItem(save.guestRaidKey));
  }else{
-  cc().level=7;g.state.minerals.player=7777;g.syncRaidHomeSnapshot();
+  cc().level=7;setErg(7777);g.syncRaidHomeSnapshot();
   if(mode==='guest-empty')cloud=null;
   if(mode==='offline')offline=true;
   A.openAuth(g,{step:'login'});
   if(mode==='offline'){
    assert(A.goToPin('test'));const r=await A.submitPin('1234');assert(!r.ok);click('#auth-close');
+   await new Promise(r=>setTimeout(r,5)); // ace#10 Ф-4: enterGuest теперь асинхронный (промоция) — пауза снимается в микротаске
    assert.equal(save.identity,null);assert.equal(g.paused,false);assert.equal(cc().level,7);assert.equal(ts,12345);
   }else{
    if(mode==='late-login'){
@@ -85,11 +87,15 @@ if(['cloud','remembered','empty','corrupt'].includes(mode)){
      g.syncRaidHomeSnapshot();await save.pushKey(KEY);await save.pushAll();fireWindow('pagehide');fireWindow('beforeunload');
      assert.equal(cloud,before);assert.equal(ts,stamp);assert.equal(raidSaves,0);assert.equal(cc().level,7);
      if(mode==='load-cloud'){
-      click('#auth-load-cloud');assert.equal(cc().level,16);assert.equal(g.state.minerals.player,336692);assert.equal(cloud,before);assert.equal(ts,stamp);
+      click('#auth-load-cloud');
+      // ace#10 Ф-4 (ревизия): применение облачного снапшота идёт через
+      // промоцию (async, Web Locks) — ждём подъёма базы, потом сверяем.
+      await wait(()=>cc().level===16);
+      assert.equal(cc().level,16);assert.equal(g.state.minerals.player,336692);assert.equal(cloud,before);assert.equal(ts,stamp);
      }else if(mode==='cancel-replace'){
-      click('#auth-save-guest');await new Promise(r=>setTimeout(r,20));assert.equal(cloud,before);assert.equal(ts,stamp);assert.equal(A.auth.step,'choice');click('#auth-close');assert.equal(cc().level,7);assert.equal(g.paused,false);
+      click('#auth-save-guest');await new Promise(r=>setTimeout(r,20));assert.equal(cloud,before);assert.equal(ts,stamp);assert.equal(A.auth.step,'choice');click('#auth-close');await new Promise(r=>setTimeout(r,5));assert.equal(cc().level,7);assert.equal(g.paused,false);
      }else if(mode==='save-fail'){
-      click('#auth-save-guest');await wait(()=>A.auth.step==='guest-save-error');assert.equal(raidSaves,0);assert.equal(cloud,before);assert.equal(ts,stamp);assert.equal(save.raidWriteReady,false);click('#auth-close');assert.equal(cc().level,7);assert.equal(g.paused,false);
+      click('#auth-save-guest');await wait(()=>A.auth.step==='guest-save-error');assert.equal(raidSaves,0);assert.equal(cloud,before);assert.equal(ts,stamp);assert.equal(save.raidWriteReady,false);click('#auth-close');await new Promise(r=>setTimeout(r,5));assert.equal(cc().level,7);assert.equal(g.paused,false);
      }else if(mode==='replace'){
       click('#auth-save-guest');await wait(()=>!A.isAuthOpen());assert.equal(cc().level,7);assert.equal(raidSaves,1);assert.notEqual(cloud,before);assert.equal(g.state.minerals.player,7777);
      }

@@ -235,6 +235,32 @@ globalThis.sessionStorage = {
   removeItem: (k) => sessionStore.delete(k),
   clear: () => sessionStore.clear(),
 };
+// ace#10 Ф-4/К-4 (ревизия SZ m2): минимальный in-memory Web Locks. Игровой код
+// fail-closed без платформенных локов (acquireRaidWriter → WRITER_LOCK_UNAVAILABLE),
+// поэтому симы, проверяющие пути промоции (roundtrip save→reload), дают движку
+// настоящий по семантике lease: exclusive, ifAvailable, освобождение через
+// release() — как в браузере.
+if (!globalThis.navigator) globalThis.navigator = {};
+if (!globalThis.navigator.locks) {
+  const lockHeld = new Map(); // name → Promise (освобождение)
+  globalThis.navigator.locks = {
+    async request(name, opts, callback) {
+      if (typeof callback !== 'function') { callback = opts; opts = undefined; }
+      const ifAvailable = !!(opts && opts.ifAvailable);
+      const prev = lockHeld.get(name);
+      if (prev && ifAvailable) return callback(null); // занято → честный null
+      let release;
+      const gate = new Promise((r) => { release = r; });
+      lockHeld.set(name, gate);
+      try {
+        return await callback({ name });
+      } finally {
+        release();
+        if (lockHeld.get(name) === gate) lockHeld.delete(name);
+      }
+    },
+  };
+}
 globalThis.document = {
   hidden: false,
   body: new FakeEl('body'),

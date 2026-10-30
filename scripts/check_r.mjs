@@ -436,7 +436,7 @@ try {
     ok('entry4 · ' + pass[0].replace(/^PASS\s+/, ''));
   }
 } catch (e) {
-  bad('auth-45:\n' + String(e.stdout || e.stderr || e.message));
+  bad('auth-45: ' + String((e && e.message) || '') + '\n' + String(e.stdout || e.stderr || '').split('\n').slice(0, 6).join('\n'));
 }
 
 // ---------- [22] блок капсул на телефоне (жалоба владельца 27.10) ----------
@@ -480,5 +480,39 @@ try {
   bad('sim_walls:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход/ysort/стены зелёные');
+// ---------- [25] Боевая тревога v2 (ace#10, ACCEPTANCE §2) ----------
+// Матрица планов/режимы, экономика (B/P/XP, D2, ±25%), сохранение/миграция
+// (7×rawXP однократно), СБОР, живая интеграция события, RU/EN паритет,
+// Ф-5: туман-автодобыча (6299a96) и вылазка×тревога (запреты/перенос/1:1).
+console.log('\n[25] Боевая тревога v2 (ace#10):');
+for (const sim of ['sim_alarm_matrix_v2', 'sim_alarm_economy_v2', 'sim_alarm_save_v2',
+  'sim_assemble_v2', 'sim_alarm_live_v2', 'sim_alarm_i18n_v2',
+  'sim_fog_autogather_v2', 'sim_expedition_alarm_v2']) {
+  try {
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', sim + '.mjs')], { stdio: 'pipe' }).toString();
+    const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+    if (!lines.length) throw new Error('ни одного PASS');
+    ok(sim + ': ' + lines[lines.length - 1].replace(/^PASS\s+/, ''));
+  } catch (e) {
+    bad(sim + ':\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
+  }
+}
+
+// ---------- [26] Живой roundtrip «save v2 → reload» (ace#10 Ф-4/К-4) ----------
+// Бут-путь промоции целиком: v2-сейв поднимается, legacy мигрирует с бэкапом
+// и однократным кредитом, будущая схема — отказ без перезаписи, гость-ключ жив.
+console.log('\n[26] Бут-roundtrip v2 (ace#10 К-4):');
+{
+  const sim = 'sim_alarm_boot_v2';
+  try {
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', sim + '.mjs')], { stdio: 'pipe' }).toString();
+    const lines = out.split('\n').filter((l) => l.startsWith('PASS'));
+    if (!lines.length) throw new Error('ни одного PASS');
+    ok(sim + ': ' + lines[lines.length - 1].replace(/^PASS\s+/, ''));
+  } catch (e) {
+    bad(sim + ':\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
+  }
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход/ysort/стены/тревога/бут-roundtrip зелёные');
 process.exit(failed ? 1 : 0);
