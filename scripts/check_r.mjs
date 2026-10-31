@@ -514,5 +514,24 @@ console.log('\n[26] Бут-roundtrip v2 (ace#10 К-4):');
   }
 }
 
-console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход/ysort/стены/тревога/бут-roundtrip зелёные');
+// ---------- [27] С1 «вход/слоты»: хранилище слотов и шаг стороны ----------
+// (ace entry-slots, поставка С1): unit-логика хранилища (roundtrip,
+// вытеснение, keep после purge, битый JSON, без пина, дроссель) + сцены
+// мастера side-first/side-skip. Гейты Г1–Г3 описаны в
+// ace-wf/entry-audit/CHECKPOINTS.md.
+console.log('\n[27] Слоты входа и шаг стороны (С1 entry-slots):');
+try {
+  const lines = [];
+  for (const args of [[], ['side-first'], ['side-skip']]) {
+    const out = execFileSync(process.execPath,
+      [path.join(ROOT, 'scripts', 'sim_entry_slots.mjs'), ...args], { stdio: 'pipe' }).toString();
+    lines.push(...out.split('\n').filter((l) => l.startsWith('PASS')));
+  }
+  if (lines.length < 10) throw new Error('ожидались ≥10 PASS (8 unit + 2 сцены), пришло ' + lines.length);
+  for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
+} catch (e) {
+  bad('sim_entry_slots:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
+}
+
+console.log(failed ? '\n❌ ГЕЙТ r/: есть проблемы изоляции' : '\n✅ ГЕЙТ r/: полигон изолирован от S1, капсулы/вид/командир/отряды/вылазка/профиль/дом/эвакуация/модалки/вход/ysort/стены/тревога/бут-roundtrip/слоты зелёные');
 process.exit(failed ? 1 : 0);
