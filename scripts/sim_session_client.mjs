@@ -4,13 +4,17 @@
 // гейт Г2. Клиент кодится против МОКА сервера по контракту раздела 1
 // (как sim_profile/sim_entry_slots мокают fetch).
 //
-// Сценарии (по одному PASS на строку, ≥10):
+// Сценарии (по одному PASS на строку, ≥10; +3 сцены правок ревью Г2):
 //   token-on-save        — после входа каждый push несёт sessionToken (тело +
 //                          заголовок X-Session-Token), токен НЕ в URL;
+//   beacon-active-token  — pagehide в ACTIVE: бикон несёт токен в теле
+//                          (sendBeacon без заголовков) и ПРИНИМАЕТСЯ моком;
 //   beat-60s             — бит зарегистрирован с интервалом 60 с и несёт токен;
 //   panel-block          — блок «Мои сессии»: active первым, «Это вы» на
 //                          current, статусы/lastSeen человекочитаемо,
 //                          «Обновить список» перезапрашивает;
+//   beat-reregister      — start упал при входе (500) → бит 60 с
+//                          перерегистрирует (ретрай К-3, раньше был недостижим);
 //   displaced-409        — 409 от push → флаг зрителя, дальше сеть молчит;
 //   viewer-writes-muted  — интервал 15 с, бит и sendBeacon зрителя НЕ пишут;
 //   viewer-banner        — баннер с device/«Обновлено», пауза поставлена;
@@ -23,6 +27,8 @@
 //   paused-on-load       — sessionStatus:'paused' от /api/load → зритель (К-4);
 //   logout-ends          — «Выход» → session/end ДО очистки identity, токен
 //                          стёрт; офлайн-end не блокирует выход;
+//   viewer-poll-stale    — выход посреди poll: in-flight /api/load после purge
+//                          НЕ перезаписывает RAID_KEY/lastSynced/ts;
 //   degrade-health-v6    — /health без sessions:true: ноль session-вызовов,
 //                          push/pull как в С1, блок панели скрыт;
 //   degrade-404          — session-ручки 404: ровно ОДИН проб, фича выключена;
@@ -86,6 +92,8 @@ const S = {
   offline: false,        // сеть лежит целиком
   endFails: false,       // /api/session/end падает (офлайн-end)
   loadPaused: false,     // /api/load отдаёт sessionStatus:'paused' (К-4)
+  loadDelay: 0,          // задержка ответа /api/load (сцена stale-poll)
+  failStart: 0,          // сколько следующих /api/session/start падает (500)
   rows: new Map(),       // sessionId → { player, device, status, created, lastSeen }
   thisToken: null,       // токен последнего start (чей клиент — не важно)
   snapshotValue: null,
@@ -97,6 +105,16 @@ const S = {
 };
 const resp = (status, j) => ({ status, ok: status >= 200 && status < 300, headers: { get: () => null }, json: async () => j });
 const sess409 = (active) => resp(409, { ok: false, error: 'active elsewhere', activeElsewhere: true, active: { device: active.device, lastSeen: active.lastSeen } });
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+// К-3: write-owner enforcement — единое решение для fetch и для бикона
+// (сцена beacon-active-token проверяет, что бикон СЕРВЕРОМ принимается).
+const decideSave = (body, token) => {
+  const row = token ? S.rows.get(token) : null;
+  const active = [...S.rows.values()].find((r) => r.player === body.player && r.status === 'active');
+  if (row && row.status === 'active') return { code: 200, accepted: true };
+  if (active) return { code: 409, accepted: false, active };
+  return { code: 200, accepted: true }; // без active — как в С1
+};
 
 globalThis.fetch = async (url, opts = {}) => {
   const raw = String(url);
@@ -117,6 +135,7 @@ globalThis.fetch = async (url, opts = {}) => {
   if (path.endsWith('/api/session/start')) {
     if (!S.endpointsUp) return resp(404, { ok: false, error: 'http 404' });
     if (!S.healthSessions) return resp(200, { ok: true, disabled: true }); // kill-switch
+    if (S.failStart > 0) { S.failStart--; return resp(500, { ok: false, error: 'boom' }); }
     const hadActive = [...S.rows.values()].some((r) => r.player === body.player && r.status === 'active');
     for (const r of S.rows.values()) if (r.player === body.player) r.status = 'paused';
     const id = 'sid-' + (++S.uuidN) + '-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -154,6 +173,7 @@ globalThis.fetch = async (url, opts = {}) => {
     return resp(200, { ok: true, player, sessions: list });
   }
   if (path.endsWith('/api/load')) {
+    if (S.loadDelay > 0) await sleepMs(S.loadDelay); // сцена stale-poll: ответ зависает
     if (body.key === '__check__') {
       if (body.pin !== '1234') return resp(403, { ok: false, error: 'nick taken, wrong pin' });
       return resp(200, { ok: true, player: 'best', registered: false });
@@ -172,16 +192,14 @@ globalThis.fetch = async (url, opts = {}) => {
     return resp(200, { ok: false, error: 'not found' });
   }
   if (path.endsWith('/api/save')) {
-    const row = token ? S.rows.get(token) : null;
-    const active = [...S.rows.values()].find((r) => r.player === body.player && r.status === 'active');
-    if (row && row.status === 'active') {
+    const v = decideSave(body, token);
+    if (v.accepted) {
       S.saves.push({ key: body.key, value: body.value, token });
-      row.lastSeen = Date.now(); // К-2: heartbeat на сессионном вызове
+      const row = S.rows.get(token);
+      if (row) row.lastSeen = Date.now(); // К-2: heartbeat на сессионном вызове
       return resp(200, { ok: true, ts: Date.now(), player: body.player });
     }
-    if (active) return sess409(active); // К-3: write-owner enforcement
-    S.saves.push({ key: body.key, value: body.value, token }); // без active — как в С1
-    return resp(200, { ok: true, ts: Date.now(), player: body.player });
+    return sess409(v.active); // К-3: write-owner enforcement
   }
   if (path.endsWith('/api/list')) return resp(200, { ok: true, records: [] });
   return resp(200, { ok: true });
@@ -294,6 +312,22 @@ assert.ok(S.saves.every((s) => s.token === token1), 'каждый push несё�
 console.log('PASS token-on-save: вход → start → токен в sessionStorage, push несёт его (тело+заголовок, не URL)');
 
 // ============================================================
+// 1b) beacon-active-token: pagehide в ACTIVE — бикон несёт токен в теле
+// (sendBeacon не умеет заголовки, контракт §1.2) и принимается сервером,
+// иначе прогресс закрытой вкладки (до 15 с) теряется на 409 (ревью Г2).
+// ============================================================
+const beacons1b = S.beacons.length;
+bumpErg(1234); syncToLS(); // локально «грязно» — pagehide обязан дослать
+fireWindow('pagehide', {});
+assert.ok(S.beacons.length > beacons1b, 'бикон ушёл при закрытии вкладки (ACTIVE)');
+const bbody = JSON.parse(await S.beacons[S.beacons.length - 1].blob.text());
+assert.equal(bbody.sessionToken, token1, 'бикон несёт sessionToken в теле');
+assert.equal(bbody.key, 'ac_raid_session_v1', 'бикон: ключ базы рейда');
+const verdict1b = decideSave(bbody, bbody.sessionToken);
+assert.equal(verdict1b.code, 200, 'мок принимает бикон (К-3: токен активной строки → 200, не 409)');
+console.log('PASS beacon-active-token: pagehide в ACTIVE — бикон с токеном принят сервером (прогресс не теряется)');
+
+// ============================================================
 // 2) beat-60s: бит зарегистрирован с интервалом 60 с и несёт токен.
 // ============================================================
 const beat = liveOf(60000);
@@ -332,6 +366,22 @@ assert.ok(!sessReq.url.includes(token1), 'токен списка НЕ в URL');
 panelEl().querySelector('#sv-close').click();
 await wait(() => !panelEl(), 'панель закрыта');
 console.log('PASS panel-block: третий блок панели, active+«Это вы», статусы/время, обновление перезапрашивает');
+
+// ============================================================
+// 3b) beat-reregister: start упал при входе (500) — бит 60 с перерегистрирует
+// (раньше: ни бита, ни ретрая — токен терялся до следующего входа; ревью Г2).
+// ============================================================
+S.failStart = 1; // следующий start → 500
+await exitViaPanel();
+await loginBest(); // start падает, вход жив (registerSession — best-effort)
+assert.equal(sessionStorage.getItem('ac_session_token'), null, 'start упал — токена нет');
+const beatRetry = liveOf(60000);
+assert.ok(beatRetry, 'бит зарегистрирован даже при неудачном start (не только при успехе)');
+await beatRetry.fn();
+await wait(() => !!sessionStorage.getItem('ac_session_token'), 'бит перерегистрировал');
+const tokenR = sessionStorage.getItem('ac_session_token');
+assert.equal(tokenR, S.thisToken, 'повторный start выдал токен через бит');
+console.log('PASS beat-reregister: неудача start → бит 60 с перерегистрирует (ретрай К-3)');
 
 // ============================================================
 // 4) displaced-409: вытеснение другим устройством → push 409 → зритель.
@@ -488,6 +538,25 @@ S.endFails = false;
 console.log('PASS logout-ends: end ДО очистки identity (порядок виден сетью), офлайн-end не блокирует выход');
 
 // ============================================================
+// 12b) viewer-poll-stale: выход посреди poll — in-flight /api/load просыпается
+// ПОСЛЕ purge и не перезаписывает RAID_KEY/lastSynced/ts (ревью Г2).
+// ============================================================
+await loginBest();
+displaceByOther('Safari · iPhone');
+S.loadPaused = true;
+await save.pullKey('ac_raid_session_v1'); // → зритель
+S.loadPaused = false;
+const pollStale = liveOf(20000);
+S.loadDelay = 350; // ответ зависает в моке
+void pollStale.fn(); // poll ушёл в сеть и завис
+await exitViaPanel(); // выход В ПОЛЁТЕ poll (purge: epoch++, RAID_KEY удалён)
+await sleep(600); // poll проснулся уже после очистки
+assert.equal(localStorage.getItem('ac_raid_session_v1'), null,
+  'stale poll НЕ записал RAID_KEY поверх purge');
+S.loadDelay = 0;
+console.log('PASS viewer-poll-stale: выход посреди poll — перегидрация не переживает purge');
+
+// ============================================================
 // 13) degrade-health-v6: /health без sessions:true — весь С2 невидим (С1).
 // ============================================================
 S.rows.clear(); S.thisToken = null;
@@ -574,5 +643,5 @@ assert.equal(save.viewerActive, false, 'офлайн: баннеров нет');
 S.offline = false;
 console.log('PASS degrade-offline: сеть лежит — офлайн-экран С1, ноль session-вызовов, без баннеров');
 
-console.log('sim_session_client: 15 PASS — гейт Г2 (клиент против мока сервера) зелёный');
+console.log('sim_session_client: 18 PASS — гейт Г2 (клиент против мока сервера) зелёный, правки ревью покрыты');
 process.exit(0);
