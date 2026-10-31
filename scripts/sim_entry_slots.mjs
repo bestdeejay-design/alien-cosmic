@@ -151,20 +151,19 @@ async function scene(mode) {
   globalThis.location = { protocol: 'http:', hostname: 'test.invalid', reload() {} };
   globalThis.dispatchEvent = () => true;
   globalThis.confirm = () => true;
-  const netCalls = [];
+  const net = [];
   let offline = false;
   const resp = (status, j) => ({ status, ok: status >= 200 && status < 300, headers: { get: () => null }, json: async () => j });
-  // «Облако»: пустое (новый профиль законен). Сторона базы — только выбор игрока.
+  const clouds = {}; // player → снапшот базы (строка)
   globalThis.fetch = async (url, opts = {}) => {
     const path = String(url);
-    netCalls.push(path);
+    let body = {};
+    try { body = JSON.parse(opts.body || '{}'); } catch { /* GET */ }
+    net.push({ path, player: body.player || '', key: body.key || '' });
     if (offline) throw new Error('offline');
     if (path.endsWith('/health')) return resp(200, { ok: true });
     if (path.endsWith('/api/load')) {
-      if (opts.body) {
-        const body = JSON.parse(opts.body);
-        if (body.key === 'ac_raid_session_v1') return resp(200, { ok: false, error: 'not found' });
-      }
+      if (body.key === 'ac_raid_session_v1' && clouds[body.player]) return resp(200, { ok: true, value: clouds[body.player], ts: 12345 });
       return resp(200, { ok: false, error: 'not found' });
     }
     if (path.endsWith('/api/save')) return resp(200, { ok: true, ts: 1 });
@@ -184,14 +183,71 @@ async function scene(mode) {
   const save = window.__saveApi;
   const A = await import('../r/js/auth-ui.js' + V);   // ТОТ ЖЕ инстанс, что у save-client
   const S = await import('../r/js/entry-slots.js' + V);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const wait = async (pred) => {
-    for (let i = 0; i < 250; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 10)); }
+    for (let i = 0; i < 250; i++) { if (pred()) return; await sleep(10); }
     throw new Error(`timeout ${mode}: step=${A.auth.step} open=${A.isAuthOpen()}`);
   };
   const overlay = () => document.body.children.find((c) => c.id === 'auth-overlay' && !c.classList.contains('hidden'));
-  const boot = import('../r/raid-boot.js');
-  await wait(() => A.isAuthOpen());
-  assert.equal(g.started, false, 'симуляция ждёт решения гейта (ace#4)');
+  const slotsOverlay = () => document.body.children.find((c) => c.id === 'slots-overlay');
+  const panelEl = () => document.body.children.find((c) => c.id === 'sv-panel');
+  const bodyIn = (id) => document.body.children.some((c) => c && c.id === id);
+  const ccOf = () => g.state.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+  // Изменение добычи, которое РЕАЛЬНО попадает в снапшот (как setErg в
+  // sim_auth_entry4: в schema 2 homeDto.minerals живёт в кошельке).
+  const bumpErg = (n) => {
+    g.state.minerals.player = n;
+    if (g.raidSession && g.raidSession.schema === 2 && g.raidSession.alarmV2) {
+      g.raidSession.alarmV2.walletMicro = (BigInt(Math.round(n)) * 1000000n).toString();
+    }
+  };
+  const raidSaves = () => net.filter((x) => x.path.endsWith('/api/save')).length;
+  // Ручной сейв-тик как делает saveNow raid-boot: снапшот → localStorage
+  // (дальше push уходит сам при следующем пуш-цикле/ручном pushAll).
+  const syncToLS = () => { g.syncRaidHomeSnapshot(); localStorage.setItem('ac_raid_session_v1', JSON.stringify(g.raidSession)); };
+  const guestWrap = () => {
+    const orig = save.enterGuest.bind(save);
+    let calls = 0;
+    save.enterGuest = async () => { calls++; return orig(); };
+    return () => calls;
+  };
+
+  // Войти в профиль best (облачная human-база КЦ-16) через гейт: identity →
+  // шаг ника → пинпад → pull → applied. Слот 'second' подкладывается заранее.
+  const loginBest = async () => {
+    if (!clouds.best) clouds.best = await buildSnapshot('human');
+    S.upsertSlot({ nick: 'second', side: 'alien', ccLevel: 16, baseId: 'B2', lastPlayed: Date.now() - 60000 });
+    save.setIdentity('best', '1234');
+    const boot = import('../r/raid-boot.js');
+    await wait(() => A.isAuthOpen());
+    assert.equal(A.auth.step, 'login', 'identity есть → шаг ника (матрица)');
+    assert.ok(A.goToPin('best'));
+    const r = await A.submitPin('1234');
+    assert.ok(r && r.ok, 'вход best прошёл');
+    await wait(() => !A.isAuthOpen());
+    await boot;
+    assert.equal(g.started, true, 'база best поднята гейтом');
+    assert.equal(ccOf().level, 16, 'после входа КЦ-16');
+  };
+
+  // Выйти через панель профиля (подтверждение) и дождаться экрана слотов.
+  const exitViaPanel = async () => {
+    window.showProfilePanel();
+    const panel = panelEl();
+    assert.ok(panel, 'панель профиля открылась');
+    panel.querySelector('#sv-out').click();
+    const dlg = document.body.children.find((c) => c && c.id === 'auth-confirm');
+    assert.ok(dlg, 'диалог подтверждения выхода открылся');
+    dlg.querySelector('#auth-confirm-yes').click();
+    await wait(() => !panelEl() && !!slotsOverlay());
+  };
+
+  if (mode === 'side-first' || mode === 'side-skip') {
+    // Г1-3: boot-гейт открыт, симуляция ждёт решения (ace#4).
+    var boot = import('../r/raid-boot.js');
+    await wait(() => A.isAuthOpen());
+    assert.equal(g.started, false, 'симуляция ждёт решения гейта (ace#4)');
+  }
 
   if (mode === 'side-first') {
     // Г1-3: без identity и без слотов гейт открывает шаг СТОРОНЫ.
@@ -231,7 +287,7 @@ async function scene(mode) {
     // фолбэк raid-boot startRaidHome('human') не тронут.
     assert.equal(A.auth.step, 'side', 'шаг стороны открыт');
     fireWindow('keydown', { key: 'Escape', code: 'Escape' });
-    await new Promise((r) => setTimeout(r, 10)); // enterGuest асинхронен
+    await sleep(10); // enterGuest асинхронен
     await wait(() => !A.isAuthOpen());
     await boot;
     assert.equal(save.identity, null, 'Escape на стороне → identity нет (гость)');
@@ -239,8 +295,206 @@ async function scene(mode) {
     assert.equal(g.raidSession.faction, 'human', 'гость получил human-фолбэк raid-boot (литерал не тронут)');
     assert.equal(S.readSlots().length, 0, 'гость не писал слот');
     console.log('PASS side-skip: Escape на стороне → гость human, гейт не завис, слотов нет');
+  } else if (mode === 'exit-flow') {
+    // Г2: выход = push ДО clearIdentity → экран слотов, без reload; запись
+    // за экраном заглушена (saveNow не пишет, сеть молчит).
+    await loginBest();
+    const before = S.readSlots().slice();
+    let savesAtClear = -1;
+    const origClear = save.clearIdentity.bind(save);
+    save.clearIdentity = (...a) => { savesAtClear = raidSaves(); return origClear(...a); };
+    let reloads = 0;
+    globalThis.location = { protocol: 'http:', hostname: 'test.invalid', reload: () => { reloads++; } };
+    // Реальное изменение со времени последнего синка — иначе pushAll честно
+    // не пушит (нечего отправлять; capturedAt-один-в-один глушится norm()).
+    // Как saveNow: снапшот → localStorage. Меняем ДОБЫЧУ, не КЦ: слот при
+    // пушe останется неизменным (дроссель) — это же покрывает exit-keep-slots
+    // «те же записи, что до выхода».
+    bumpErg(123456);
+    syncToLS();
+    const savesBefore = raidSaves();
+    await exitViaPanel();
+    assert.ok(savesAtClear > savesBefore, 'пуш сейва ушёл ДО clearIdentity (' + savesAtClear + ' > ' + savesBefore + ')');
+    assert.equal(reloads, 0, 'выход без location.reload()');
+    assert.equal(save.identity, null, 'identity закрыта');
+    assert.equal(g.raidAuthPending, true, 'raidAuthPending: запись заглушена');
+    assert.equal(g.paused, true, 'мир за экраном на паузе');
+    const savesAfter = raidSaves();
+    assert.equal(localStorage.getItem('ac_raid_session_v1'), null, 'профильный ключ стёрт выходом');
+    await sleep(2300); // ≥2 тика таймера сейва raid-boot (1.5 с)
+    assert.equal(raidSaves(), savesAfter, 'после выхода сеть не пишется');
+    assert.equal(localStorage.getItem('ac_raid_session_v1'), null, 'saveNow не записал localStorage (глушение работает)');
+    const after = S.readSlots();
+    assert.deepEqual(after, before, 'exit-keep-slots: слоты пережили выход 1:1');
+    assert.ok(slotsOverlay(), 'экран слотов виден после выхода');
+    assert.equal(A.isAuthOpen(), false, 'мастер входа не открылся поверх');
+    console.log('PASS exit-flow: push→clear→экран слотов, без reload, запись заглушена, слоты целы');
+  } else if (mode === 'exit-keep-slots') {
+    // Г2: после выхода readSlots() возвращает те же записи, что до него
+    // (keep-множество storage-ns — главный баг этой задачи).
+    await loginBest();
+    const before = S.readSlots().slice();
+    await exitViaPanel();
+    const after = S.readSlots();
+    assert.deepEqual(after, before, 'слоты пережили выход 1:1');
+    assert.equal(save.identity, null, 'сессия закрыта');
+    assert.ok(slotsOverlay(), 'экран слотов открылся');
+    console.log('PASS exit-keep-slots: readSlots до и после выхода совпадают запись в запись');
+  } else if (mode === 'slots-screen') {
+    // Г2: Escape на экране слотов — no-op; тап по заполненному → пинпад ника
+    // слота (gate); тап по пустому → мастер на шаге стороны; ссылка
+    // «гостем» → свежая human-база.
+    await loginBest();
+    await exitViaPanel();
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    assert.ok(slotsOverlay(), 'Escape на экране слотов — no-op (экран остался)');
+    // Тап по заполненному слоту → пинпад ника слота.
+    const grid = slotsOverlay().querySelector('#slots-grid');
+    const cards = grid.querySelectorAll('.slot-card');
+    assert.equal(cards.length, 8, 'на экране слотов 8 карточек');
+    const filled = cards.filter((c) => c.dataset && c.dataset.nick);
+    assert.equal(filled.length, 2, 'две заполненные карточки (best + second)');
+    const secondCard = filled.find((c) => c.dataset.nick === 'second');
+    assert.ok(secondCard, 'карточка слота second на месте');
+    secondCard.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+    assert.equal(A.auth.nick, 'second', 'пинпад открылся с ником слота');
+    assert.equal(A.auth.mode, 'gate', 'без identity вход в слот — режим gate');
+    assert.equal(slotsOverlay(), undefined, 'экран слотов уступил место пинпаду (одна модалка)');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' }); // gate: Escape → гость
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity, null, 'Escape на пинпаде gate-режима → гость (прежнее поведение)');
+    // Тап по пустому слоту → мастер с шага стороны.
+    S.openSlotsScreen();
+    const grid2 = slotsOverlay().querySelector('#slots-grid');
+    const empty2 = grid2.querySelectorAll('.slot-card').find((c) => c.dataset && c.dataset.empty);
+    assert.ok(empty2, 'пустая карточка «+ Новая игра» на месте');
+    empty2.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'side');
+    assert.equal(slotsOverlay(), undefined, 'мастер открылся вместо экрана слотов');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    // Ссылка «гостем» → свежая human-база (после выхода мир заменяется).
+    S.openSlotsScreen();
+    const guestBtn = slotsOverlay().querySelector('#slots-guest');
+    assert.ok(guestBtn, 'ссылка «Пропустить — играть гостем» на месте');
+    guestBtn.click();
+    await wait(() => !slotsOverlay() && g.started);
+    assert.equal(g.raidSession.faction, 'human', 'гостевой путь даёт human-базу');
+    assert.equal(ccOf().level, 1, 'база СВЕЖАЯ (прежняя cc-17 миру не осталась)');
+    assert.equal(g.paused, false, 'гость играет без паузы');
+    console.log('PASS slots-screen: Escape no-op, слот→пинпад ника, пустой→сторона, гость→свежая human-база');
+  } else if (mode === 'switch-cancel') {
+    // Г2, ловушка §6.3: отмена смены профиля не выкидывает в гостя.
+    await loginBest();
+    const guestCalls = guestWrap();
+    ccOf().level = 17;
+    syncToLS();
+    window.showProfilePanel();
+    const grid = panelEl().querySelector('#sv-slots');
+    const cards = grid.querySelectorAll('.slot-card');
+    const you = cards.find((c) => c.classList.contains('is-current'));
+    assert.ok(you, 'карточка «вы сейчас» есть в панели');
+    assert.equal(you.dataset.nick, 'best', '«вы сейчас» — текущий профиль');
+    you.click(); // не тапается: ничего не должно произойти
+    await sleep(20);
+    assert.ok(panelEl(), 'карточка «вы сейчас» не тапается');
+    const secondCard = cards.find((c) => c.dataset && c.dataset.nick === 'second');
+    assert.ok(secondCard, 'чужой слот в панели');
+    const savesBefore = raidSaves();
+    secondCard.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+    assert.ok(raidSaves() > savesBefore, 'перед пинпадом ушёл push старой сессии');
+    assert.equal(A.auth.mode, 'switch', 'пинпад открыт в режиме switch');
+    assert.equal(A.auth.nick, 'second', 'пинпад ника слота');
+    assert.equal(g.paused, true, 'активная сессия на паузе (спека п.4)');
+    assert.equal(panelEl(), undefined, 'панель профиля уступила место пинпаду (одна модалка)');
+    assert.equal(A.isAuthOpen(), true);
+    for (const d of '12') A.pressKey(d);
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' }); // очистить точки
+    assert.equal(A.auth.pin, '', 'Escape сначала чистит точки (канон)');
+    assert.equal(A.isAuthOpen(), true, 'панель осталась после очистки точек');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' }); // закрыть
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity && save.identity.nick, 'best', 'identity ЦЕЛА после отмены смены');
+    assert.equal(guestCalls(), 0, 'enterGuest НЕ вызывался (ловушка §6.3 закрыта)');
+    assert.equal(g.paused, false, 'пауза снята — можно продолжать');
+    // Режим gate сохранил прежнее поведение: Escape → гость.
+    A.openAuth(g, { step: 'login' });
+    assert.ok(A.goToPin('best'));
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity, null, 'gate-режим: Escape по-прежнему выкидывает в гостя');
+    assert.ok(guestCalls() >= 1, 'gate-режим: enterGuest вызван');
+    console.log('PASS switch-cancel: отмена смены бережёт сессию; gate-режим — прежний Escape→гость');
+  } else if (mode === 'switch-commit') {
+    // Г2: смена на другой слот — push старой сессии, чужое облако применяется,
+    // «вы сейчас» переезжает на нового.
+    clouds.best = await buildSnapshot('human');
+    clouds.second = await buildSnapshot('alien');
+    await loginBest();
+    ccOf().level = 18;
+    syncToLS();
+    window.showProfilePanel();
+    const secondCard = panelEl().querySelector('#sv-slots').querySelectorAll('.slot-card')
+      .find((c) => c.dataset && c.dataset.nick === 'second');
+    const savesBeforeTap = raidSaves();
+    secondCard.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+    assert.ok(raidSaves() > savesBeforeTap, 'push старой сессии ушёл до пинпада');
+    assert.equal(A.auth.mode, 'switch', 'режим switch');
+    const r = await A.submitPin('1234');
+    assert.ok(r && r.ok, 'пин second принят');
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity.nick, 'second', 'identity переехала на second');
+    assert.equal(g.raidSession.faction, 'alien', 'база соответствует слоту (кхарид)');
+    assert.equal(ccOf().level, 16, 'облако second применено (КЦ-16)');
+    const sBest = S.findSlot('best');
+    const sSecond = S.findSlot('second');
+    assert.equal(sSecond.side, 'alien', 'слот second показывает фактическую сторону');
+    assert.ok(sSecond.lastPlayed > sBest.lastPlayed, '«вы сейчас» переехал: second свежее best');
+    assert.ok(slotsOverlay() === undefined && !panelEl(), 'никаких модалок поверх игры');
+    console.log('PASS switch-commit: push старой → пин → база слота применена, слот обновлён');
+  } else if (mode === 'slot-refresh') {
+    // Г2: успешный push RAID_KEY с выросшим КЦ обновляет слот; повторный тик
+    // без изменений не трогает localStorage (дроссель).
+    await loginBest();
+    const t1 = S.findSlot('best').lastPlayed;
+    assert.equal(S.findSlot('best').ccLevel, 16, 'слот записан при входе (КЦ-16)');
+    ccOf().level = 17;
+    syncToLS();
+    await save.pushKey('ac_raid_session_v1');
+    const after1 = S.findSlot('best');
+    assert.equal(after1.ccLevel, 17, 'push с новым КЦ обновил слот');
+    assert.ok(after1.lastPlayed >= t1, 'lastPlayed обновлён');
+    const lp = after1.lastPlayed;
+    const savesMid = raidSaves();
+    await save.pushKey('ac_raid_session_v1'); // ничего не изменилось
+    const after2 = S.findSlot('best');
+    assert.equal(after2.lastPlayed, lp, 'повторный тик НЕ трогает слот (дроссель)');
+    assert.equal(raidSaves(), savesMid, 'повторный тик не пушит (unchanged)');
+    console.log('PASS slot-refresh: push обновил слот (КЦ/время), холостой тик — no-op');
   } else {
     throw new Error('неизвестный режим: ' + mode);
   }
   process.exit(0);
+
+  // Снимок базы заданной стороны с КЦ-16 (для «облака» сцены switch-commit).
+  async function buildSnapshot(faction) {
+    g.startRaidHome(faction, { forceNew: true });
+    const cc = g.state.buildings.find((b) => !b.dead && b.side === 'player' && b.type === 'cc');
+    cc.level = 16; cc.done = true; cc.maxHp = 3750; cc.hp = 3750;
+    g.syncRaidHomeSnapshot();
+    const snap = JSON.stringify(g.raidSession);
+    // вернуть мир в «догейтовое» состояние
+    g.raidSession = null; g.started = false;
+    localStorage.removeItem('ac_raid_session_v1');
+    return snap;
+  }
 }
