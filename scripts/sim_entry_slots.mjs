@@ -153,6 +153,7 @@ async function scene(mode) {
   globalThis.confirm = () => true;
   const net = [];
   let offline = false;
+  let wrongPin = null; // режим сцены wrong-pin: 'NNNN' → 403, 'cooldown' → 429
   const resp = (status, j) => ({ status, ok: status >= 200 && status < 300, headers: { get: () => null }, json: async () => j });
   const clouds = {}; // player → снапшот базы (строка)
   globalThis.fetch = async (url, opts = {}) => {
@@ -163,6 +164,12 @@ async function scene(mode) {
     if (offline) throw new Error('offline');
     if (path.endsWith('/health')) return resp(200, { ok: true });
     if (path.endsWith('/api/load')) {
+      if (body.key === '__check__' && wrongPin === 'cooldown') {
+        return resp(429, { ok: false, error: 'too many attempts', retryAfter: 60 });
+      }
+      if (body.key === '__check__' && wrongPin && body.pin === wrongPin) {
+        return resp(403, { ok: false, error: 'nick taken, wrong pin' });
+      }
       if (body.key === 'ac_raid_session_v1' && clouds[body.player]) return resp(200, { ok: true, value: clouds[body.player], ts: 12345 });
       return resp(200, { ok: false, error: 'not found' });
     }
@@ -240,6 +247,43 @@ async function scene(mode) {
     assert.ok(dlg, 'диалог подтверждения выхода открылся');
     dlg.querySelector('#auth-confirm-yes').click();
     await wait(() => !panelEl() && !!slotsOverlay());
+  };
+
+  // Тап по заполненному слоту на ЭКРАНЕ СЛОТОВ → пинпад ника слота (gate).
+  const tapSlotOnScreen = async (nick) => {
+    const card = slotsOverlay().querySelector('#slots-grid').querySelectorAll('.slot-card')
+      .find((c) => c.dataset && c.dataset.nick === nick);
+    assert.ok(card, 'слот ' + nick + ' на экране слотов');
+    card.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+  };
+
+  // Смена профиля из панели: чужой слот → пин → база применена.
+  const panelSwitchTo = async (nick) => {
+    window.showProfilePanel();
+    const card = panelEl().querySelector('#sv-slots').querySelectorAll('.slot-card')
+      .find((c) => c.dataset && c.dataset.nick === nick);
+    assert.ok(card, 'слот ' + nick + ' в панели');
+    card.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+    const r = await A.submitPin('1234');
+    assert.ok(r && r.ok, 'пин ' + nick + ' принят');
+    await wait(() => !A.isAuthOpen());
+  };
+
+  // Пин на слоте при живом мире за экраном (после выхода): штатный мастер
+  // показывает «choice» (гость-кандидат против облака) — честный E2E жмёт
+  // «Загрузить сохранённую базу».
+  const submitPinResolveChoice = async () => {
+    const r = await A.submitPin('1234');
+    assert.ok(r && r.ok, 'пин принят');
+    await wait(() => A.auth.step === 'choice' || !A.isAuthOpen());
+    if (A.auth.step === 'choice') {
+      const load = overlay().querySelector('#auth-load-cloud');
+      assert.ok(load, 'на шаге choice есть «Загрузить сохранённую базу»');
+      load.click();
+    }
+    await wait(() => !A.isAuthOpen());
   };
 
   if (mode === 'side-first' || mode === 'side-skip') {
@@ -480,6 +524,139 @@ async function scene(mode) {
     assert.equal(after2.lastPlayed, lp, 'повторный тик НЕ трогает слот (дроссель)');
     assert.equal(raidSaves(), savesMid, 'повторный тик не пушит (unchanged)');
     console.log('PASS slot-refresh: push обновил слот (КЦ/время), холостой тик — no-op');
+  } else if (mode === 'first-touch-alien' || mode === 'first-touch-human-badge') {
+    // Г3 E2E: чистый браузер → сторона → ник → пин → база стороны + слот.
+    const pick = mode === 'first-touch-human-badge' ? 'human' : 'alien';
+    var boot = import('../r/raid-boot.js');
+    await wait(() => A.isAuthOpen());
+    assert.equal(g.started, false, 'чистый браузер: симуляция ждёт решения');
+    assert.equal(A.auth.step, 'side', 'первое касание — шаг стороны');
+    const cards = overlay().querySelector('#auth-body').querySelectorAll('.fac-card');
+    const card = cards.find((c) => c.dataset && c.dataset.side === pick);
+    assert.ok(card, 'карточка стороны на месте');
+    if (mode === 'first-touch-human-badge') {
+      // Бейджи проверяем по разметке шага: у распарсенных узлов harness нет
+      // innerHTML детей, а тег span матчится только по открывающему тегу.
+      const bodyHtml = String(overlay().querySelector('#auth-body')._html);
+      assert.equal((bodyHtml.match(/class="ac-badge[ "]/g) || []).length, 2, 'бейджи на обеих карточках');
+      assert.ok(/Рекомендовано для старта/.test(bodyHtml), 'у Гелиоса бейдж «Рекомендовано для старта»');
+      assert.ok(/Контент в разработке/.test(bodyHtml), 'у Кхарида пометка «Контент в разработке»');
+    }
+    card.click();
+    await wait(() => A.auth.step === 'login');
+    const nickEl = overlay().querySelector('#auth-nick');
+    nickEl.value = pick === 'alien' ? 'Kharid1' : 'Helios1';
+    overlay().querySelector('#auth-next').click();
+    await wait(() => A.auth.step === 'pin');
+    for (const k of '1234') A.pressKey(k);
+    overlay().querySelector('#auth-enter').click();
+    await wait(() => !A.isAuthOpen());
+    await boot;
+    assert.equal(g.started, true, 'база создана без перезагрузки страницы');
+    assert.equal(g.raidSession.faction, pick, 'база стороны ' + pick + ' (createRaidSession)');
+    const rec = S.findSlot(pick === 'alien' ? 'kharid1' : 'helios1');
+    assert.ok(rec, 'слот записан при создании профиля');
+    assert.equal(rec.side, pick, 'в слоте сторона базы');
+    assert.ok(rec.baseId, 'baseId непустой');
+    assert.ok(Math.abs(rec.lastPlayed - Date.now()) < 15000, 'lastPlayed ≈ сейчас');
+    console.log('PASS ' + mode + ': сторона→ник→пин→база ' + pick + ', слот записан (без пина)');
+  } else if (mode === 'reenter-slot') {
+    // Г3 E2E: выход → экран слотов → тап по слоту → пин → база вернулась,
+    // КЦ слота совпал с фактическим после hydration.
+    await loginBest();
+    await exitViaPanel();
+    await tapSlotOnScreen('best');
+    assert.equal(A.auth.nick, 'best', 'пинпад ника слота');
+    await submitPinResolveChoice();
+    assert.equal(g.started, true, 'база вернулась без перезагрузки');
+    assert.equal(ccOf().level, 16, 'база best: КЦ-16 после hydration');
+    const rec = S.findSlot('best');
+    assert.equal(rec.ccLevel, ccOf().level, 'КЦ слота совпал с фактическим');
+    assert.equal(save.identity.nick, 'best', 'identity восстановлена');
+    console.log('PASS reenter-slot: выход → слот → пин → база КЦ-16, метки слота честные');
+  } else if (mode === 'wrong-pin') {
+    // Г3 E2E: неверный пин на слоте — шейк, точки очищены, identity не создана;
+    // кулдаун 429 обрабатывается как раньше (не ломаем [21]).
+    await loginBest();
+    await exitViaPanel();
+    await tapSlotOnScreen('best');
+    wrongPin = '9999';
+    const bad = await A.submitPin('9999');
+    assert.equal(bad.ok, false, 'чужой пин отклонён');
+    assert.equal(bad.code, 403, 'код 403 прежний');
+    assert.equal(A.auth.pin, '', 'точки очищены');
+    assert.ok(A.auth.shakeCount >= 1, 'панель «дёрнулась» (шейк)');
+    assert.equal(A.auth.error, 'ui.auth.errPinWrong', 'текст «Неверный пин»');
+    assert.equal(save.identity, null, 'identity НЕ создана');
+    wrongPin = 'cooldown';
+    const cool = await A.submitPin('1234');
+    assert.equal(cool.ok, false, 'кулдаун отклонён');
+    assert.equal(cool.code, 429, 'код 429 прежний');
+    assert.equal(A.auth.error, 'ui.auth.errCooldown', 'текст кулдауна');
+    assert.equal(A.auth.errorParams && A.auth.errorParams.s, 60, 'время ожидания показано');
+    assert.equal(save.identity, null, 'identity по-прежнему нет');
+    console.log('PASS wrong-pin: 403 шейк+очистка без identity, 429 кулдаун как раньше');
+  } else if (mode === 'panel-switch-cycle') {
+    // Г3 E2E: 4 переключения (панель ×2, выход→слоты, панель) без потери
+    // identity и без дублей в слотах.
+    clouds.best = await buildSnapshot('human');
+    clouds.second = await buildSnapshot('alien');
+    await loginBest();
+    await panelSwitchTo('second');
+    assert.equal(save.identity.nick, 'second', 'переключение 1: best → second');
+    assert.equal(g.raidSession.faction, 'alien', 'база second применена');
+    await panelSwitchTo('best');
+    assert.equal(save.identity.nick, 'best', 'переключение 2: second → best');
+    assert.equal(g.raidSession.faction, 'human', 'база best применена');
+    await exitViaPanel();
+    await tapSlotOnScreen('best');
+    await submitPinResolveChoice();
+    assert.equal(save.identity.nick, 'best', 'переключение 3: возврат из слотов');
+    await panelSwitchTo('second');
+    assert.equal(save.identity.nick, 'second', 'переключение 4: best → second');
+    const slots = S.readSlots();
+    assert.equal(slots.length, 2, 'в памяти ровно 2 слота');
+    assert.deepEqual(slots.map((x) => x.nick).sort(), ['best', 'second'], 'дублей нет');
+    assert.equal(A.isAuthOpen(), false, 'мастер закрыт');
+    assert.equal(slotsOverlay(), undefined, 'экран слотов закрыт');
+    console.log('PASS panel-switch-cycle: 4 переключения, identity цела, слоты без дублей');
+  } else if (mode === 'evict-on-ninth') {
+    // Г3 E2E: 9 профилей подряд → ровно 8, вытеснен самый старый неактивный,
+    // тост ui.slots.evictNotice показан ОДИН раз.
+    const toasts = [];
+    window.__slotsToastHook = (nick) => toasts.push(nick);
+    localStorage.removeItem(S.SLOT_KEY);
+    const t = 1700000000000;
+    for (let i = 0; i < 8; i++) {
+      S.upsertSlot({ nick: 'p' + i, side: i % 2 ? 'alien' : 'human', ccLevel: i + 1, baseId: 'B' + i, lastPlayed: t + i * 60000 });
+    }
+    S.upsertSlot({ nick: 'p8', side: 'human', ccLevel: 9, baseId: 'B8', lastPlayed: Date.now() }); // 9-й (активный)
+    const slots = S.readSlots();
+    assert.equal(slots.length, 8, 'в памяти ровно 8 слотов');
+    assert.equal(S.findSlot('p0'), null, 'вытеснен самый старый неактивный (p0)');
+    assert.ok(S.findSlot('p8'), 'активная сессия (p8) на месте');
+    assert.deepEqual(toasts, ['p0'], 'тост вытеснения показан один раз и про того ник');
+    assert.equal(S.findSlot('p1').ccLevel, 2, 'остальные записи целы');
+    delete window.__slotsToastHook;
+    console.log('PASS evict-on-ninth: 9-й вытеснил p0, активный цел, тост единственный');
+  } else if (mode === 'f5-slots') {
+    // Г3 E2E: страница без identity при наличии слотов → гейт открыл ЭКРАН
+    // СЛОТОВ (матрица §2.3); гостевая ссылка резолвит boot без дедлока.
+    S.upsertSlot({ nick: 'best', side: 'human', ccLevel: 16, baseId: 'B1', lastPlayed: Date.now() - 60000 });
+    const boot = import('../r/raid-boot.js');
+    await wait(() => S.isSlotsOpen());
+    assert.equal(A.isAuthOpen(), false, 'мастер входа НЕ открывается поверх слотов');
+    assert.equal(g.started, false, 'симуляция ждёт решения');
+    // Заголовок проверяем по innerHTML: стаб harness не матчит теги с цифрами
+    // (<h1>): [a-z]+\b обрывается на 'h' перед '1'.
+    assert.ok(/Выберите слот/.test(String(slotsOverlay().innerHTML)), 'заголовок отрисован из локали (ui.slots.title)');
+    assert.ok(/Профили, в которые играли/.test(String(slotsOverlay().innerHTML)), 'подзаголовок отрисован (ui.slots.sub)');
+    const guestBtn = slotsOverlay().querySelector('#slots-guest');
+    guestBtn.click();
+    await wait(() => g.started);
+    assert.equal(g.raidSession.faction, 'human', 'гостевой путь: human-база');
+    assert.equal(save.identity, null, 'identity нет');
+    console.log('PASS f5-slots: F5 без identity со слотами → экран слотов, гейт резолвится');
   } else {
     throw new Error('неизвестный режим: ' + mode);
   }

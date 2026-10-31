@@ -523,12 +523,13 @@ console.log('\n[27] Слоты входа и шаг стороны (С1 entry-sl
 try {
   const lines = [];
   for (const args of [[], ['side-first'], ['side-skip'], ['exit-flow'], ['exit-keep-slots'], ['slots-screen'],
-    ['switch-cancel'], ['switch-commit'], ['slot-refresh']]) {
+    ['switch-cancel'], ['switch-commit'], ['slot-refresh'], ['first-touch-alien'], ['first-touch-human-badge'],
+    ['reenter-slot'], ['wrong-pin'], ['panel-switch-cycle'], ['evict-on-ninth'], ['f5-slots']]) {
     const out = execFileSync(process.execPath,
       [path.join(ROOT, 'scripts', 'sim_entry_slots.mjs'), ...args], { stdio: 'pipe' }).toString();
     lines.push(...out.split('\n').filter((l) => l.startsWith('PASS')));
   }
-  if (lines.length < 16) throw new Error('ожидались ≥16 PASS (8 unit + 8 сцен), пришло ' + lines.length);
+  if (lines.length < 23) throw new Error('ожидались ≥23 PASS (8 unit + 15 сцен), пришло ' + lines.length);
   for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
 } catch (e) {
   bad('sim_entry_slots:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));
