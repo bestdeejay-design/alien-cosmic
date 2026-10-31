@@ -524,12 +524,13 @@ try {
   const lines = [];
   for (const args of [[], ['side-first'], ['side-skip'], ['exit-flow'], ['exit-keep-slots'], ['slots-screen'],
     ['switch-cancel'], ['switch-commit'], ['slot-refresh'], ['first-touch-alien'], ['first-touch-human-badge'],
-    ['reenter-slot'], ['wrong-pin'], ['panel-switch-cycle'], ['evict-on-ninth'], ['f5-slots']]) {
+    ['reenter-slot'], ['wrong-pin'], ['panel-switch-cycle'], ['evict-on-ninth'], ['f5-slots'],
+    ['switch-back-nick'], ['exit-escape-fresh-base'], ['panel-new-slot-cancel'], ['gate-settle-modes']]) {
     const out = execFileSync(process.execPath,
       [path.join(ROOT, 'scripts', 'sim_entry_slots.mjs'), ...args], { stdio: 'pipe' }).toString();
     lines.push(...out.split('\n').filter((l) => l.startsWith('PASS')));
   }
-  if (lines.length < 23) throw new Error('ожидались ≥23 PASS (8 unit + 15 сцен), пришло ' + lines.length);
+  if (lines.length < 29) throw new Error('ожидались ≥29 PASS (10 unit + 19 сцен), пришло ' + lines.length);
   for (const l of lines) ok(l.replace(/^PASS\s+/, ''));
 } catch (e) {
   bad('sim_entry_slots:\n' + String(e.stdout || e.stderr || e.message).split('\n').slice(0, 8).join('\n'));

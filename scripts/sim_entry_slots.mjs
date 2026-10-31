@@ -134,6 +134,29 @@ async function unitTests() {
   S.upsertSlot({ nick: 'throttle', side: 'human', ccLevel: 10, baseId: 'B9', lastPlayed: t0 + 30000 + 61000 });
   assert.equal(S.findSlot('throttle').lastPlayed, t0 + 91000, 'h: ≥60 с с прошлой записи — lastPlayed обновляется');
   pass('h дроссель 60 с: без изменений — no-op, изменение/60с — пишется');
+
+  // (i) ГЕЙТ МИНОР-4: readSlots режет рукотворный файл до SLOT_CAP.
+  localStorage.setItem(S.SLOT_KEY, JSON.stringify({ slots: Array.from({ length: 10 }, (_, i) => ({ nick: 'c' + i, side: 'human', ccLevel: 1, baseId: '', lastPlayed: t0 + i })) }));
+  assert.equal(S.readSlots().length, 8, 'i: 10 записей в файле → читается 8 (cap)');
+  localStorage.removeItem(S.SLOT_KEY);
+  pass('i МИНОР-4 readSlots: файл >8 записей читается как 8 (cap после дедупа)');
+
+  // (j) ГЕЙТ МИНОР-5: entry-запись двигает lastPlayed даже <60с;
+  // save-путь (upsertSlot по умолчанию) — дроссель на месте.
+  window.game = { raidSession: { faction: 'human', alarmV2: { baseId: 'BX' } } };
+  S.upsertSlot({ nick: 'ent', side: 'human', ccLevel: 5, baseId: 'BX', lastPlayed: t0 });
+  S.recordActiveSlot({ nick: 'ent', ccLevel: 5 });
+  const entA = S.findSlot('ent').lastPlayed;
+  await new Promise((r) => setTimeout(r, 15));
+  S.recordActiveSlot({ nick: 'ent', ccLevel: 5 });
+  const entB = S.findSlot('ent').lastPlayed;
+  assert.ok(entB > entA, 'j: entry-запись <60с двигает lastPlayed');
+  const entFixed = entB;
+  S.upsertSlot({ nick: 'ent', side: 'human', ccLevel: 5, baseId: 'BX', lastPlayed: entFixed + 1000 });
+  assert.equal(S.findSlot('ent').lastPlayed, entFixed, 'j: save-путь <60с — no-op (дроссель на месте)');
+  localStorage.removeItem(S.SLOT_KEY);
+  delete window.game;
+  pass('j МИНОР-5: entry двигает lastPlayed <60с, дроссель 60с — только save-путь');
   process.exit(0);
 }
 
@@ -657,6 +680,109 @@ async function scene(mode) {
     assert.equal(g.raidSession.faction, 'human', 'гостевой путь: human-база');
     assert.equal(save.identity, null, 'identity нет');
     console.log('PASS f5-slots: F5 без identity со слотами → экран слотов, гейт резолвится');
+  } else if (mode === 'switch-back-nick') {
+    // ГЕЙТ ВАЖНО-1: «Другой ник» в switch-режиме НЕ возвращает gate-семантику.
+    await loginBest();
+    const guestCalls = guestWrap();
+    window.showProfilePanel();
+    panelEl().querySelector('#sv-slots').querySelectorAll('.slot-card')
+      .find((c) => c.dataset && c.dataset.nick === 'second').click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'pin');
+    assert.equal(A.auth.mode, 'switch', 'режим switch');
+    overlay().querySelector('#auth-back-step').click();
+    await wait(() => A.auth.step === 'login');
+    assert.equal(A.auth.mode, 'switch', 'ВАЖНО-1: «Другой ник» сохранил switch');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity && save.identity.nick, 'best', 'identity цела после отмены');
+    assert.equal(guestCalls(), 0, 'enterGuest не вызван');
+    assert.equal(g.paused, false, 'пауза снята');
+    console.log('PASS switch-back-nick: «Другой ник» в switch не выкидывает живую сессию в гостя');
+  } else if (mode === 'exit-escape-fresh-base') {
+    // ГЕЙТ ВАЖНО-2: Escape на мастере ПОСЛЕ выхода — гость на СВЕЖЕЙ базе;
+    // гостевой ключ localStorage не содержит базы прежнего профиля.
+    await loginBest();
+    const oldLs = localStorage.getItem('ac_raid_session_v1');
+    const oldBaseId = JSON.parse(oldLs).alarmV2.baseId;
+    await exitViaPanel();
+    await tapSlotOnScreen('best');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity, null, 'гость: identity нет');
+    assert.equal(g.started, true, 'мир жив');
+    assert.equal(ccOf().level, 1, 'база СВЕЖАЯ (не прежнего профиля)');
+    assert.equal(g.paused, false, 'пауза снята');
+    await sleep(2000); // таймер сейва raid-boot пишет гостевую базу
+    const guest = localStorage.getItem(save.guestRaidKey);
+    assert.ok(guest, 'гостевой ключ записан');
+    assert.notEqual(guest, oldLs, 'приватность: гостевой ключ ≠ база прежнего профиля');
+    const newBaseId = JSON.parse(guest).alarmV2.baseId;
+    assert.ok(newBaseId && newBaseId !== oldBaseId, 'приватность: baseId в гостевом ключе сменился');
+    console.log('PASS exit-escape-fresh-base: Escape после выхода → свежая human-база, базы прежнего профиля в гостевом ключе нет');
+  } else if (mode === 'panel-new-slot-cancel') {
+    // ГЕЙТ ВАЖНО-3: «+ Новая игра» из панели при живой сессии — push, пауза,
+    // switch; отмена (Escape) бережёт сессию.
+    await loginBest();
+    const guestCalls = guestWrap();
+    ccOf().level = 17;
+    syncToLS();
+    const savesBefore = raidSaves();
+    window.showProfilePanel();
+    const emptyCard = panelEl().querySelector('#sv-slots').querySelectorAll('.slot-card')
+      .find((c) => c.dataset && c.dataset.empty);
+    assert.ok(emptyCard, 'пустая карточка в панели');
+    emptyCard.click();
+    await wait(() => A.isAuthOpen() && A.auth.step === 'side');
+    assert.ok(raidSaves() > savesBefore, 'push старой сессии ушёл (зеркало openSlotByNick)');
+    assert.equal(A.auth.mode, 'switch', 'режим switch');
+    assert.equal(g.paused, true, 'сессия на паузе');
+    const skipBtn = overlay().querySelector('#auth-close');
+    assert.ok(skipBtn && skipBtn.style.display === 'none', '«Пропустить» скрыт в switch');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' });
+    await sleep(10);
+    await wait(() => !A.isAuthOpen());
+    assert.equal(save.identity && save.identity.nick, 'best', 'identity цела после отмены');
+    assert.equal(guestCalls(), 0, 'enterGuest не вызван');
+    assert.equal(g.paused, false, 'пауза снята');
+    console.log('PASS panel-new-slot-cancel: новая игра из панели отменяется без потери сессии');
+  } else if (mode === 'gate-settle-modes') {
+    // ГЕЙТ: регресс дедлока — закрытие мастера резолвит гейт во всех режимах.
+    const settleOnce = async (act, label, wantStep) => {
+      const p = window.__saveApi.authGate(game);
+      await wait(() => A.isAuthOpen());
+      if (wantStep) assert.equal(A.auth.step, wantStep, label + ': шаг мастера');
+      act();
+      await sleep(30);
+      const res = await Promise.race([p, new Promise((r) => setTimeout(() => r({ hang: true }), 1500))]);
+      assert.ok(res && !res.hang, label + ': гейт НЕ резолвился (дедлок)');
+      assert.equal(A.isAuthOpen(), false, label + ': мастер закрыт');
+      return res;
+    };
+    // (a) gate: identity есть → шаг ника → Escape → резолв, identity стёрта.
+    save.setIdentity('best', '1234');
+    localStorage.removeItem(S.SLOT_KEY);
+    const resA = await settleOnce(() => { fireWindow('keydown', { key: 'Escape', code: 'Escape' }); }, 'gate');
+    assert.equal(resA.source, 'guest', 'gate: источник guest');
+    assert.equal(save.identity, null, 'gate: Escape → гость (прежнее поведение)');
+    // (b) side: без identity и слотов → шаг стороны → Escape → резолв.
+    await save.enterGuest();
+    localStorage.removeItem(S.SLOT_KEY);
+    await settleOnce(() => { fireWindow('keydown', { key: 'Escape', code: 'Escape' }); }, 'side', 'side');
+    // (c) switch: закрытие switch-мастера резолвит ожидающий гейт БЕЗ гостя.
+    save.setIdentity('best', '1234');
+    A.openAuth(game, { step: 'pin', nick: 'best', mode: 'switch' });
+    assert.equal(A.auth.mode, 'switch', 'switch: мастер открыт в switch');
+    const pC = window.__saveApi.authGate(game); // открытие гейта закрывает switch-мастер
+    await sleep(30);
+    const resC = await Promise.race([pC, new Promise((r) => setTimeout(() => r({ hang: true }), 1500))]);
+    assert.ok(resC && !resC.hang, 'switch: гейт НЕ резолвился закрытием switch-мастера (дедлок)');
+    assert.equal(save.identity && save.identity.nick, 'best', 'switch: identity цела (без гостя)');
+    assert.equal(g.paused, false, 'switch: пауза снята');
+    fireWindow('keydown', { key: 'Escape', code: 'Escape' }); // закрыть мастер самого гейта
+    await sleep(10);
+    console.log('PASS gate-settle-modes: закрытие мастера резолвит гейт в gate/side/switch — дедлока нет');
   } else {
     throw new Error('неизвестный режим: ' + mode);
   }
