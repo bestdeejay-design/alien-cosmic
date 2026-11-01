@@ -144,8 +144,14 @@ try {
       assert(ctx.__stat.calls > 0, `${type} ранга ${rank}: ничего не нарисовано`);
       if (rank > 0) {
         // Слой ранга трогает цвета фаз.
-        const phaseColor = S.unitStyle(rank).trim;
-        assert(ctx.__stat.colors.has(phaseColor), `${type} ранга ${rank}: цвет фазы ${phaseColor} не использован`);
+        // §14.7–14.10 (волна Гелиоса 01.11): Скиф/Крушитель/Плазмагон/Мортира
+        // растут СВОИМ законом (заклёпки-счётчик, пороги 5/10/15/20) — общий
+        // слой фазовой каймы им не рисуется (skins.js ownGrowth), поэтому
+        // цвет фазы в их рендере не ожидается.
+        if (!['buggy', 'tank', 'flamer', 'arty'].includes(type)) {
+          const phaseColor = S.unitStyle(rank).trim;
+          assert(ctx.__stat.colors.has(phaseColor), `${type} ранга ${rank}: цвет фазы ${phaseColor} не использован`);
+        }
       }
       drawn++;
     }
