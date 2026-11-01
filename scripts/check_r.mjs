@@ -110,7 +110,9 @@ if (!missing) ok('все относительные импорты ведут н
 
 // ---------- [4] сеть ----------
 console.log('\n[4] Сеть (гейт MVP: без сети, кроме клиента сейва):');
-const ALLOW = new Set(['save-client.js', 'raid-boot.js']);
+// abandoned.js — согласованное исключение (слово владельца 01.11.2026):
+// заброшенные базы экспедиций, GET /api/bases (только геометрия, оффлайн-фолбэк).
+const ALLOW = new Set(['save-client.js', 'raid-boot.js', 'abandoned.js']);
 let net = 0;
 for (const rel of allRel) {
   if (ALLOW.has(path.basename(rel))) continue;
