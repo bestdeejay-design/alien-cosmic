@@ -187,22 +187,42 @@ try {
     if (Math.hypot(c.tx - wtx, c.ty - wty) <= 12) st.fog.mark(c.tx, c.ty, 2);
   }
   const c1 = U.nearestCrystal(st, w);
+  // Волна-3 (дробление месторождений): поле = несколько кристаллов, авто-старт
+  // может взять соседний кристалл того же поля (свой выбор ближайшего в поле).
+  const field1 = c1.fieldId != null ? c1.fieldId : 'f' + c1.tx + ':' + c1.ty;
+  const isC1 = (t) => t && (t === c1 || (t.fieldId != null ? t.fieldId === field1 : (t.tx === c1.tx && t.ty === c1.ty)));
   let started = false;
   for (let i = 0; i < 120 && !started; i++) {
     game.tick();
-    started = !!(w.order && w.order.kind === 'gather' && w.order.target === c1);
+    started = !!(w.order && w.order.kind === 'gather' && isC1(w.order.target));
   }
   assert(started, 'авто-старт добычи по разведанной ближайшей жиле не сработал (~4 с)');
   // RETRY (~1 c): жила исчерпана/исчезла — рабочий возвращается в idle и
   // секундный скан подхватывает следующую РАЗВЕДАННУЮ жилу (6299a96).
-  const c2 = U.nearestCrystal(st, w, c1);
+  // c2 — заведомо из ДРУГОГО поля (при дроблении nearestCrystal без фильтра
+  // вернёт соседний кристалл того же поля, который мы сейчас удалим)
+  let c2 = null;
+  for (const c of [...st.map.crystals].sort((a, b) => Math.hypot(a.tx - wtx, a.ty - wty) - Math.hypot(b.tx - wtx, b.ty - wty))) {
+    if (c.dead || c.amount <= 0) continue;
+    const sameAsC1 = c.fieldId != null ? c.fieldId === field1 : (c.tx === c1.tx && c.ty === c1.ty);
+    if (sameAsC1) continue;
+    c2 = c; break;
+  }
   assert(c2, 'нет второй жилы для retry-пробы');
   st.fog.mark(c2.tx, c2.ty, 2);
-  st.map.removeCrystal(c1);
+  // убрать ВСЁ поле c1 (при дроблении соседние кристаллы того же поля остались
+  // бы целью и retry к новой жиле не проверился бы)
+  const field2 = c2.fieldId != null ? c2.fieldId : 'f' + c2.tx + ':' + c2.ty;
+  const isC2 = (t) => t && (t === c2 || (t.fieldId != null ? t.fieldId === field2 : (t.tx === c2.tx && t.ty === c2.ty)));
+  for (const c of [...st.map.crystals]) {
+    if (c.dead || c.amount <= 0) continue;
+    const sameField = c.fieldId != null ? c.fieldId === field1 : (c.tx === c1.tx && c.ty === c1.ty);
+    if (sameField) st.map.removeCrystal(c);
+  }
   let retried = false;
   for (let i = 0; i < 150 && !retried; i++) {
     game.tick();
-    retried = !!(w.order && w.order.kind === 'gather' && w.order.target === c2);
+    retried = !!(w.order && w.order.kind === 'gather' && isC2(w.order.target));
   }
   assert(retried, 'секундный retry не подхватил следующую разведанную жилу');
   pass('FG6 вылазка: авто-старт по ближайшей разведанной жиле и секундный retry живы (6299a96)');

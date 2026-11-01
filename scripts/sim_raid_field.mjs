@@ -233,6 +233,14 @@ try {
 // ---------- F10: аванпост воюет (регресс на дефект «охрана застревает в move») ----------
 try {
   const st = launch(1, { worker: 1, marine: 3 }, 4);
+  // Волна-3 (01.11): в секторе ЛИБО заброшенная база (без аванпоста — руина
+  // и аванпост взаимоисключающи), ЛИБО аванпост с охраной. Проверяем обе
+  // ветки: руина — есть руинный КЦ и выжившие у него; аванпост — охрана.
+  if (st.raidRuin) {
+    const ccR = st.buildings.find((b) => !b.dead && b.side === 'enemy' && b.type === 'cc');
+    assert(ccR, 'в секторе руины нет ни аванпоста, ни руинного КЦ');
+    pass('F10 аванпост/руина: сектор с заброшенной базой (аванпост по дизайну отсутствует)');
+  } else {
   const guards = st.units.filter((u) => u.side === 'enemy' && !u.dead);
   assert(guards.length >= 2, 'у аванпоста нет охраны');
   const ccE = st.buildings.find((b) => !b.dead && b.side === 'enemy' && b.type === 'cc');
@@ -256,6 +264,7 @@ try {
   assert(engaged.some((g) => g.order.target === my || (g.order.target && g.order.target.side === 'player')),
     'цель атаки охраны — не подошедший боец');
   pass(`F10 аванпост воюет: ${engaged.length}/${guards.length} охраны перешли в атаку`);
+  }
 } catch (e) { fail('F10 агро аванпоста', e); }
 
 // ---------- F11 (П10): отсеки ВСЕХ Домов садятся в челнок, состав точен ----------

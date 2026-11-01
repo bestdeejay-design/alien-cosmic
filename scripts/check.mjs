@@ -77,8 +77,13 @@ if (!html.includes('./js/game.js')) err('index.html не подключает ./
 if (html.includes('src="/') || html.includes('href="/')) err('найден абсолютный путь в index.html');
 
 // 4) Запреты: fetch/XHR/абсолютные пути в модулях
+// Исключение (слово владельца 01.11.2026, приёмка волны-3): abandoned.js —
+// заброшенные базы экспедиций, публичный пул через GET /api/bases (только
+// геометрия, без ников/пинов; оффлайн-фолбэк обязателен).
 console.log('\n[4] Запреты (fetch / XHR / абсолютные пути / CDN):');
+const NET_ALLOW = new Set(['abandoned.js']);
 for (const f of files) {
+  if (NET_ALLOW.has(f)) continue;
   if (/\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(src[f])) err(f + ': сетевой запрос!');
   if (/from\s+['"]\//.test(src[f])) err(f + ': абсолютный путь в импорте');
   if (/https?:\/\//.test(src[f])) err(f + ': внешний URL');
