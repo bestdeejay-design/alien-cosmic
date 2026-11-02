@@ -247,6 +247,38 @@ try {
   pass('G8 cap < рейс: сборщики не бурят вовсе и ждут у челнока');
 } catch (e) { fail('G8 трюм меньше рейса', e); }
 
+// ---------- G9 (ace#17, вариант A владельца): отряд погиб, шаттл цел ----------
+// Раньше: гибель последнего полевого при boarded=0 мгновенно завершала вылазку
+// как wiped и обнуляла трюм — владелец терял уже сданный эрг при целом шаттле.
+// Теперь: авто-wipe не срабатывает, игрок сам жмёт «Эвакуация», эрг зачисляется.
+try {
+  const st = launch();
+  const sent = st.raidInitialCount;
+  st.raidCargo = 1234;                         // эрг, уже сданный в трюм шаттла
+  for (const u of fieldOf(st)) { u.hp = 0; u.dead = true; }
+  ticks(6);                                    // раньше здесь срабатывал авто-wiped
+  assert(game.state.raidMode === 'expedition', 'целый шаттл завершил вылазку как wiped (регресс ace#17)');
+  const lr0 = game.raidSession && game.raidSession.lastReturn;
+  assert(!lr0, 'гибель отряда при целом шаттле записала исход: ' + JSON.stringify(lr0));
+  assert(st.raidCargo === 1234, 'трюм целого шаттла тронут без возврата');
+  game.raidSession.walletBeforeEvac = game.raidSession.alarmV2.walletMicro;
+  game.triggerRaidEvac();                      // press 1 — маяк
+  game.triggerRaidEvac();                      // press 2 — всегда взлёт
+  const lr = game.raidSession && game.raidSession.lastReturn;
+  assert(game.state.raidMode === 'home', 'эвакуация пустого шаттла не вернула на базу');
+  assert(lr && lr.outcome === 'evac', 'исход не evac: ' + JSON.stringify(lr));
+  assert(lr.boardedCount === 0, 'погибших записали на борт: ' + lr.boardedCount);
+  const logTail = (game.raidSession.log || []).at(-1);
+  assert(logTail && logTail.losses === sent, 'потери в журнале не равны отряду: ' + (logTail && logTail.losses) + '/' + sent);
+  assert(lr.cargo === 1234, 'трюм не вернулся: cargo=' + lr.cargo);
+  const sess = game.raidSession;
+  const w0 = sess.walletBeforeEvac;            // снят ниже перед эвакуацией
+  const expected = 1234000000n + BigInt(lr.returnedBudget) * 1000000n; // трюм + полевой кошелёк
+  assert(BigInt(sess.alarmV2.walletMicro) - BigInt(w0) === expected,
+    'трюм не зачтён в кошелёк: ' + w0 + ' → ' + sess.alarmV2.walletMicro);
+  pass(`G9 ace#17: отряд погиб, шаттл цел — wiped не сработал, эвакуация вернула трюм 1234 (0/${sent} на борту)`);
+} catch (e) { fail('G9 погибший отряд, целый шаттл', e); }
+
 // ---------- Итог ----------
 if (failures.length) {
   console.log(`\n❌ SIM_EVAC36: провалено ${failures.length}: ${failures.join(', ')}`);
