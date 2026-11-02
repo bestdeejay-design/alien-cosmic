@@ -279,7 +279,8 @@ try {
   pass(`G9 ace#17: отряд погиб, шаттл цел — wiped не сработал, эвакуация вернула трюм 1234 (0/${sent} на борту)`);
   // ace#17-диагностика: запись журнала несёт ver/shuttleAlive/cargoAtEnd.
   const diag = (game.raidSession.log || []).at(-1);
-  assert(diag && diag.ver === 'AH', 'в журнале нет версии сборки: ' + JSON.stringify(diag && diag.ver));
+  const cfgM = await import('../r/js/config.js' + (await import('./stamp.mjs')).V);
+  assert(diag && diag.ver === cfgM.GAME_VERSION, 'в журнале версия сборки не совпала: ' + JSON.stringify(diag && diag.ver));
   assert(diag.shuttleAlive === true, 'shuttleAlive не зафиксирован');
   assert(diag.cargoAtEnd === 1234, 'cargoAtEnd потерян: ' + JSON.stringify(diag.cargoAtEnd));
   pass('G9b диагностика: журнал несёт ver/shuttleAlive/cargoAtEnd честно');
