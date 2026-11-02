@@ -277,6 +277,12 @@ try {
   assert(BigInt(sess.alarmV2.walletMicro) - BigInt(w0) === expected,
     'трюм не зачтён в кошелёк: ' + w0 + ' → ' + sess.alarmV2.walletMicro);
   pass(`G9 ace#17: отряд погиб, шаттл цел — wiped не сработал, эвакуация вернула трюм 1234 (0/${sent} на борту)`);
+  // ace#17-диагностика: запись журнала несёт ver/shuttleAlive/cargoAtEnd.
+  const diag = (game.raidSession.log || []).at(-1);
+  assert(diag && diag.ver === 'AH', 'в журнале нет версии сборки: ' + JSON.stringify(diag && diag.ver));
+  assert(diag.shuttleAlive === true, 'shuttleAlive не зафиксирован');
+  assert(diag.cargoAtEnd === 1234, 'cargoAtEnd потерян: ' + JSON.stringify(diag.cargoAtEnd));
+  pass('G9b диагностика: журнал несёт ver/shuttleAlive/cargoAtEnd честно');
 } catch (e) { fail('G9 погибший отряд, целый шаттл', e); }
 
 // ---------- Итог ----------
