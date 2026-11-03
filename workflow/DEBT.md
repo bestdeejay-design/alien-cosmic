@@ -8,7 +8,16 @@
 
 | ID | Модуль/зона | Суть одной строкой | Найдено в | Риск | Статус |
 |---|---|---|---|---|---|
-| — | — | записей нет | — | — | — |
+| D-001 | scripts/wait-signal | RECLAIMED-lookup в do_claim читает только стр. 1 комментариев (возрастание created_at) — в issue >100 комментариев фича BUSY+RECLAIMED не срабатывает; нужен sort=desc | PR #16 (ревью, минор 1) | low | resolved (#23) |
+| D-002 | scripts/wait-signal | match_any допускает дефисное продолжение после маркера («DONE-ish extra» матчится как DONE) | PR #16 (ревью, минор 2) | low | resolved (#24) |
+| D-003 | scripts/wait-signal | Ранний останов пагинации по last_ts<SINCE — мёртвый код (since серверный инклюзивен), вводит в заблуждение | PR #16 (ревью, минор 3) | low | resolved (#25) |
+| D-004 | scripts/wait-signal | «CI stale» печатается в stdout check_signals и глотается захватом OUT — пользователь не видит причину таймаута; перевести в stderr | PR #16 (ревью, минор 4) | low | resolved (#26) |
+| D-005 | scripts/wait-signal | check-runs без пагинации: при >100 checks CI-сигнал не срабатывает (done_cnt не догонит total) | PR #16 (ревью, минор 6) | low | resolved (#27) |
+| D-006 | scripts/wait-signal | Двойной CLAIMED при гонке двух претендентов на RECLAIMED-нутой задаче: мёртвый pre-reclaim claim старше RECLAIMED не дисквалифицирует ни одного претендента; окно — секунды, след аудита остаётся, разруливает координатор | PR #33 (ревью PR #30, блокер 2) | low | open |
+| D-007 | scripts/wait-signal | Комментарий про since в check_signals неточен: GitHub фильтрует по updated_at, не created_at — переформулировать при следующем касании | Ревью PR #25 | low | open |
+| D-008 | scripts/wait-signal | Окно 100 свежайших комментариев в do_claim (desc): при >100 CLAIM-комментариях глобально самый ранний не гарантируется | Ревью PR #23 (минор 3) | low | open |
+| D-009 | scripts/wait-signal | Временный HTTP-сбой на странице пагинации >1 трактуется как конец страниц — допустимо, но можно различать сбой и конец | Ревью PR #27 (минор 1) | low | open |
+| D-010 | tests/test_wait_signal.py | Разовый флак wait-signal-тестов наблюдался один раз из трёх прогонов (потом дважды OK) — отследить, при повторении стабилизировать | Итерация PR #33 | low | open |
 
 ## Правила ведения
 
