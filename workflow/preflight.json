@@ -1,0 +1,9 @@
+{
+  "_comment": "PROJECT-LAYER (alien-cosmic): скоуп автотестов preflight. Хаб-тесты рассчитаны на окружение хаба bestdeejay-design/agents и здесь невыполнимы структурно; причины и обоснование — workflow/CANON_VERSION.md (§ Расхождения).",
+  "test_exclude_files": [
+    "test_documentation.py"
+  ],
+  "test_exclude_ids": [
+    "test_collegium_and_tooling.HooksWorkflowsAndRunnerTests.test_preflight_skip_tests_and_radius_guard"
+  ]
+}

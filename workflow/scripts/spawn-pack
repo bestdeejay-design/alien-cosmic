@@ -1,0 +1,620 @@
+#!/usr/bin/env python3
+"""spawn-pack — генератор пакетов запуска саб-агентов, автоподбор навыков и Delegation Enforcer.
+
+Механически проверяет обязательные правила владельца (ADR-0002):
+- каждому саб-агенту выдана явная роль из agents/*.md и подключены навыки из skills/*/SKILL.md
+  (вручную через --skills, автоматически по меткам/радиусу/брифу через --auto, либо пакетом
+  полного трёхслойного аудита --preset fullstack-audit);
+- на задачах size:M и size:L свежий исполнитель Волны 1 НЕ запускается без AUDIT_PACK,
+  SPEC_PACK и предстартового пинка ревьювера (REVIEWER_KICK);
+- во Волне 2 со сменой ролей (Исполнитель <-> Ревьювер) автоматически вшивается контракт
+  перекрёстной проверки с запретом аппрува собственных коммитов Волны 1.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = ROOT / "schema" / "bus.json"
+
+UI_PATH_RE = re.compile(
+    r"(?:^|/)(?:frontend|client|web|ui|app|pages|views|components|widgets|styles|public)(?:/|$)"
+    r"|\.(?:tsx|jsx|vue|svelte|css|scss|sass|less|html)$",
+    re.I,
+)
+API_BE_PATH_RE = re.compile(
+    r"(?:^|/)(?:api|backend|server|routes|routers|controllers|handlers|endpoints|services|workers|jobs|cli|scripts|cmd|internal|pkg)(?:/|$)"
+    r"|\.(?:sh|graphql|proto)$|openapi|swagger",
+    re.I,
+)
+DATA_PATH_RE = re.compile(
+    r"(?:^|/)(?:schema|schemas|migrations|alembic|prisma|drizzle|db|database|models|entities|fixtures|seeds|storage)(?:/|$)"
+    r"|\.(?:sql)$",
+    re.I,
+)
+
+UI_TEXT_RE = re.compile(
+    r"\b(?:frontend|front-end|ui|ux|dom|css|layout|viewport|responsive|react|vue|svelte|nextjs|vite)\b"
+    r"|(?:фронт|интерфейс|вёрстк|верстк|экран|кнопк|мобил|рендер|браузер)",
+    re.I,
+)
+API_BE_TEXT_RE = re.compile(
+    r"\b(?:api|rest|graphql|endpoint|webhook|backend|back-end|auth|idor|cors|csrf|etag|rate[- ]limit|timeout|cli|daemon|worker)\b"
+    r"|(?:апи|бэкенд|бекенд|эндпоинт|сервер|авторизац|идемпотент|таймаут|пагинац|квот)",
+    re.I,
+)
+DATA_TEXT_RE = re.compile(
+    r"\b(?:migration|schema|database|postgres|mysql|sqlite|redis|orm|prisma|alembic|serialization|save[- ]?file)\b"
+    r"|(?:миграц|схем[аыуе]|баз[аыуе]\s+данных|\bбд\b|сохранени|валидатор|обратн[а-я]+\s+совместим)",
+    re.I,
+)
+BUG_TEXT_RE = re.compile(
+    r"\b(?:bug|bugfix|crash|race|deadlock|regression|broken|exception|traceback|flaky)\b"
+    r"|(?:баг|ошибк|падает|гонк|регресс|не\s+работает|сломан|зависает)",
+    re.I,
+)
+REFACTOR_TEXT_RE = re.compile(
+    r"\b(?:refactor|cleanup|dedup|tech[- ]?debt|decompose)\b"
+    r"|(?:рефактор|техдолг|дублир|упрост|декомпоз|расчист)",
+    re.I,
+)
+AUDIT_TEXT_RE = re.compile(
+    r"\b(?:full[- ]?stack\s+audit|complete\s+audit|security\s+audit|system\s+audit)\b"
+    r"|(?:полн[а-я]+\s+аудит|сквозн[а-я]+\s+аудит|аудит\s+фронт|аудит\s+проекта|трёхслойн[а-я]+\s+аудит|трехслойн[а-я]+\s+аудит)",
+    re.I,
+)
+
+
+def load_schema() -> dict:
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def read_arg_or_file(inline: str | None, file_path: str | None, label: str) -> str:
+    if inline and inline.strip():
+        return inline.strip()
+    if file_path:
+        p = Path(file_path)
+        if not p.is_file():
+            raise ValueError(f"{label}: файл не найден: {file_path}")
+        return p.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def available_skills() -> dict[str, Path]:
+    skills_dir = ROOT / "skills"
+    found: dict[str, Path] = {}
+    if skills_dir.is_dir():
+        for child in sorted(skills_dir.iterdir()):
+            skill_md = child / "SKILL.md"
+            if child.is_dir() and skill_md.is_file():
+                found[child.name] = skill_md
+    return found
+
+
+def strip_frontmatter(md: str) -> str:
+    if md.startswith("---\n"):
+        end = md.find("\n---\n", 4)
+        if end != -1:
+            return md[end + 5 :].strip()
+    return md.strip()
+
+
+def detect_repo_slug(explicit_repo: str) -> str:
+    if explicit_repo.strip():
+        return explicit_repo.strip()
+    res = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    url = res.stdout.strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/.]+?)(?:\.git)?$", url)
+    if not m:
+        raise ValueError("не удалось определить owner/repo из git remote origin; передайте --repo owner/repo")
+    return m.group(1)
+
+
+def fetch_issue_metadata(repo: str, issue_num: int) -> tuple[list[str], str, str]:
+    res = subprocess.run(
+        ["gh", "api", f"repos/{repo}/issues/{issue_num}"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        raise ValueError(f"не удалось прочитать issue #{issue_num} через gh api ({res.stderr.strip()})")
+    payload = json.loads(res.stdout)
+    labels = [lbl["name"] for lbl in payload.get("labels", []) if isinstance(lbl, dict) and "name" in lbl]
+    title = str(payload.get("title") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    return labels, title, body
+
+
+def auto_select_skills(
+    *,
+    role: str,
+    role_defaults: list[str],
+    available: dict[str, Path],
+    labels: list[str],
+    radius: str,
+    combined_text: str,
+    wave: int,
+) -> tuple[list[str], list[str]]:
+    selected: list[str] = []
+    reasons: list[str] = []
+
+    def add(skill: str, reason: str) -> None:
+        if skill in available and skill not in selected:
+            selected.append(skill)
+            reasons.append(f"`{skill}` ({reason})")
+
+    for d in role_defaults:
+        add(d, f"базовый навык роли {role}")
+
+    label_set = {x.strip() for x in labels if x.strip()}
+    radius_items = [r.strip() for r in radius.split(",") if r.strip()]
+
+    has_ui = any(UI_PATH_RE.search(p) for p in radius_items) or bool(UI_TEXT_RE.search(combined_text))
+    has_api_be = any(API_BE_PATH_RE.search(p) for p in radius_items) or bool(API_BE_TEXT_RE.search(combined_text))
+    has_data = any(DATA_PATH_RE.search(p) for p in radius_items) or bool(DATA_TEXT_RE.search(combined_text))
+    has_audit = bool(AUDIT_TEXT_RE.search(combined_text)) or ("type:research" in label_set and has_ui and has_api_be)
+
+    # 1. Метки типа и функции задачи
+    if "type:bugfix" in label_set or BUG_TEXT_RE.search(combined_text):
+        add("root-cause-debugging", "метка type:bugfix или сигналы бага/сбоя")
+        if role in {"executor", "reviewer"}:
+            add("edge-case-testing", "защита фикса регрессионными и пограничными тестами")
+
+    if "type:test" in label_set or "agent:qa" in label_set:
+        add("edge-case-testing", "тестовая/QA задача")
+
+    if "type:debt" in label_set or REFACTOR_TEXT_RE.search(combined_text):
+        add("minimal-safe-refactor", "метка type:debt или сигналы рефакторинга/техдолга")
+
+    if "type:infra" in label_set or "agent:devops" in label_set:
+        add("cli-and-api-robustness", "метка type:infra / agent:devops")
+
+    # 2. Слои проекта по путям радиуса и тексту задачи
+    if has_audit or (role in {"auditor", "reviewer"} and has_ui and has_api_be):
+        add("fullstack-audit", "сквозной межслойный аудит (Frontend + API + Backend)")
+
+    if has_ui:
+        add("ui-render-verification", "затронут Frontend/UI — проверка 5 состояний и геометрии")
+
+    if has_api_be:
+        add("cli-and-api-robustness", "затронут API/Backend/CLI — контракты, права, таймауты, коды")
+
+    if has_data:
+        add("data-migration", "затронуты схемы/БД/миграции/сохранения")
+
+    # 3. Усиление ревьювера и Волны 2 со сменой ролей
+    if wave == 2 or (role == "reviewer" and (has_ui or has_api_be or has_data)):
+        add("edge-case-testing", "Волна 2 / ревью — матрица пограничных и стресс-сценариев")
+
+    return selected, reasons
+
+
+def render_pack(
+    *,
+    issue: int,
+    short_size: str,
+    wave: int,
+    role: str,
+    role_cfg: dict,
+    skill_names: list[str],
+    auto_reasons: list[str],
+    skills_map: dict[str, Path],
+    radius: str,
+    swap_from: str | None,
+    wave1_sha: str,
+    collegium_findings: str,
+    brief: str,
+    audit_pack: str,
+    spec_pack: str,
+    reviewer_kick: str,
+) -> str:
+    role_prompt = strip_frontmatter((ROOT / role_cfg["prompt"]).read_text(encoding="utf-8"))
+    mode_banner = (
+        "ЗАПИСЬ РАЗРЕШЕНА ТОЛЬКО В РАДИУСЕ ЗАДАЧИ (Clean-Room Fresh Subagent)"
+        if role_cfg["write_access"]
+        else "СТРОГО READ-ONLY: изменение файлов (Write / Edit / commit) ЗАПРЕЩЕНО"
+    )
+    issue_label = f"Issue #{issue}" if issue > 0 else "Pre-Board Audit (#0)"
+
+    sections: list[str] = [
+        f"# SPAWN PACK — {issue_label} · size:{short_size} · Волна {wave} · Роль: `{role}`",
+        "",
+        "## КТО ТЫ И ТВОЙ РЕЖИМ ДОСТУПА",
+        f"- **Назначенная роль:** `{role}` ({role_cfg['deliverable']})",
+        f"- **Режим инструментов:** {mode_banner}",
+        f"- **Подключённые координатором навыки:** {', '.join(f'`{s}`' for s in skill_names)}",
+        f"- **Разрешённый радиус файлов:** {radius or '<задаётся брифом задачи — не выходить за границы>'}",
+    ]
+    if auto_reasons:
+        sections.append(f"- **Автоподбор навыков (`--auto`):** {'; '.join(auto_reasons)}")
+
+    if wave == 2 and swap_from:
+        sections.extend([
+            "",
+            "## КОНТРАКТ 2-Й ВОЛНЫ СО СМЕНОЙ РОЛЕЙ (ADR-0002)",
+            f"- В Волне 1 твоя предыдущая роль была `{swap_from}`; теперь во Волне 2 твоя роль — **`{role}`**.",
+            f"- Коммит Волны 1: `{wave1_sha or '<уточнить SHA Волны 1>'}`.",
+            "- **Запрет само-ревью:** ни один участник не имеет права аппрувить собственный коммит.",
+            (
+                "- Как новый `executor` (бывший ревьювер): собственными руками закрой замечания коллегии Волны 1 "
+                "и допиши жёсткие adversarial/edge-case тесты поверх коммита Волны 1."
+                if role == "executor"
+                else "- Как новый `reviewer` (бывший исполнитель Волны 1): жёстко проверь дифф Волны 2 и свежий прогон `python3 scripts/preflight`, не аппрувя свой собственный код без проверки партнёра."
+            ),
+        ])
+        if collegium_findings:
+            sections.extend(["", "### Замечания коллегии Волны 1 к отработке/проверке", collegium_findings.strip()])
+
+    sections.extend([
+        "",
+        "---",
+        "",
+        role_prompt,
+        "",
+        "---",
+        "",
+        "## ПОДКЛЮЧЁННЫЕ НАВЫКИ (`skills/`)",
+    ])
+
+    for sname in skill_names:
+        sbody = strip_frontmatter(skills_map[sname].read_text(encoding="utf-8"))
+        sections.extend(["", sbody])
+
+    sections.extend([
+        "",
+        "---",
+        "",
+        "## КОНТЕКСТНЫЙ ПАКЕТ ЗАДАЧИ (`CONTEXT_PACK`)",
+        "",
+        "### 1. Бриф и критерии приёмки",
+        brief or (f"См. тело issue #{issue} (связанный issue: #{issue})." if issue > 0 else "Первичный сквозной аудит репозитория без внесения изменений в код."),
+    ])
+
+    if short_size == "S" and role == "executor" and not (audit_pack or spec_pack):
+        sections.extend([
+            "",
+            "### 2. Режим Fast-Track (`size:S`)",
+            "Пауза на предварительном `GATE OPEN` не требуется: выполни компактный мини-аудит (`🎯 CONCLUSION`), "
+            "внеси точечную правку строго в радиусе, прогони `python3 scripts/preflight` и передай ветку независимому ревьюверу.",
+        ])
+    else:
+        sections.extend([
+            "",
+            "### 2. `AUDIT_PACK` (границы, инварианты, точки слома от Аудитора)",
+            audit_pack or "<ЗАПОЛНИТЬ ДО ЗАПУСКА ИСПОЛНИТЕЛЯ>",
+            "",
+            "### 3. `SPEC_PACK` (выбранное решение и таблица критериев от Ресёрчера)",
+            spec_pack or "<ЗАПОЛНИТЬ ДО ЗАПУСКА ИСПОЛНИТЕЛЯ>",
+            "",
+            "### 4. `REVIEWER_KICK` (предстартовый пинок Ревьювера — ловушки мгновенного возврата)",
+            reviewer_kick or "<ЗАПОЛНИТЬ ДО ЗАПУСКА ИСПОЛНИТЕЛЯ>",
+        ])
+
+    return "\n".join(sections).rstrip() + "\n"
+
+
+def generate_fullstack_audit_bundle(
+    *,
+    schema: dict,
+    skills_map: dict[str, Path],
+    issue: int,
+    out_dir: Path,
+    brief: str,
+) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    common_note = (
+        brief
+        or "Провести полный доказательный read-only аудит готового проекта (Frontend + API + Backend/DB) "
+        "с точными ссылками файл:строка и нарезкой найденных проблем в задачи size:S / size:M / size:L."
+    )
+    specs = [
+        (
+            "01-auditor-frontend.md",
+            "auditor",
+            ["subagent-collegium", "fullstack-audit", "ui-render-verification", "edge-case-testing"],
+            "Frontend / клиентский слой (компоненты, экраны, стейт, стили, вызовы API, конфиг сборки)",
+            f"{common_note}\n\n**Твой фокус (Слой 1 — Frontend):** реальная связка компонентов с API, все 5 состояний экранов, "
+            "блокировка двойного сабмита, геометрия 1440px и 375px, ошибки консоли, утечки публичных env-переменных и зашитый localhost.",
+        ),
+        (
+            "02-auditor-api.md",
+            "auditor",
+            ["subagent-collegium", "fullstack-audit", "cli-and-api-robustness", "edge-case-testing"],
+            "API-слой (маршруты, контроллеры/хендлеры, схемы запросов и ответов, middleware, AuthN/AuthZ)",
+            f"{common_note}\n\n**Твой фокус (Слой 2 — API и права):** соответствие реальных ответов ожиданиям фронта, "
+            "объектная авторизация (IDOR), валидация входа, пагинация, идемпотентность, CORS/CSRF, коды ошибок без утечки стектрейсов.",
+        ),
+        (
+            "03-auditor-backend.md",
+            "auditor",
+            ["subagent-collegium", "fullstack-audit", "cli-and-api-robustness", "data-migration", "root-cause-debugging"],
+            "Backend, БД, миграции, фоновые воркеры, интеграции и конфигурация запуска",
+            f"{common_note}\n\n**Твой фокус (Слой 3 — Backend и данные):** границы транзакций, гонки, N+1 и индексы, "
+            "миграции и обратная совместимость данных, пустые catch/проглоченные ошибки, таймауты внешних вызовов, секреты и fail-fast конфиг.",
+        ),
+        (
+            "04-reviewer-seams.md",
+            "reviewer",
+            ["adversarial-review", "fullstack-audit", "edge-case-testing", "bus-delivery"],
+            "Стыки всех трёх слоёв (Frontend <-> API <-> Backend/DB) — верификация отчётов 01..03",
+            f"{common_note}\n\n**Твой фокус (Арбитр межслойных стыков):** прими отчёты трёх слоёвых саб-аудиторов (FE, API, BE), "
+            "отсей голословные догадки без файл:строка, найди расхождения контрактов МЕЖДУ слоями и собери единый приоритизированный "
+            "реестр находок P0 / P1 / P2 с нарезкой в независимые карточки size:S / size:M / size:L.",
+        ),
+    ]
+
+    written: list[str] = []
+    for filename, role, sk_list, radius_desc, role_brief in specs:
+        valid_skills = [s for s in sk_list if s in skills_map]
+        content = render_pack(
+            issue=issue,
+            short_size="L",
+            wave=1,
+            role=role,
+            role_cfg=schema["subagent_roles"][role],
+            skill_names=valid_skills,
+            auto_reasons=["пресет --preset fullstack-audit"],
+            skills_map=skills_map,
+            radius=radius_desc,
+            swap_from=None,
+            wave1_sha="",
+            collegium_findings="",
+            brief=role_brief,
+            audit_pack="Заполняется этим слоёвым аудитом (строго read-only, с файл:строка).",
+            spec_pack="Формируется после сведения матрицы P0/P1/P2 по итогам аудита.",
+            reviewer_kick="Запрещены догадки без чтения файла/запуска проверки и запрещены любые правки кода во время аудита.",
+        )
+        dst = out_dir / filename
+        dst.write_text(content, encoding="utf-8")
+        written.append(filename)
+
+    runbook = "\n".join([
+        "# Памятка координатору: Полный трёхслойный аудит (Frontend + API + Backend)",
+        "",
+        "1. Запусти **параллельно** трёх независимых read-only саб-агентов с промптами:",
+        "   - `01-auditor-frontend.md`",
+        "   - `02-auditor-api.md`",
+        "   - `03-auditor-backend.md`",
+        "2. Передай три полученных отчёта четвёртому саб-агенту (`04-reviewer-seams.md`) для перекрёстной сверки стыков `FE <-> API <-> BE` и фильтрации ложных срабатываний.",
+        "3. Согласуй с владельцем приоритизированную таблицу `P0 / P1 / P2`, заведи карточки `size:S / size:M / size:L` и запускай по ним чистых исполнителей через `scripts/spawn-pack --auto` с 2-й волной смены ролей.",
+        "",
+    ])
+    (out_dir / "00-COORDINATOR-RUNBOOK.md").write_text(runbook, encoding="utf-8")
+    written.insert(0, "00-COORDINATOR-RUNBOOK.md")
+    print(f"spawn-pack PRESET OK: {out_dir} -> {', '.join(written)}")
+    return 0
+
+
+def print_catalog(schema: dict) -> int:
+    print("=== Роли саб-агентов (agents/ + .claude/agents/) ===")
+    for role, cfg in schema["subagent_roles"].items():
+        rw = "WRITE (свежий контекст обязателен)" if cfg["write_access"] else "READ-ONLY (Write/Edit запрещены)"
+        defaults = ",".join(cfg["default_skills"])
+        print(f"  - {role:10s} [{rw}] default_skills={defaults} -> {cfg['deliverable']}")
+    print("\n=== Доступные навыки (skills/ + .claude/skills/ + .agents/skills/) ===")
+    for name, path in available_skills().items():
+        print(f"  - {name:24s} ({path.relative_to(ROOT)})")
+    print("\n=== Быстрые режимы автоподбора ===")
+    print("  - --auto [--labels type:bugfix] [--radius frontend/...,api/...]  (автоподбор скиллов по задаче)")
+    print("  - --auto --from-issue --issue <N> [--repo owner/repo]            (автоподбор напрямую из GitHub Issue)")
+    print("  - --preset fullstack-audit --output-dir /tmp/audit-packs         (4 пакета: FE + API + BE + Стыки)")
+    print("\n=== Тиры коллегии (schema/bus.json) ===")
+    for size, tcfg in schema["tiers"].items():
+        roles = "+".join(tcfg["subagents_required"])
+        print(f"  - {size:6s}: mode={tcfg['mode']} waves={tcfg['waves']} roles={roles} pre_gate={tcfg['pre_action_gate_pause']}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--list", action="store_true", help="Показать каталог ролей, навыков, авторежимов и тиров S/M/L")
+    p.add_argument("--preset", choices=("fullstack-audit",), help="Сгенерировать готовый комплект промптов под сценарий")
+    p.add_argument("--output-dir", type=Path, help="Папка вывода для --preset fullstack-audit")
+    p.add_argument("--role", choices=("auditor", "researcher", "executor", "reviewer"), help="Роль саб-агента")
+    p.add_argument("--skills", default="", help="Список навыков через запятую ('default', 'auto' или список)")
+    p.add_argument("--auto", action="store_true", help="Автоматически подобрать профильные навыки по меткам, радиусу и брифу")
+    p.add_argument("--explain-skills", action="store_true", help="Показать только выбранные навыки и причины подбора")
+    p.add_argument("--labels", default="", help="Метки issue через запятую для автоподбора (например: type:bugfix,size:M)")
+    p.add_argument("--from-issue", action="store_true", help="Подтянуть метки, заголовок и бриф живого issue через gh api")
+    p.add_argument("--repo", default="", help="Репозиторий owner/repo для --from-issue (по умолчанию из git remote origin)")
+    p.add_argument("--size", default="M", choices=("S", "M", "L", "size:S", "size:M", "size:L"), help="Размер задачи")
+    p.add_argument("--issue", type=int, help="Номер issue задачи (или 0 для первичного аудита до заведения карточек)")
+    p.add_argument("--wave", type=int, default=1, choices=(1, 2), help="Номер волны коллегии (1 или 2)")
+    p.add_argument("--swap-from", choices=("auditor", "researcher", "executor", "reviewer"),
+                   help="Предыдущая роль этого контура перед сменой ролей во Волне 2")
+    p.add_argument("--wave1-sha", default="", help="Точный SHA коммита Волны 1 (обязателен при смене ролей во Волне 2)")
+    p.add_argument("--brief", default="", help="Краткий бриф и критерии приёмки задачи")
+    p.add_argument("--brief-file", help="Путь к файлу брифа")
+    p.add_argument("--radius", default="", help="Разрешённый радиус файлов (через запятую)")
+    p.add_argument("--audit-pack", default="", help="Сжатый AUDIT_PACK от саб-аудитора")
+    p.add_argument("--audit-file", help="Файл с AUDIT_PACK")
+    p.add_argument("--spec-pack", default="", help="Сжатый SPEC_PACK от саб-ресёрчера")
+    p.add_argument("--spec-file", help="Файл со SPEC_PACK")
+    p.add_argument("--reviewer-kick", default="", help="Предстартовый пинок ревьювера (3–5 ловушек отказа)")
+    p.add_argument("--kick-file", help="Файл с REVIEWER_KICK")
+    p.add_argument("--collegium-findings", default="", help="Замечания коллегии Волны 1 для доводки во Волне 2")
+    p.add_argument("--allow-incomplete", action="store_true",
+                   help="Разрешить генерацию чернового шаблона с плейсхолдерами (для первичной подготовки)")
+    p.add_argument("--output", type=Path, help="Сохранить собранный промпт в файл")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    schema = load_schema()
+    skills_map = available_skills()
+
+    if args.list:
+        return print_catalog(schema)
+
+    try:
+        brief = read_arg_or_file(args.brief, args.brief_file, "brief")
+        audit_pack = read_arg_or_file(args.audit_pack, args.audit_file, "audit-pack")
+        spec_pack = read_arg_or_file(args.spec_pack, args.spec_file, "spec-pack")
+        reviewer_kick = read_arg_or_file(args.reviewer_kick, args.kick_file, "reviewer-kick")
+    except ValueError as exc:
+        print(f"spawn-pack ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    if args.preset == "fullstack-audit":
+        out_dir = args.output_dir or (Path("/tmp") / "fullstack-audit-packs")
+        return generate_fullstack_audit_bundle(
+            schema=schema,
+            skills_map=skills_map,
+            issue=args.issue if args.issue is not None else 0,
+            out_dir=out_dir,
+            brief=brief,
+        )
+
+    if not args.role:
+        parser.error("укажите --role (или --list / --preset fullstack-audit)")
+    if args.issue is None:
+        parser.error("укажите --issue <номер задачи> (или --issue 0 для первичного аудита до карточек)")
+    if args.issue == 0 and args.role == "executor" and not args.allow_incomplete:
+        print("spawn-pack ERROR: --issue 0 разрешён только для первичного read-only аудита/ресёрча/ревью; для executor нужна карточка issue.", file=sys.stderr)
+        return 2
+
+    labels = [x.strip() for x in args.labels.split(",") if x.strip()]
+    size_arg = args.size
+    if args.from_issue:
+        if args.issue <= 0:
+            print("spawn-pack ERROR: для --from-issue укажите реальный номер --issue > 0.", file=sys.stderr)
+            return 2
+        try:
+            repo_slug = detect_repo_slug(args.repo)
+            live_labels, live_title, live_body = fetch_issue_metadata(repo_slug, args.issue)
+        except ValueError as exc:
+            print(f"spawn-pack ERROR: {exc}", file=sys.stderr)
+            return 2
+        for lbl in live_labels:
+            if lbl not in labels:
+                labels.append(lbl)
+            if lbl in {"size:S", "size:M", "size:L"} and args.size == "M":
+                size_arg = lbl
+        if not brief:
+            brief = f"**{live_title}**\n\n{live_body}".strip()
+
+    for lbl in labels:
+        if lbl in {"size:S", "size:M", "size:L"} and args.size == "M":
+            size_arg = lbl
+
+    size_key = size_arg if size_arg.startswith("size:") else f"size:{size_arg}"
+    short_size = size_key.split(":")[1]
+    role_cfg = schema["subagent_roles"][args.role]
+
+    raw_skills = args.skills.strip()
+    use_auto = args.auto or raw_skills == "auto" or "auto" in {s.strip() for s in raw_skills.split(",") if s.strip()}
+
+    if not raw_skills and not use_auto:
+        print(
+            f"spawn-pack ERROR: координатор обязан явно подключить навыки через --skills "
+            f"(например: --skills {','.join(role_cfg['default_skills'])}) или включить --auto.",
+            file=sys.stderr,
+        )
+        return 2
+
+    auto_reasons: list[str] = []
+    if use_auto:
+        combined_text = "\n".join(x for x in (brief, audit_pack, spec_pack, reviewer_kick, args.collegium_findings) if x)
+        skill_names, auto_reasons = auto_select_skills(
+            role=args.role,
+            role_defaults=list(role_cfg["default_skills"]),
+            available=skills_map,
+            labels=labels,
+            radius=args.radius,
+            combined_text=combined_text,
+            wave=args.wave,
+        )
+        extra_manual = [s.strip() for s in raw_skills.split(",") if s.strip() and s.strip() not in {"auto", "default"}]
+        for extra in extra_manual:
+            if extra not in skill_names:
+                skill_names.append(extra)
+                auto_reasons.append(f"`{extra}` (добавлен вручную через --skills)")
+    elif raw_skills == "default":
+        skill_names = list(role_cfg["default_skills"])
+    else:
+        skill_names = [s.strip() for s in raw_skills.split(",") if s.strip()]
+        for must_have in role_cfg["default_skills"]:
+            if must_have not in skill_names:
+                skill_names.insert(0, must_have)
+
+    unknown = [s for s in skill_names if s not in skills_map]
+    if unknown:
+        print(f"spawn-pack ERROR: неизвестные навыки: {', '.join(unknown)}. Доступны: {', '.join(skills_map)}", file=sys.stderr)
+        return 2
+
+    if args.explain_skills:
+        print(json.dumps({"role": args.role, "size": size_key, "skills": skill_names, "reasons": auto_reasons}, ensure_ascii=False, indent=2))
+        return 0
+
+    # Механический контроль входов для свежего исполнителя M/L и смены ролей Волны 2
+    if args.wave == 2:
+        if not args.swap_from:
+            print("spawn-pack ERROR: для --wave 2 укажите --swap-from <прежняя роль> (контроль смены ролей ADR-0002).", file=sys.stderr)
+            return 2
+        if args.swap_from == args.role:
+            print(f"spawn-pack ERROR: во Волне 2 роли обязаны поменяться местами (--swap-from {args.swap_from} == --role {args.role}).", file=sys.stderr)
+            return 2
+        if not args.wave1_sha and not args.allow_incomplete:
+            print("spawn-pack ERROR: для --wave 2 укажите --wave1-sha <sha7>, чтобы исключить само-ревью коммита Волны 1.", file=sys.stderr)
+            return 2
+
+    if args.role == "executor" and short_size in {"M", "L"} and not args.allow_incomplete:
+        missing = []
+        if not audit_pack:
+            missing.append("--audit-pack / --audit-file (от саб-аудитора)")
+        if not spec_pack:
+            missing.append("--spec-pack / --spec-file (от саб-ресёрчера)")
+        if not reviewer_kick:
+            missing.append("--reviewer-kick / --kick-file (предстартовый пинок от саб-ревьювера)")
+        if missing:
+            print(
+                f"spawn-pack ERROR: запрещён запуск свежего исполнителя на size:{short_size} без полного пакета коллегии:\n  - "
+                + "\n  - ".join(missing),
+                file=sys.stderr,
+            )
+            return 2
+
+    rendered = render_pack(
+        issue=args.issue,
+        short_size=short_size,
+        wave=args.wave,
+        role=args.role,
+        role_cfg=role_cfg,
+        skill_names=skill_names,
+        auto_reasons=auto_reasons,
+        skills_map=skills_map,
+        radius=args.radius,
+        swap_from=args.swap_from,
+        wave1_sha=args.wave1_sha,
+        collegium_findings=args.collegium_findings,
+        brief=brief,
+        audit_pack=audit_pack,
+        spec_pack=spec_pack,
+        reviewer_kick=reviewer_kick,
+    )
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered, encoding="utf-8")
+        print(f"spawn-pack OK: записан {args.output} ({len(rendered.splitlines())} строк, навыки: {','.join(skill_names)})")
+    else:
+        sys.stdout.write(rendered)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

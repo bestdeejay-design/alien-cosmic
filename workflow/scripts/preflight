@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""preflight — единая предполётная проверка исполнителя, ревьювера и CI (ADR-0002).
+
+Проверяет за один запуск:
+1) что работа не ведётся прямо на ветке main (кроме режима --ci-main в GitHub Actions);
+2) отсутствие конфликтных маркеров и хвостовых пробелов (git diff --check);
+3) синтаксис bash -n всех shell-скриптов и git-хуков;
+4) синхронность единого словаря schema/bus.json (52 labels + 21 маркер) со скриптами и доками,
+   лимит корневого AGENTS.md <= 60 строк, наличие карточек agents/* и skills/*,
+   0 битых локальных ссылок и отсутствие автозакрывающих ключевых слов в активных шаблонах;
+5) соблюдение разрешённого радиуса файлов (--allow path1,path2);
+6) прогон автотестов (полный или --quick без долгих sleep-тестов wait-signal).
+
+Печатает верифицированную квитанцию Proof-of-Work для вставки в письмо поставки.
+"""
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CLOSING_RE = re.compile(r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+#", re.I)
+
+
+def _format_unittest_errors(result) -> str:
+    lines = []
+    for test, tb in list(getattr(result, "failures", [])) + list(getattr(result, "errors", [])):
+        last = tb.strip().splitlines()[-1] if tb.strip() else ""
+        lines.append(f"{test.id()}: {last}")
+    return "\n".join(lines)[-1200:]
+
+
+def run(cmd: list[str], check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=check, env=env)
+
+
+def install_hooks() -> None:
+    hooks_dir = ROOT / ".githooks"
+    if not (hooks_dir / "pre-push").is_file():
+        raise RuntimeError("не найден .githooks/pre-push")
+    for script in [
+        hooks_dir / "pre-push",
+        ROOT / "scripts" / "wait-signal",
+        ROOT / "scripts" / "spawn-pack",
+        ROOT / "scripts" / "install-skills",
+        ROOT / "scripts" / "preflight",
+        ROOT / "scripts" / "agent-runner",
+        ROOT / "docs" / "create-labels.sh",
+        ROOT / "docs" / "project-apply.sh",
+    ]:
+        if script.is_file():
+            script.chmod(script.stat().st_mode | 0o111)
+    run(["git", "config", "core.hooksPath", ".githooks"])
+
+
+def check_schema_and_canon() -> list[str]:
+    errors: list[str] = []
+    schema_path = ROOT / "schema" / "bus.json"
+    if not schema_path.is_file():
+        return ["отсутствует schema/bus.json"]
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    # 1. Корневой AGENTS.md <= 60 строк
+    agents_root = ROOT / "AGENTS.md"
+    if not agents_root.is_file():
+        errors.append("отсутствует корневой AGENTS.md")
+    else:
+        line_count = len(agents_root.read_text(encoding="utf-8").splitlines())
+        if line_count > 60:
+            errors.append(f"AGENTS.md превысил лимит 60 строк: сейчас {line_count}")
+
+    # 2. 52 labels в schema/bus.json == planned_labels(create-labels.sh)
+    schema_labels = [
+        entry["name"]
+        for group in schema["label_groups"].values()
+        for entry in group["values"]
+    ]
+    if len(schema_labels) != 52 or len(set(schema_labels)) != 52:
+        errors.append(f"schema/bus.json должен содержать 52 уникальных label, сейчас {len(schema_labels)}")
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from check_core_labels import planned_labels  # type: ignore
+
+    script_labels = planned_labels(ROOT)
+    if set(schema_labels) != set(script_labels):
+        diff1 = sorted(set(schema_labels) - set(script_labels))
+        diff2 = sorted(set(script_labels) - set(schema_labels))
+        errors.append(f"рассинхрон labels schema/bus.json vs create-labels.sh: +{diff1} -{diff2}")
+
+    # 3. 21 маркер в schema/bus.json присутствует в BUS.md и docs/KNOWLEDGE_BASE.md
+    markers = schema.get("markers", [])
+    if len(markers) != 21:
+        errors.append(f"schema/bus.json должен содержать 21 маркер шины, сейчас {len(markers)}")
+    bus_md = (ROOT / "BUS.md").read_text(encoding="utf-8")
+    kb_md = (ROOT / "docs" / "KNOWLEDGE_BASE.md").read_text(encoding="utf-8")
+    for m in markers:
+        prefix = m["prefix"]
+        if prefix not in bus_md:
+            errors.append(f"маркер '{prefix}' из schema/bus.json отсутствует в BUS.md")
+        if prefix not in kb_md:
+            errors.append(f"маркер '{prefix}' из schema/bus.json отсутствует в docs/KNOWLEDGE_BASE.md")
+
+    # 4. Проверка ролей agents/*, навыков skills/* и нативной синхронизации .claude/ + .agents/
+    for role, rcfg in schema.get("subagent_roles", {}).items():
+        p = ROOT / rcfg["prompt"]
+        if not p.is_file():
+            errors.append(f"не найдена карточка роли {role}: {rcfg['prompt']}")
+        for sk in rcfg.get("default_skills", []):
+            sp = ROOT / "skills" / sk / "SKILL.md"
+            if not sp.is_file():
+                errors.append(f"не найден дефолтный навык '{sk}' роли {role}: skills/{sk}/SKILL.md")
+
+    sync_res = run([sys.executable, str(ROOT / "scripts" / "install-skills"), "--check"], check=False)
+    if sync_res.returncode != 0:
+        errors.append(f"рассинхрон нативных папок CLI (.claude/.agents): {sync_res.stderr.strip() or sync_res.stdout.strip()}")
+
+    # 5. Запрет автозакрытия issue в активных шаблонах, регламентах, ролях и навыках
+    guarded_paths = [
+        ROOT / ".github" / "ISSUE_TEMPLATE" / "task.yml",
+        ROOT / "docs" / "AGENT_RULES.md",
+        ROOT / "docs" / "COORDINATOR_RULES.md",
+        ROOT / "docs" / "PROJECTS-BLUEPRINT.md",
+        ROOT / "docs" / "templates" / "pull_request_template.md",
+        *sorted((ROOT / "agents").glob("*.md")),
+        *sorted((ROOT / "skills").rglob("*.md")),
+    ]
+    for gp in guarded_paths:
+        if gp.is_file() and CLOSING_RE.search(gp.read_text(encoding="utf-8")):
+            errors.append(f"найдено автозакрывающее ключевое слово (Closes/Fixes/Resolves #) в {gp.relative_to(ROOT)}")
+
+    # 6. Локальные ссылки во всех Markdown-файлах (без необходимости PyYAML, если его нет, но с ним — ещё и формы)
+    try:
+        from regression import form_errors, inventory  # type: ignore
+
+        inv = inventory(ROOT, None)
+        if inv["broken_links"]:
+            errors.append(f"битые локальные ссылки ({len(inv['broken_links'])}): {inv['broken_links'][:3]}")
+        fe = form_errors(ROOT)
+        if fe:
+            errors.append(f"ошибки YAML-форм issues: {fe}")
+    except ModuleNotFoundError:
+        # Fallback проверки ссылок на чистой стандартной библиотеке, если PyYAML не установлен
+        link_re = re.compile(r"!?\[[^\[\]\n]+\]\(([^()\n]+)\)")
+        fence_re = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+        inline_re = re.compile(r"`+[^`\n]*`+")
+        for md in sorted(ROOT.rglob("*.md")):
+            if any(part in {".git", "node_modules", "__pycache__", ".venv"} for part in md.relative_to(ROOT).parts):
+                continue
+            fence = None
+            for idx, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
+                fm = fence_re.match(line)
+                if fm:
+                    ch = fm.group(1)[0]
+                    fence = ch if fence is None else (None if fence == ch else fence)
+                    continue
+                if fence is not None:
+                    continue
+                cleaned = inline_re.sub("", line)
+                for lm in link_re.finditer(cleaned):
+                    target = lm.group(1).strip().split()[0].strip("<>").split("#")[0]
+                    if not target or "://" in target or target.startswith("mailto:"):
+                        continue
+                    dest = (ROOT / target.lstrip("/")) if target.startswith("/") else (md.parent / target)
+                    if not dest.exists():
+                        errors.append(f"битая ссылка {md.relative_to(ROOT)}:{idx} -> {target}")
+
+    return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--install-hooks", action="store_true", help="Установить git config core.hooksPath .githooks и права +x")
+    parser.add_argument("--ci-main", action="store_true", help="Разрешить запуск на ветке main (для GitHub Actions CI)")
+    parser.add_argument("--quick", action="store_true", help="Быстрый прогон без длительных sleep-тестов wait-signal")
+    parser.add_argument("--skip-tests", action="store_true", help="Проверить только гигиену/схемы/скрипты без unittest")
+    parser.add_argument("--allow", default="", help="Разрешённые префиксы путей через запятую (контроль радиуса)")
+    parser.add_argument("--base", default="origin/main", help="Базовая ветка для проверки merge-base и радиуса")
+    args = parser.parse_args(argv)
+
+    if args.install_hooks:
+        install_hooks()
+        print("preflight: .githooks/pre-push активирован (core.hooksPath=.githooks)")
+        raw_argv = sys.argv[1:] if argv is None else argv
+        if raw_argv == ["--install-hooks"]:
+            return 0
+
+    failures: list[str] = []
+
+    # 1. Проверка текущей ветки
+    branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    head_sha = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
+    if branch == "main" and not args.ci_main:
+        failures.append("работа напрямую на ветке main запрещена (переключитесь на рабочую ветку поставки)")
+
+    # 2. База ветки относительно origin/main (если ссылка существует)
+    merge_base = "n/a"
+    base_check = run(["git", "rev-parse", "--verify", args.base], check=False)
+    if base_check.returncode == 0:
+        base_sha = base_check.stdout.strip()
+        mb = run(["git", "merge-base", "HEAD", base_sha], check=False)
+        if mb.returncode == 0:
+            merge_base = mb.stdout.strip()[:7]
+
+    # 3. Проверка пробелов и конфликтных маркеров
+    for diff_cmd in (["git", "diff", "--check"], ["git", "diff", "--cached", "--check"]):
+        res = run(diff_cmd, check=False)
+        if res.returncode != 0:
+            failures.append(f"{' '.join(diff_cmd)}: {res.stdout.strip() or res.stderr.strip()}")
+
+    # 4. Проверка bash -n всех shell-скриптов
+    shell_scripts = [
+        ROOT / "scripts" / "wait-signal",
+        ROOT / "docs" / "create-labels.sh",
+        ROOT / "docs" / "project-apply.sh",
+        ROOT / ".githooks" / "pre-push",
+    ]
+    for sh in shell_scripts:
+        if sh.is_file():
+            res = run(["bash", "-n", str(sh)], check=False)
+            if res.returncode != 0:
+                failures.append(f"bash -n {sh.relative_to(ROOT)}: {res.stderr.strip()}")
+
+    # 5. Контроль радиуса (если задан --allow)
+    if args.allow.strip() and base_check.returncode == 0:
+        allowed = [p.strip() for p in args.allow.split(",") if p.strip()]
+        changed_committed = run(["git", "diff", "--name-only", f"{args.base}...HEAD"], check=False).stdout.splitlines()
+        changed_worktree = run(["git", "diff", "--name-only", "HEAD"], check=False).stdout.splitlines()
+        all_changed = sorted({c.strip() for c in (changed_committed + changed_worktree) if c.strip()})
+        outside = [
+            f for f in all_changed
+            if not any(f == pref or f.startswith(pref.rstrip("/") + "/") for pref in allowed)
+        ]
+        if outside:
+            failures.append(f"выход за разрешённый радиус ({args.allow}): {', '.join(outside)}")
+
+    # 6. Схема шины, ссылки, шаблоны, лимиты
+    failures.extend(check_schema_and_canon())
+
+    # 7. Автотесты
+    tests_summary = "skipped"
+    if not args.skip_tests and not failures:
+        env = os.environ.copy()
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        pattern = "test_collegium*.py" if args.quick else "test_*.py"
+
+        # === PROJECT-LAYER PATCH (alien-cosmic, база канона f793de3) — скоуп тестов конфигом ===
+        # НЕ часть апстрим-кода хаба. Хаб-тесты рассчитаны на окружение хаба
+        # bestdeejay-design/agents (BASE-коммиты истории хаба, чистый worktree);
+        # в проектной раскладке alien-cosmic часть из них структурно невыполнима.
+        # Скоуп задаётся опциональным конфигом workflow/preflight.json:
+        #   "test_exclude_files": [имена файлов]  — модуль не запускается вовсе;
+        #   "test_exclude_ids":   [глобы id]      — точечные исключения отдельных тестов
+        #     (fnmatch против полного id теста, например "module.Class.test_name").
+        # При отсутствии preflight.json поведение идентично апстриму (один discover).
+        # См. workflow/CANON_VERSION.md («Расхождения»).
+        cfg: dict = {}
+        cfg_path = ROOT / "preflight.json"
+        if cfg_path.is_file():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        excluded_files = set(cfg.get("test_exclude_files", []))
+        excluded_id_marks = [m for m in cfg.get("test_exclude_ids", []) if m]
+
+        import unittest as _ut
+
+        test_files = sorted(
+            p.name for p in (ROOT / "tests").glob("test_*.py")
+            if fnmatch.fnmatch(p.name, pattern) and p.name not in excluded_files
+        )
+        sys.path.insert(0, str(ROOT / "tests"))
+        loader = _ut.TestLoader()
+        suite = _ut.TestSuite()
+        for name in test_files:
+            mod_suite = loader.loadTestsFromModule(__import__(name[:-3]))
+            if excluded_id_marks:
+                kept: list[_ut.TestCase] = []
+                stack = list(mod_suite)
+                while stack:
+                    item = stack.pop()
+                    if isinstance(item, _ut.TestSuite):
+                        stack.extend(item)
+                        continue
+                    tid = item.id()
+                    if any(fnmatch.fnmatchcase(tid, mark) for mark in excluded_id_marks):
+                        continue
+                    kept.append(item)
+                mod_suite = _ut.TestSuite(kept)
+            suite.addTest(mod_suite)
+
+        mode_tag = "quick" if args.quick else "full"
+        if test_files:
+            env["PYTHONPATH"] = str(ROOT / "tests") + os.pathsep + env.get("PYTHONPATH", "")
+            runner = _ut.TextTestRunner(stream=sys.stderr, verbosity=1)
+            result = runner.run(suite)
+            total_ran = result.testsRun
+            if not result.wasSuccessful():
+                failures.append(f"unittest ({mode_tag}) failed:\n" + _format_unittest_errors(result))
+            else:
+                tests_summary = f"{total_ran} passed ({mode_tag})"
+        else:
+            tests_summary = f"0 tests in scope ({mode_tag})"
+
+    if failures:
+        print("PREFLIGHT FAILED:", file=sys.stderr)
+        for item in failures:
+            print(f"  - {item}", file=sys.stderr)
+        return 1
+
+    print(
+        f"PREFLIGHT OK | branch={branch} | head={head_sha} | merge_base={merge_base} "
+        f"| schema=52_labels+21_markers | tests={tests_summary}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

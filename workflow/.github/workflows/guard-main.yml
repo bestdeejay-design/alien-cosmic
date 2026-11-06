@@ -1,0 +1,73 @@
+name: Guard Main — Block Direct Pushes
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  verify-pr-origin:
+    name: Verify Commit Entered Main via PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main tip
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check merge parents or associated merged PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
+          repo = os.environ["REPO"]
+          sha = os.environ["SHA"]
+          sha7 = sha[:7]
+
+          parents_line = subprocess.check_output(["git", "rev-list", "--parents", "-n", "1", sha], text=True).strip()
+          parents = parents_line.split()[1:]
+          if len(parents) >= 2:
+              print(f"OK: merge commit {sha7} has {len(parents)} parents.")
+              raise SystemExit(0)
+
+          prs = json.loads(subprocess.check_output(
+              ["gh", "api", f"repos/{repo}/commits/{sha}/pulls"],
+              text=True,
+          ))
+          merged_prs = [p for p in prs if p.get("merged_at") and p.get("base", {}).get("ref") == "main"]
+          if merged_prs:
+              print(f"OK: commit {sha7} landed via merged PR #{merged_prs[0]['number']}.")
+              raise SystemExit(0)
+
+          subj = subprocess.check_output(["git", "log", "-1", "--format=%s", sha], text=True).strip()
+          title = f"🚨 ИНЦИДЕНТ guard-main: прямой пуш в main мимо PR ({sha7})"
+          body = (
+              f"Поставил: guard-main · автоматический контроль инцидента #41 / ADR-0002.\n\n"
+              f"Обнаружен коммит `{sha}` (`{subj}`) на ветке `main` без merge-PR.\n\n"
+              f"Обязательные действия:\n"
+              f"- [ ] Ретроспективное ревью коммита `{sha7}` не-автором или откат\n"
+              f"- [ ] Запись в `DEBT.md` и `STATUS.md`\n"
+              f"- [ ] Проверить `python3 scripts/preflight --install-hooks` в локальном клоне нарушителя"
+          )
+          subprocess.run([
+              "gh", "api", f"repos/{repo}/issues",
+              "-f", f"title={title}",
+              "-f", f"body={body}",
+              "-f", "labels[]=status:inbox",
+              "-f", "labels[]=type:debt",
+              "-f", "labels[]=priority:high",
+              "-f", "labels[]=to:coordinator",
+              "-f", "labels[]=agent:coordinator",
+          ], check=False)
+          print(f"ERROR: direct push {sha7} to main outside PR is prohibited (Incident #41)!", file=sys.stderr)
+          sys.exit(1)
+          PY

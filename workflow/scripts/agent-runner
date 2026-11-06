@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""agent-runner — внешний тонкий диспетчер парковки и изолированных git worktree (ADR-0002).
+
+Паттерн OpenAI Symphony / Orchestrator:
+- в ожидании LLM-сессия НЕ запущена (0 токенов простоя, 0 протухания контекста);
+- опрос очереди открытых status:ready задач через gh api с ETag-кэшем (304 не жжёт rate limit);
+- фильтрация по адресуемости (to:*), функции (agent:*) и отсутствию открытых Depends on: #N;
+- захват задачи штатным scripts/wait-signal --claim ... --claim-as ...;
+- создание изолированного git worktree от свежего origin/main, активация .githooks/pre-push,
+  сборка стартового SPAWN_BRIEF.md через scripts/spawn-pack и (опционально) запуск CLI агента.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEPENDS_RE = re.compile(r"Depends on:\s*([^\n]+)", re.I)
+ISSUE_REF_RE = re.compile(r"#(\d+)")
+
+
+def sh(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check)
+
+
+def detect_repo(explicit: str) -> str:
+    if explicit:
+        return explicit
+    res = sh(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], check=False)
+    if res.returncode == 0 and res.stdout.strip():
+        return res.stdout.strip()
+    rem = sh(["git", "remote", "get-url", "origin"], check=False).stdout.strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/.]+?)(?:\.git)?$", rem)
+    if m:
+        return m.group(1)
+    raise RuntimeError("не удалось определить owner/repo; передайте --repo owner/repo")
+
+
+def fetch_json_etag(endpoint: str, state_dir: Path) -> list | dict:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:16]
+    etag_file = state_dir / f"{key}.etag"
+    body_file = state_dir / f"{key}.json"
+
+    cmd = ["gh", "api", "-i", endpoint]
+    if etag_file.is_file() and body_file.is_file():
+        etag = etag_file.read_text(encoding="utf-8").strip()
+        if etag:
+            cmd.extend(["-H", f"If-None-Match: {etag}"])
+
+    res = sh(cmd, check=False)
+    raw = res.stdout
+    if not raw:
+        raise RuntimeError(f"gh api вернул пустой ответ по {endpoint}: {res.stderr.strip()}")
+
+    parts = raw.split("\r\n\r\n", 1)
+    if len(parts) < 2:
+        parts = raw.split("\n\n", 1)
+    headers_raw = parts[0]
+    body_raw = parts[1] if len(parts) > 1 else ""
+
+    first_line = headers_raw.splitlines()[0] if headers_raw.splitlines() else ""
+    status_match = re.search(r"HTTP/\S+\s+(\d+)", first_line)
+    status = int(status_match.group(1)) if status_match else 0
+
+    if status == 304 and body_file.is_file():
+        return json.loads(body_file.read_text(encoding="utf-8"))
+    if status == 200:
+        for hline in headers_raw.splitlines():
+            if hline.lower().startswith("etag:"):
+                etag_val = hline.split(":", 1)[1].strip()
+                etag_file.write_text(etag_val, encoding="utf-8")
+                break
+        body_file.write_text(body_raw, encoding="utf-8")
+        return json.loads(body_raw)
+    raise RuntimeError(f"HTTP {status} при запросе {endpoint}: {res.stderr.strip()}")
+
+
+def unresolved_dependencies(repo: str, body: str, state_dir: Path) -> list[int]:
+    m = DEPENDS_RE.search(body or "")
+    if not m:
+        return []
+    dep_nums = [int(x) for x in ISSUE_REF_RE.findall(m.group(1))]
+    open_deps: list[int] = []
+    for num in dep_nums:
+        issue_data = fetch_json_etag(f"repos/{repo}/issues/{num}", state_dir)
+        if isinstance(issue_data, dict) and issue_data.get("state") != "closed":
+            open_deps.append(num)
+    return open_deps
+
+
+def find_eligible_issues(
+    repo: str,
+    allowed_to: set[str],
+    agent_role: str | None,
+    state_dir: Path,
+) -> list[dict]:
+    items = fetch_json_etag(f"repos/{repo}/issues?state=open&labels=status:ready&per_page=50", state_dir)
+    if not isinstance(items, list):
+        return []
+    eligible: list[dict] = []
+    for item in items:
+        if "pull_request" in item:
+            continue
+        lbls = [l["name"] for l in item.get("labels", []) if isinstance(l, dict) and "name" in l]
+        statuses = [l for l in lbls if l.startswith("status:")]
+        tos = [l for l in lbls if l.startswith("to:")]
+        agents = [l for l in lbls if l.startswith("agent:")]
+        # Жёсткая гигиена шины: ровно один status:ready, ровно один to:*, обязательный agent:*
+        if statuses != ["status:ready"] or len(tos) != 1 or not agents:
+            continue
+        if tos[0] not in allowed_to:
+            continue
+        if agent_role and f"agent:{agent_role}" not in agents:
+            continue
+        if unresolved_dependencies(repo, item.get("body") or "", state_dir):
+            continue
+        eligible.append(item)
+    return sorted(eligible, key=lambda x: x["number"])
+
+
+def prepare_worktree(issue: dict, worktree_root: Path) -> tuple[Path, str]:
+    num = issue["number"]
+    branch = f"work/{num}-task"
+    wt_dir = worktree_root / f"issue-{num}"
+    worktree_root.mkdir(parents=True, exist_ok=True)
+
+    sh(["git", "fetch", "origin", "main", "--prune"], check=False)
+    base_ref = "origin/main" if sh(["git", "rev-parse", "--verify", "origin/main"], check=False).returncode == 0 else "HEAD"
+
+    if not wt_dir.exists():
+        branch_exists = sh(["git", "rev-parse", "--verify", branch], check=False).returncode == 0
+        if branch_exists:
+            sh(["git", "worktree", "add", str(wt_dir), branch])
+        else:
+            sh(["git", "worktree", "add", "-b", branch, str(wt_dir), base_ref])
+
+    sh(["git", "config", "core.hooksPath", ".githooks"], cwd=wt_dir, check=False)
+
+    lbls = [l["name"] for l in issue.get("labels", [])]
+    sizes = [l.split(":")[1] for l in lbls if l.startswith("size:")]
+    size = sizes[0] if sizes else "S"
+
+    brief_path = wt_dir / ".agent-context-brief.md"
+    brief_path.write_text(f"# {issue.get('title', '')}\n\n{issue.get('body') or ''}\n", encoding="utf-8")
+    spawn_out = wt_dir / "SPAWN_BRIEF.md"
+    sh([
+        sys.executable,
+        str(ROOT / "scripts" / "spawn-pack"),
+        "--role", "executor",
+        "--skills", "clean-execution,bus-delivery",
+        "--size", size,
+        "--issue", str(num),
+        "--brief-file", str(brief_path),
+        "--allow-incomplete",
+        "--output", str(spawn_out),
+    ])
+    brief_path.unlink(missing_ok=True)
+    return wt_dir, branch
+
+
+def cleanup_closed_worktrees(repo: str, worktree_root: Path, state_dir: Path) -> list[int]:
+    cleaned: list[int] = []
+    if not worktree_root.is_dir():
+        return cleaned
+    for child in sorted(worktree_root.glob("issue-*")):
+        m = re.match(r"issue-(\d+)$", child.name)
+        if not m:
+            continue
+        num = int(m.group(1))
+        data = fetch_json_etag(f"repos/{repo}/issues/{num}", state_dir)
+        if isinstance(data, dict) and data.get("state") == "closed":
+            sh(["git", "worktree", "remove", "--force", str(child)], check=False)
+            if child.exists():
+                shutil.rmtree(child, ignore_errors=True)
+            cleaned.append(num)
+    return cleaned
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--repo", default="", help="Репозиторий owner/repo")
+    p.add_argument("--claim-id", default="SZ-1 / agent-runner", help="Подпись узла для wait-signal --claim")
+    p.add_argument("--claim-as", default="sz-1", help="Идентификатор sz-1..sz-5 для замены to:sz-pool")
+    p.add_argument("--to", default="", help="Какие to:* слушать через запятую (по умолчанию to:sz-pool,to:<claim-as>)")
+    p.add_argument("--agent", default="", help="Фильтр функции agent:<роль> (например coder, reviewer; пусто = любая)")
+    p.add_argument("--worktree-root", type=Path, default=Path("/tmp/agents-worktrees"), help="Каталог изолированных worktree")
+    p.add_argument("--state-dir", type=Path, default=Path("/tmp/agent-runner-etag"), help="Каталог ETag-кэша")
+    p.add_argument("--interval", type=int, default=90, help="Интервал опроса в секундах (60–120 для роя)")
+    p.add_argument("--once", action="store_true", help="Один проход опроса/захвата вместо бесконечного демона")
+    p.add_argument("--dry-run", action="store_true", help="Только показать найденных кандидатов без claim и без создания worktree")
+    p.add_argument("--cleanup-closed", action="store_true", help="Удалить worktree закрытых issues перед опросом")
+    p.add_argument("--cmd", default="", help="Команда запуска CLI агента внутри worktree (получает SPAWN_BRIEF.md)")
+    args = p.parse_args(argv)
+
+    try:
+        repo = detect_repo(args.repo)
+    except RuntimeError as exc:
+        print(f"agent-runner ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    allowed_to = (
+        {x.strip() for x in args.to.split(",") if x.strip()}
+        if args.to.strip()
+        else {"to:sz-pool", f"to:{args.claim_as}"}
+    )
+
+    while True:
+        try:
+            if args.cleanup_closed:
+                removed = cleanup_closed_worktrees(repo, args.worktree_root, args.state_dir)
+                if removed:
+                    print(f"agent-runner: очищены worktree закрытых задач: {removed}", file=sys.stderr)
+
+            candidates = find_eligible_issues(repo, allowed_to, args.agent.strip() or None, args.state_dir)
+            if args.dry_run:
+                summary = [{"number": c["number"], "title": c["title"], "labels": [l["name"] for l in c.get("labels", [])]} for c in candidates]
+                print(json.dumps({"repo": repo, "eligible": summary}, ensure_ascii=False))
+                return 0
+
+            dispatched = False
+            for issue in candidates:
+                num = issue["number"]
+                claim_cmd = [
+                    str(ROOT / "scripts" / "wait-signal"),
+                    "--repo", repo,
+                    "--issue", str(num),
+                    "--claim", args.claim_id,
+                    "--claim-as", args.claim_as,
+                ]
+                cres = sh(claim_cmd, check=False)
+                if cres.returncode == 0:
+                    wt_dir, branch = prepare_worktree(issue, args.worktree_root)
+                    print(f"DISPATCHED #{num} | branch={branch} | worktree={wt_dir} | brief={wt_dir / 'SPAWN_BRIEF.md'}")
+                    if args.cmd.strip():
+                        env = os.environ.copy()
+                        env["AGENT_ISSUE"] = str(num)
+                        env["AGENT_BRANCH"] = branch
+                        env["AGENT_SPAWN_BRIEF"] = str(wt_dir / "SPAWN_BRIEF.md")
+                        subprocess.run(args.cmd, shell=True, cwd=wt_dir, env=env, check=False)
+                    dispatched = True
+                    break
+                if cres.returncode == 3:
+                    print(f"agent-runner: #{num} уже перехвачена другим узлом, смотрю следующую", file=sys.stderr)
+                    continue
+                print(f"agent-runner ERROR при claim #{num}: {cres.stderr.strip() or cres.stdout.strip()}", file=sys.stderr)
+                return 2
+
+            if args.once:
+                if not dispatched:
+                    print("IDLE: подходящих задач status:ready нет")
+                return 0
+        except RuntimeError as exc:
+            print(f"agent-runner WARN: {exc}", file=sys.stderr)
+            if args.once or args.dry_run:
+                return 2
+
+        time.sleep(max(5, args.interval))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

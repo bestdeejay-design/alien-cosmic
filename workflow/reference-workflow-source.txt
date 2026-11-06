@@ -1,0 +1,2452 @@
+# Полный регламент: Labels, Board, Environments, Правила
+
+Вижу, что сообщение обрезалось на «на стейджинге у…» — но логика окружений стандартная, я закрою её полностью. Если что-то не так — скорректируем.
+
+---
+
+## 1. СИСТЕМА LABELS (полная)
+
+### 1.1 Роли агентов (кто делает)
+
+```
+agent:coordinator       🟣  — A1, оркестратор
+agent:researcher         🔵  — исследование, анализ
+agent:architect          🟤  — архитектура, ADR
+agent:coder              🟢  — написание кода
+agent:reviewer           🟡  — код-ревью
+agent:qa                 🟠  — тестирование
+agent:devops             ⚫  — инфраструктура, деплой
+agent:external-coder     🟩  — внешний, запускает владелец
+agent:external-qa        🟧  — внешний, запускает владелец
+agent:external-devops    ⬛  — внешний, запускает владелец
+```
+
+### 1.2 Статусы задачи (где сейчас)
+
+```
+status:inbox             ⚪  — создана, не обработана координатором
+status:ready             🔵  — можно брать в работу
+status:in-progress       🟡  — кто-то взял и работает
+status:blocked           🔴  — ждёт другую задачу / ответ
+status:review            🟣  — сделано, на проверке
+status:done              🟢  — принято координатором
+status:rejected          ⛔  — отклонено, нужна переделка
+```
+
+### 1.3 Тип задачи (что это)
+
+```
+type:feature             — новая функциональность
+type:bugfix              — исправление
+type:research            — исследование
+type:question            — вопрос от агента к агенту
+type:decision            — архитектурное решение (ADR)
+type:infra               — инфраструктура
+type:test                — написание/исправление тестов
+type:docs                — документация
+```
+
+### 1.4 Приоритет
+
+```
+priority:critical        🔴
+priority:high            🟠
+priority:medium          🟡
+priority:low             🟢
+```
+
+### 1.5 Окружение (куда деплоить)
+
+```
+env:test                 🧪  — тестовый стенд
+env:staging              🏗️  — предпрод
+env:production           🚀  — прод
+```
+
+### 1.6 Служебные
+
+```
+launch-ready             🚀  — для внешних: launch-пакет готов
+needs-human              👤  — требуется решение владельца
+has-pr                   🔗  — есть связанный PR
+merge-ready              ✅  — PR проверен, можно мержить
+```
+
+---
+
+## 2. GITHUB PROJECTS BOARD
+
+### 2.1 Колонки (Views)
+
+```
+┌──────────┬───────────┬─────────────┬──────────┬────────┬──────────┬──────┐
+│  INBOX   │   READY   │ IN PROGRESS │ BLOCKED  │ REVIEW │  DONE    │REJECT│
+│          │           │             │          │        │          │      │
+│ Новые    │ Можно     │ В работе    │ Ждёт     │На      │Принято   │Нужна │
+│ задачи   │ брать     │             │ другого  │проверке│          │перед.│
+└──────────┴───────────┴─────────────┴──────────┴────────┴──────────┴──────┘
+```
+
+### 2.2 Кастомные поля Projects (обязательные)
+
+```yaml
+# В настройках GitHub Projects → Custom Fields
+
+Assigned Agent:       # Выпадающий список
+  - A1-coordinator
+  - A2-researcher
+  - A3-architect
+  - A4-coder
+  - A5-external-coder
+  - A6-external-qa
+  - A7-external-devops
+
+Created By:           # Текст — кто создал задачу
+  # A1, A3, и т.д.
+
+Depends On:           # Текст — номера issue через запятую
+  # "#10, #11"
+
+Target Env:           # Выпадающий список
+  - test
+  - staging
+  - production
+
+Sprint/Phase:         # Текст или итерация
+  # "Phase 1: MVP"
+```
+
+### 2.3 Фильтрованные Views (создать в Projects)
+
+```
+View: "Мои запуски"
+  Filter: label:launch-ready
+  → Вы видите все задачи, где нужен ваш ручной запуск
+
+View: "По агенту: A3-architect"
+  Filter: Assigned Agent = A3-architect
+  → Все задачи конкретного агента
+
+View: "Блокеры"
+  Filter: label:status:blocked
+  → Что стоит и почему
+
+View: "На ревью"
+  Filter: label:status:review
+  → Что ждёт проверки
+
+View: "Production pipeline"
+  Filter: Target Env = production
+  → Всё что идёт в прод
+```
+
+---
+
+## 3. РЕГЛАМЕНТ ОКРУЖЕНИЙ
+
+### 3.1 Три окружения — правила доступа
+
+```
+┌─────────────┬───────────────┬────────────────┬──────────────────┐
+│             │  TEST 🧪      │  STAGING 🏗️    │  PRODUCTION 🚀   │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ Кто мержит  │ Любой агент   │ A1 + reviewer  │ Только A1        │
+│ в ветку     │ (self-merge)  │ (после approve)│ (после staging)  │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ Ветка       │ develop       │ staging        │ main             │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ Деплой      │ Авто при      │ Авто при мерже │ Ручной или по    │
+│ триггер     │ мерже в       │ в staging      │ тегу/release     │
+│             │ develop       │                │                  │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ PR Review   │ Не требуется  │ Минимум 1      │ A1 + QA + вы     │
+│ required    │ (но желат.)   │ approve        │                  │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ Тесты       │ Unit          │ Unit +         │ Unit + Integ +   │
+│ обязательно │              │ Integration    │ E2E + Smoke      │
+├─────────────┼───────────────┼────────────────┼──────────────────┤
+│ Откат       │ Не критичен   │ Быстрый откат  │ Немедленный      │
+│             │               │ возможен       │ откат обязателен │
+└─────────────┴───────────────┴────────────────┴──────────────────┘
+```
+
+### 3.2 Git Branching Model
+
+```
+main (production)
+ │
+ ├── staging
+ │    │
+ │    ├── develop (test)
+ │    │    │
+ │    │    ├── feature/auth-module      ← агент-coder работает тут
+ │    │    ├── feature/payment-api      ← другой агент тут
+ │    │    ├── fix/login-bug            ← багфикс
+ │    │    └── research/api-analysis    ← исследование (только docs)
+ │    │
+ │    │  PR: feature/* → develop        (любой агент, тесты пройдены)
+ │    │
+ │    PR: develop → staging             (A1 + reviewer approve)
+ │
+ PR: staging → main                     (A1 + QA + владелец approve)
+```
+
+### 3.3 Правила мержа по окружениям
+
+#### TEST (develop)
+
+```markdown
+## Правила мержа в develop (test)
+
+КТО МОЖЕТ: любой агент (внутренний или внешний)
+
+УСЛОВИЯ:
+  ✅ PR создан из feature-ветки
+  ✅ CI: unit-тесты прошли
+  ✅ Нет конфликтов с develop
+  ✅ Issue привязан к PR
+
+НЕ ТРЕБУЕТСЯ:
+  ❌ Ревью другого агента (но рекомендуется)
+  ❌ Одобрение координатора
+
+ПОСЛЕ МЕРЖА:
+  → Автодеплой на тестовый стенд
+  → Агент проверяет на стенде
+  → Если ОК → меняет Issue status:review
+  → Если НЕ ОК → продолжает в feature-ветке
+```
+
+#### STAGING
+
+```markdown
+## Правила мержа в staging
+
+КТО МОЖЕТ: только A1-coordinator (мержит)
+
+УСЛОВИЯ (все обязательны):
+  ✅ PR из develop → staging
+  ✅ Все Issues в PR имеют status:done (приняты A1)
+  ✅ CI: unit + integration тесты прошли
+  ✅ Code review: минимум 1 approve от agent:reviewer
+  ✅ Нет открытых type:question связанных с этими Issues
+  ✅ Все ADR (решения) актуальны
+
+ПРОЦЕСС:
+  1. A1 создаёт "Release PR" develop → staging
+  2. В описании PR: список Issues, что входит
+  3. Reviewer проверяет
+  4. A1 мержит после approve
+
+ПОСЛЕ МЕРЖА:
+  → Автодеплой на staging
+  → A1 создаёт Issue type:test "Smoke-test staging [дата]"
+     label: agent:qa или agent:external-qa
+  → QA проверяет на staging
+  → QA отчитывается в Issue
+```
+
+#### PRODUCTION
+
+```markdown
+## Правила мержа в main (production)
+
+КТО МОЖЕТ: только A1 + подтверждение владельца (вас)
+
+УСЛОВИЯ (все обязательны):
+  ✅ PR из staging → main
+  ✅ На staging: smoke-тесты пройдены (Issue type:test в status:done)
+  ✅ На staging: прошло минимум [N часов/дней] без багов
+  ✅ CI: unit + integration + e2e тесты
+  ✅ Approve: A1 + QA-агент + владелец (@you)
+  ✅ label: merge-ready проставлен координатором
+  ✅ Нет открытых priority:critical Issues
+
+ПРОЦЕСС:
+  1. A1 создаёт Release PR staging → main
+  2. Описание: changelog, список Issues, риски
+  3. A1 ставит label: needs-human
+  4. ВЫ проверяете и approve
+  5. A1 мержит + создаёт Release tag
+
+ПОСЛЕ МЕРЖА:
+  → Деплой (ручной или по тегу)
+  → A1 создаёт Issue "Post-deploy check [version]"
+  → Мониторинг [N часов]
+```
+
+---
+
+## 4. ISSUE TEMPLATES
+
+### 4.1 `task.yml` — стандартная задача
+
+```yaml
+# .github/ISSUE_TEMPLATE/task.yml
+name: "📋 Task"
+description: "Стандартная задача для агента"
+labels: ["status:inbox"]
+body:
+  - type: dropdown
+    id: agent
+    attributes:
+      label: "Назначенный агент"
+      options:
+        - agent:researcher
+        - agent:architect
+        - agent:coder
+        - agent:reviewer
+        - agent:qa
+        - agent:devops
+        - agent:external-coder
+        - agent:external-qa
+        - agent:external-devops
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: "Тип задачи"
+      options:
+        - type:feature
+        - type:bugfix
+        - type:research
+        - type:infra
+        - type:test
+        - type:docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Приоритет"
+      options:
+        - priority:critical
+        - priority:high
+        - priority:medium
+        - priority:low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: "Целевое окружение"
+      options:
+        - env:test
+        - env:staging
+        - env:production
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Описание задачи"
+      description: "Что нужно сделать. Конкретно, измеримо."
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: "Входные данные / артефакты"
+      description: "Ссылки на файлы, Issues, ADR"
+      placeholder: |
+        - docs/decisions/ADR-001.md — архитектурное решение
+        - #10 — результаты исследования
+    validations:
+      required: false
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: "Зависимости (depends-on)"
+      description: "Номера Issues, которые должны быть Done"
+      placeholder: "#10, #11"
+    validations:
+      required: false
+
+  - type: textarea
+    id: output
+    attributes:
+      label: "Ожидаемый результат"
+      description: "Что агент должен сдать"
+      placeholder: |
+        - PR в ветку feature/xxx
+        - Файлы: src/module/**
+        - Комментарий в этом Issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: "Ограничения"
+      description: "Чего делать нельзя, какие файлы не трогать"
+    validations:
+      required: false
+
+  - type: input
+    id: created_by
+    attributes:
+      label: "Создано агентом"
+      placeholder: "A1-coordinator"
+    validations:
+      required: true
+```
+
+### 4.2 `question.yml` — вопрос между агентами
+
+```yaml
+# .github/ISSUE_TEMPLATE/question.yml
+name: "❓ Question"
+description: "Вопрос от одного агента к другому"
+labels: ["status:inbox", "type:question"]
+body:
+  - type: input
+    id: from_agent
+    attributes:
+      label: "От кого"
+      placeholder: "A4-coder"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: to_agent
+    attributes:
+      label: "Кому"
+      options:
+        - agent:coordinator
+        - agent:researcher
+        - agent:architect
+        - agent:coder
+        - agent:reviewer
+        - agent:qa
+        - agent:devops
+    validations:
+      required: true
+
+  - type: input
+    id: blocks
+    attributes:
+      label: "Блокирует Issue"
+      description: "Какой Issue заблокирован этим вопросом"
+      placeholder: "#12"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: "Вопрос"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "Контекст"
+      description: "Почему возник вопрос, что уже известно"
+    validations:
+      required: false
+```
+
+---
+
+## 5. COORDINATOR_RULES.md
+
+```markdown
+# Регламент координатора (A1)
+
+## 1. ТВОЯ РОЛЬ
+Ты — координатор-оркестратор проекта.
+Ты НЕ пишешь код. Ты НЕ исследуешь.
+Ты: планируешь, декомпозируешь, назначаешь, проверяешь, принимаешь.
+
+## 2. ЦИКЛ РАБОТЫ
+
+### 2.1 Планирование
+- Получив задачу от владельца → декомпозируй на Issues
+- Каждый Issue — атомарная задача для одного агента
+- Расставь зависимости (depends-on)
+- Расставь labels: agent, type, priority, env, status
+- Для первых задач без зависимостей: status:ready
+- Для остальных: status:blocked
+
+### 2.2 Мониторинг
+После каждого значимого события проверяй:
+
+```
+ПРОВЕРКА РАЗБЛОКИРОВКИ:
+  Для каждого Issue со status:blocked:
+    Все depends-on в status:done?
+      ДА → поменяй status:blocked → status:ready
+           Если label agent:external-* → сгенерируй LAUNCH-пакет
+      НЕТ → оставь blocked
+```
+
+```
+ПРОВЕРКА LAUNCH:
+  Для каждого Issue со status:ready + label agent:external-*:
+    Есть launch-пакет в комментариях?
+      НЕТ → сгенерируй и опубликуй
+      ДА  → проверь актуальность, обнови если нужно
+```
+
+### 2.3 Приёмка результатов
+Когда агент поставил status:review:
+1. Прочитай комментарий агента
+2. Проверь: артефакт соответствует ожидаемому результату?
+3. Проверь: ограничения соблюдены?
+4. Если ОК → status:done
+5. Если НЕ ОК → status:rejected + комментарий что исправить
+
+### 2.4 Мерж-контроль
+- develop: убедись что CI прошёл, Issue done
+- staging: создай Release PR, дождись approve reviewer
+- production: создай Release PR, поставь needs-human, жди владельца
+
+## 3. ФОРМАТ LAUNCH-ПАКЕТА
+
+### Для нового запуска (LAUNCH):
+```
+🚀 LAUNCH: [Role] — Issue #XX "[Title]"
+
+## КТО ТЫ
+Роль: [role]
+Репо: [owner/repo]
+Регламент: docs/AGENT_RULES.md
+
+## ЗАДАЧА
+[1-3 предложения из описания Issue]
+Issue: [ссылка]
+
+## ВХОДНЫЕ ДАННЫЕ
+- [ссылка] — [что это]
+- [ссылка] — [что это]
+
+## СДАТЬ
+- [конкретный артефакт]
+- Комментарий в Issue #XX
+- Статус → [review/done]
+
+## ВЕТКА
+Работай в: [имя ветки]
+PR в: [целевая ветка]
+
+## ОГРАНИЧЕНИЯ
+- [что нельзя]
+```
+
+### Для продолжения (CONTINUE):
+```
+🔄 CONTINUE: [Role] — Issue #XX "[Title]"
+
+## ЧТО ИЗМЕНИЛОСЬ
+[какой блокер снят, какое решение принято]
+- Решение: [ссылка на ADR / комментарий]
+- Ключевое: [1 предложение — суть решения]
+
+## ТЕКУЩЕЕ СОСТОЯНИЕ
+- Ветка: [имя]
+- Что сделано: [список]
+- Что осталось: [список]
+
+## ДЕЙСТВУЙ
+[конкретная инструкция что делать дальше]
+```
+
+## 4. ПРАВИЛА СОЗДАНИЯ ISSUES
+
+Каждый Issue ОБЯЗАН содержать:
+- [ ] Один назначенный агент (label agent:*)
+- [ ] Тип (label type:*)
+- [ ] Приоритет (label priority:*)
+- [ ] Целевое окружение (label env:*)
+- [ ] Статус (label status:*)
+- [ ] Описание: что сделать
+- [ ] Ожидаемый результат: что сдать
+- [ ] Зависимости (если есть)
+- [ ] Поле "Created by"
+
+## 5. ПРАВИЛА ОКРУЖЕНИЙ
+
+### Мерж в develop (test):
+- Любой агент может создать PR feature/* → develop
+- CI unit-тесты должны пройти
+- Связанный Issue обязателен
+
+### Мерж в staging:
+- Только ты (A1) создаёшь PR develop → staging
+- Все Issues в PR должны быть status:done
+- Минимум 1 approve от reviewer
+- CI unit + integration тесты
+
+### Мерж в main (production):
+- Только ты (A1) создаёшь PR staging → main
+- Smoke-тест на staging пройден (Issue done)
+- Approve: ты + QA + владелец
+- Поставь label: needs-human → жди владельца
+```
+
+---
+
+## 6. AGENT_RULES.md
+
+```markdown
+# Общий регламент агента
+
+## 1. КАК БРАТЬ ЗАДАЧИ
+1. Ищи Issues с ТВОИМ label (agent:твоя-роль) + status:ready
+2. Проверь depends-on: все зависимости в status:done?
+   - ДА → бери задачу
+   - НЕТ → не трогай (сообщи координатору если считаешь что ошибка)
+3. Поставь: status:in-progress + assignee: ты
+4. Прочитай входные артефакты
+
+## 2. КАК РАБОТАТЬ
+- Работай в указанной ветке (или создай feature/[issue-number]-[short-name])
+- Используй свои MCP и sub-agents как считаешь нужным
+- Коммить часто, с понятными сообщениями
+- Формат коммитов: [#issue-number] краткое описание
+
+## 3. КАК СДАВАТЬ
+1. Положи артефакт куда указано в Issue
+2. Создай PR (если код) в указанную целевую ветку
+3. В PR description: "Closes #XX" (привязка к Issue)
+4. Напиши комментарий в Issue:
+   ```
+   ## Результат
+   - Что сделано: [перечисление]
+   - Артефакты: [ссылки]
+   - PR: [ссылка]
+   - Замечания/риски: [если есть]
+   ```
+5. Поставь status:review
+
+## 4. ЕСЛИ ЗАБЛОКИРОВАН
+1. Создай Issue по шаблону "Question"
+2. Свой Issue переведи в status:blocked
+3. Добавь комментарий: "Blocked by #XX — [причина]"
+4. СТОП. Жди разблокировки.
+
+## 5. ЧЕГО НЕЛЬЗЯ
+- ❌ Брать задачи с чужим agent-label
+- ❌ Менять файлы вне своей зоны
+- ❌ Мержить в staging или main
+- ❌ Менять статус чужих Issues
+- ❌ Игнорировать depends-on
+- ❌ Работать без привязки к Issue
+
+## 6. ЗОНЫ ОТВЕТСТВЕННОСТИ ПО ФАЙЛАМ
+| Роль         | Может менять           | Только читать       |
+|-------------|------------------------|---------------------|
+| researcher  | docs/research/         | всё остальное       |
+| architect   | docs/decisions/        | src/ (читать)       |
+| coder       | src/, tests/           | docs/ (читать)      |
+| reviewer    | НИЧЕГО (только review) | всё                 |
+| qa          | tests/e2e/             | src/ (читать)       |
+| devops      | infra/, .github/       | src/ (читать)       |
+
+## 7. РАБОТА С ОКРУЖЕНИЯМИ
+- Твой PR → develop (test): можешь мержить сам после CI
+- develop → staging: НЕ ТРОГАЙ (только координатор)
+- staging → main: НЕ ТРОГАЙ (только координатор + владелец)
+```
+
+---
+
+## 7. KNOWLEDGE BASE: быстрая шпаргалка
+
+```markdown
+# 📖 Labels & Statuses — Quick Reference
+
+## Жизненный цикл задачи:
+inbox → ready → in-progress → review → done
+                    ↓                    ↑
+                 blocked ───────────────┘
+                    ↑
+                 rejected (переделка) → in-progress → review → done
+
+## Кто что может:
+| Действие                    | Кто                    |
+|----------------------------|------------------------|
+| Создать Issue              | A1, любой агент        |
+| Назначить агента           | A1                     |
+| Взять в работу             | Назначенный агент      |
+| Поставить blocked          | Любой (свой Issue)     |
+| Поставить review           | Исполнитель            |
+| Поставить done             | Только A1              |
+| Поставить rejected         | Только A1              |
+| Мерж в develop             | Любой агент            |
+| Мерж в staging             | Только A1              |
+| Мерж в main                | A1 + approve владельца |
+| Генерировать launch-пакет  | Только A1              |
+
+## Когда ставить какой label:
+| Ситуация                        | Label                    |
+|---------------------------------|--------------------------|
+| Новая задача создана            | status:inbox             |
+| A1 обработал, зависимости готовы| status:ready             |
+| A1 обработал, зависимости НЕ готовы | status:blocked        |
+| Агент начал работу              | status:in-progress       |
+| Агент ждёт другой Issue         | status:blocked           |
+| Агент закончил, отдал на проверку | status:review          |
+| A1 принял результат             | status:done              |
+| A1 вернул на доработку          | status:rejected          |
+| Внешний агент — пакет готов     | launch-ready             |
+| Нужно решение владельца         | needs-human              |
+| PR проверен, можно мержить      | merge-ready              |
+```
+
+---
+
+## Структура файлов в репозитории
+
+```
+repo/
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── task.yml
+│   │   └── question.yml
+│   └── CODEOWNERS              ← защита веток
+├── docs/
+│   ├── AGENT_RULES.md          ← регламент агентов
+│   ├── COORDINATOR_RULES.md    ← регламент A1
+│   ├── KNOWLEDGE_BASE.md       ← шпаргалка labels/statuses
+│   ├── decisions/              ← ADR-xxx.md
+│   └── research/               ← исследования
+├── src/                        ← код
+├── tests/                      ← тесты
+├── infra/                      ← инфраструктура
+└── README.md
+```
+
+---
+
+Всё это — связная система. Labels дают видимость на доске, регламенты дают предсказуемость поведения, окружения дают безопасность доставки. Хотите двигаться дальше — к настройке конкретного репозитория или к формату первого планирования задач координатором?
+
+
+
+
+Хорошая идея. Поищу — такие системы точно есть.Вы правы — вы не одиноки. Нашёл целый пласт проектов, которые делают почти ровно то, что вы описали. Вот что важно.
+
+## Главный вывод: ваша схема — это уже сложившийся паттерн
+
+Самое близкое к вашему дизайну описание — статья разработчика, который собрал 6 агентов через GitHub. Решение, которое сработало: линейный пайплайн, где у каждого агента есть чёткое владение стадией: backlog → needs-architecture → ready-for-dev → in-progress → needs-testing → needs-review → done. Каждая стадия — это GitHub label. Только один агент владеет каждой стадией. Когда агент заканчивает, он обновляет label, что сигнализирует следующему агенту. Прямое общение не нужно. GitHub — источник правды.
+
+Это ровно ваш вывод «центр — не A1, а доска». И автор пришёл к нему после двух неудачных попыток — что подтверждает: вы на верном пути.
+
+Другая статья называет проблему прямо: на GitHub нет нативного слоя межагентной координации. Каждая облачная сессия агента работает в изолированном раннере и не видит, что делают другие сессии. Авторы указывают два универсальных примитива: общий файл инструкций для всех агентов (нормы именования, требования к тестам, стандарты документации) и merge queue на main для сериализации одновременных мержей. То есть ваш `AGENT_RULES.md` + правила мержа по окружениям — это стандартная практика.
+
+## Готовые инструменты — по категориям
+
+**1. GitHub Issues как очередь (ближе всего к вам)**
+
+- **Issue-Orchestrator** — control plane для кодинг-агентов, построенный вокруг инженерной дисциплины. Превращает GitHub issues в ограниченные запуски агентов в изолированных worktree, затем продвигает код только через определённые вами gates валидации, ревью, восстановления и одобрения человеком. Он забирает подходящие GitHub issues и маршрутизирует их настроенным типам агентов; создаёт изолированный git worktree на каждый issue, чтобы агенты работали параллельно.
+- **Sortie** — open-source оркестратор, который следит за трекером задач и отправляет агентов работать над тикетами. Всё настраивается в одном файле WORKFLOW.md. Там конфиг буквально: `query_filter: "label:agent-ready"`, `handoff_state: review`, `max_concurrent_agents: 4`.
+- **Baton / Code Conductor** — из обзора: выбирайте Baton, если GitHub Issues уже ваша очередь задач и вы не хотите лишнего UI.
+
+**2. MCP-серверы координации (если захотите «task_claim / task_wait»)**
+
+- **task-orchestrator (jpicklyk)** — для разработчиков с multi-agent или multi-session воркфлоу: оркестратор, раздающий саб-агентов, новая сессия, подхватывающая вчерашнюю работу, или автономный цикл. Docker-образ, работает с любым MCP-клиентом. Авторы формулируют ту же мысль, что и я ранее: когда оркестратор раздаёт саб-агентов по сессиям, нет встроенного способа отслеживать, какой агент что изменил, или гарантировать порядок зависимостей. Это структурные вещи — они должны быть в сервере, а не в промптах.
+- **agent-orchestration (madebyaris)** — MCP-сервер с общей памятью (контекст, решения, находки), очередью задач с зависимостями, обнаружением агентов и блокировкой ресурсов для предотвращения одновременного доступа к файлам.
+- **Orcy** — open-source MCP-native оркестрация задач: атомарный захват задач, маршрутизация по доменам, quality gates. Self-hosted, MIT.
+- **swarlo** — общая доска — атомарные захваты, блокировка на уровне файлов, зависимости задач, детекция «живости» — чтобы рой агентов работал в одном репо, не наступая друг другу на ноги. Люди и агенты используют один протокол. Последнее важно — это ваш случай с внешними агентами, которых стартуете вы.
+
+**3. Полные фреймворки (тяжелее, но есть идеи для заимствования)**
+
+- **OpenSwarm** — интересен тем, что там один project-scoped tracker issue превращается в долговременную доску агентов, плюс есть инструмент `ask_human` — аналог вашего `needs-human`.
+- **ccswarm** — умеет `queue add --from-issue 42`, т.е. брать задачу прямо из GitHub issue.
+- **SwarmForge** (от Uncle Bob) — агенты обмениваются закоммиченной работой через долговременные handoffs, а оператор через локальный дашборд запускает работу, инспектирует агентов, обрабатывает approval gates, отвечает на уточнения и останавливает рой.
+
+## Что это значит для вас
+
+1. **Ваша архитектура подтверждена** практикой нескольких независимых команд: labels как стадии, один владелец на стадию, GitHub как источник правды, человек на gates.
+2. **Чего я не нашёл в готовом виде** — ровно вашего «launch-пакета»: когда координатор сам собирает самодостаточный контекст для внешнего агента, которого запускает человек. Ближайшие аналоги — `ask_human` в OpenSwarm и approval gates в SwarmForge, но они про «спросить человека», а не «подготовить человеку пакет для запуска другого агента». Так что это ваш оригинальный и, на мой взгляд, полезный вклад.
+3. **Практический совет**: прежде чем писать регламенты с нуля, стоит посмотреть `WORKFLOW.md` у Sortie и README у Issue-Orchestrator — там уже отработаны формулировки labels и gates. Можно взять их как основу и добавить ваш слой внешних агентов.
+
+Когда соберётесь с мыслями — скажите, хотите ли вы (а) строить регламенты «руками» на чистом GitHub, как планировали, или (б) взять один из этих инструментов (Sortie / Issue-Orchestrator) как движок и дописать поверх только ваши launch-пакеты.
+
+
+Ищу аналогичные системы: multi-agent оркестрация через GitHub, координаторы, параллельные агенты и workflow на Issues/Projects.Углубляюсь в самые близкие к вашей схеме проекты.Вы **не один**. Такие системы уже есть — и часть из них очень близка к тому, что вы собираете. Ниже — обзор без лишней теории, с привязкой к вашей схеме.
+
+---
+
+# Аналоги вашей системы
+
+## Три уровня: что вообще существует
+
+| Уровень | Что это | Близость к вам |
+|--------|---------|----------------|
+| **A. GitHub Issues = шина координации** | Issues/labels/Projects как source of truth | **Очень близко** |
+| **B. Coordinator + workers + worktrees** | Оркестратор, claim задач, изоляция, gates | **Близко** |
+| **C. Multi-agent frameworks** | CrewAI, LangGraph, AutoGen… | **Дальше** (не про GitHub как доску) |
+
+Вам интересны в первую очередь **A и B**.
+
+---
+
+## 1. Самые близкие к вашей идее
+
+### 1.1 Issue-Orchestrator
+**https://github.com/issue-orchestrator/issue-orchestrator**
+
+Это почти «ваш координатор, уже написанный».
+
+- GitHub Issues → ограниченные прогоны агентов
+- Изолированный **git worktree на каждый issue** (параллельность без конфликтов)
+- Роли: coding, review, rework, tech lead
+- **Labels + worktree state = crash-safe source of truth**
+- Gates: validation → review → rework → human merge
+- Агенты **не мержат** — мержит человек
+- Dashboard: Queued / Running / Blocked / Awaiting Merge / Completed
+- Есть **MCP** (VS Code, агенты)
+
+Философия: *«Agents produce changes; the orchestrator decides whether those changes move forward»* — ровно ваша идея: координатор не «ещё один чат», а control plane.
+
+**Отличие от вас:** меньше акцента на «внешних агентах, которых стартует только человек + launch-пакеты», больше на автоматическом spawn CLI-агентов.
+
+---
+
+### 1.2 «GitHub Issues как протокол координации» (Bram / Jon Udell)
+**Статья:** [The agent coordination protocol hiding in plain sight: GitHub issues](https://www.infoworld.com/article/4224587/the-agent-coordination-protocol-hiding-in-plain-sight-github-issues.html)
+**Harness:** https://github.com/judell/bram
+
+Ключевой тезис: **не нужен новый A2A-протокол** — Issues уже и есть канал:
+
+- кросс-агентная координация (Claude + Codex)
+- кросс-машинная (Windows + Mac)
+- кросс-проектная (один репо пишет issue в другой)
+- агенты **подписывают** комментарии (кто, откуда, какая модель)
+- человек — не «meat proxy», а «agent in the loop»: читает, правит, направляет
+
+Очень близко к вашей модели: **общение и handoff через Issues**, внешние сессии, вы копируете/стартуете.
+
+---
+
+### 1.3 GitHub Agentic Workflows (официально от GitHub)
+**https://github.github.com/gh-aw/**
+
+У них уже есть слой project coordination:
+
+- `/plan` — разбивает issue на sub-issues
+- Task Miner — достаёт задачи из discussions
+- Workflow Health Manager — трекинг
+- Epic issues, progress, deadlines
+
+Плюс курс: **Multi-Agent Systems and Orchestration** на GitHub Learn — роли, Actions, branches, permissions, recovery.
+
+**Отличие:** сильнее завязано на GitHub Actions/Copilot ecosystem, слабее — на «свой Z.ai + внешние сессии + launch-пакеты».
+
+---
+
+### 1.4 chipping-orchestrator / похожие issue→PR пайплайны
+**https://github.com/chippingway/chipping-orchestrator** (и аналоги)
+
+- Смотрит GitHub issues
+- Spawn Claude/Codex в **isolated worktree**
+- PR + независимый reviewer
+- **Состояние workflow — на самом issue (labels)**
+- Human merge
+
+Снова: labels как state machine, issue = единица работы.
+
+---
+
+### 1.5 Phoenix (research)
+Paper: multi-agent LLM → GitHub issue → PR
+
+- 6 агентов: Planner, Reproducer, Coder, Tester, Failure analyst, PR agent
+- **Координация через label-based GitHub webhook state machine**
+- Labels = persistent state
+- Safety gates + baseline tests
+
+Архитектурно подтверждает ваш подход: **labels = state machine**.
+
+---
+
+## 2. Близкие по координации, но не обязательно GitHub-first
+
+### 2.1 Agent Coordinator
+**https://github.com/mkalkere/agent-coordinator**
+
+Не GitHub Projects, а **свой HTTP + SQLite**:
+
+- atomic task claiming
+- file lock leases
+- message bus
+- health monitoring
+- worktree per agent
+- dashboard (Kanban)
+- any LLM
+
+Это уровень **B**: «как агенты не топчут друг друга». У вас это частично заменяет GitHub (claim через assignee/labels) + ветки.
+
+---
+
+### 2.2 Gas Town (Steve Yegge)
+**https://github.com/gastownhall/gastown** (+ beads)
+
+- **Mayor** = координатор
+- **Polecats** = ephemeral workers
+- **Crew** = persistent workers
+- **Beads** = git-backed issue tracking (не обязательно GitHub Issues)
+- Convoys = пачки задач
+- Mailboxes, handoffs
+- Масштаб 20–30 агентов
+
+Очень похожая **оргструктура** (координатор + воркеры + persistent ledger), но ledger чаще локальный git (beads), а не ваш GitHub Projects.
+
+---
+
+### 2.3 agentboard / Agensh (Microsoft)
+- Shared job board, claim, messaging, CI/git
+- Agensh: до 1024 агентов **без** центрального оркестратора (self-claim + shared workspace)
+
+Полезно как идея «доска + claim», но дальше от «человек стартует внешних + launch-пакеты».
+
+---
+
+## 3. Классические multi-agent frameworks (дальше от GitHub)
+
+| Проект | Суть | Зачем смотреть |
+|--------|------|----------------|
+| **CrewAI** | роли, crew, tasks | роли researcher/coder/reviewer |
+| **LangGraph** | graph + state + human-in-the-loop | depends-on, blocked, gates |
+| **OpenAI Swarm → Agents SDK** | handoffs | лёгкая передача между агентами |
+| **Agency Swarm** | communication_flows | кто с кем может говорить |
+| **Open Multi-Agent (OMA)** | durable approvals, external agents (Claude/Codex) на одном task graph | **внешние агенты на одном графе** |
+| **Agent Squad** | supervisor + parallel specialists | A1-координатор |
+| **desplega agent-swarm** | lead + Docker workers, GitHub/Slack | lead-worker + integrations |
+
+Это **оркестрация внутри рантайма**, а не «GitHub = source of truth». Их можно *подключить* к вашей доске, но не заменить её.
+
+---
+
+## 4. Как это ложится на **вашу** схему
+
+| Ваше требование | Кто уже так делает |
+|-----------------|-------------------|
+| GitHub Issues/Projects = source of truth | Issue-Orchestrator, Bram, Phoenix, gh-aw, chipping-orchestrator |
+| Labels = статусы / state machine | Issue-Orchestrator, Phoenix, Gas Town labels, chipping |
+| Координатор ≠ coder | Issue-Orchestrator, Gas Town Mayor, Agent Squad Supervisor, OMA coordinator |
+| Параллельные агенты + изоляция | worktrees (Issue-Orch, Agent Coordinator, chipping) |
+| Внешние агенты / human start | Bram (вы в loop), OMA external agents, ваш launch-пакет — **у вас это даже жёстче формализовано** |
+| Review / merge gates / human merge | Issue-Orchestrator, chipping, gh branch protection |
+| Sub-agents + MCP у каждого | почти все современные harness’ы; Issue-Orch явно MCP |
+| Test / staging / prod | у готовых систем **слабее**, чем у вас; обычно «PR + CI + human merge». Ваш env:test/staging/production — **ваша сильная сторона**, её мало кто прописывает так же явно |
+
+**Вывод:** идея не уникальна. Уникальна ваша **сборка**:
+
+1. GitHub Projects как диспетчерская
+2. A1 = планировщик + launch-пакеты для внешних
+3. Внешние агенты (Z.ai и др.) стартует только вы
+4. Жёсткий регламент окружений test → staging → prod
+
+Готовые продукты закрывают куски 1–2 и частично 3. Пункт 4 и «launch-пакет как copy-paste в Z.ai» — почти всегда **custom docs + labels**, а не из коробки.
+
+---
+
+## 5. Практическая рекомендация (без спешки)
+
+**Не изобретать всё с нуля**, а:
+
+1. **Взять паттерн** Issue-Orchestrator / Bram:
+   Issues + labels = truth, worktrees, human merge, gates.
+2. **Не обязательно ставить** их код сразу — можно сначала только **docs + labels + Projects** (то, что мы уже набросали).
+3. **Смотреть** Issue-Orchestrator, если позже захотите автоматический claim/spawn.
+4. **Читать** статью Udell про Issues as protocol — она хорошо ложится на «я стартую внешних и копирую контекст».
+5. **Env-регламент** (test/staging/prod) — ваша зона; в open-source это обычно «branch protection + CODEOWNERS + required reviews», без agent-labels.
+
+---
+
+## 6. Ссылки одним списком
+
+| Что | Ссылка |
+|-----|--------|
+| Issue-Orchestrator | https://github.com/issue-orchestrator/issue-orchestrator |
+| Bram + Issues as protocol | https://github.com/judell/bram · [InfoWorld](https://www.infoworld.com/article/4224587/the-agent-coordination-protocol-hiding-in-plain-sight-github-issues.html) |
+| Agent Coordinator | https://github.com/mkalkere/agent-coordinator |
+| Gas Town | https://github.com/gastownhall/gastown |
+| GitHub Agentic Workflows | https://github.github.com/gh-aw/ |
+| Awesome orchestrators | https://github.com/andyrewlee/awesome-agent-orchestrators |
+| Open Orchestrators directory | https://openorchestrators.org/ |
+| OMA (external agents on graph) | https://github.com/open-multi-agent/open-multi-agent |
+
+---
+
+Когда соберётесь с мыслями — можно:
+
+- **либо** идти «docs-only» в ваш репо (регламенты + labels + templates),
+- **либо** разобрать один готовый проект (я бы начал с **Issue-Orchestrator** или **Bram**) и выписать: что копируем 1:1, что адаптируем под Z.ai/launch-пакеты, что выкидываем.
+
+Напишите, в какую сторону смотреть глубже — и не торопитесь: лучше один рабочий слой, чем десять недоделанных.
+
+
+
+Заложу это как обязательный конвейер «аудит → ресерч → выводы → действие» с жёсткими рамками артефактов, чтобы не раздувать историю. Сверю с похожими практиками (ADR, design docs, scoped investigation).# Правило: Аудит → Ресерч → Выводы → Действие
+
+Это **не опция**, а **gate**. Без закрытых шагов 1–3 код/правки **запрещены**. Иначе агенты кодят «с нуля в голове», наращивают слои и хоронят релиз в техдолге. У LLM-assisted разработки это уже известный паттерн: *fast-integration debt* — скорость без разведки.
+
+
+Это правильное правило, и оно важнее, чем всё, что мы обсуждали до этого. Без него доска просто ускорит накопление долга. Давайте спроектируем его аккуратно — тут три отдельные проблемы, и их нужно решать по отдельности.
+
+---
+
+## Три проблемы внутри вашего требования
+
+| Проблема | Что ломается, если не решить |
+|---|---|
+| **1. Порядок** — агент кодит без аудита | Новые слои поверх старых, дубли, долг |
+| **2. Границы** — агент аудирует всё подряд | Задача на день превращается в неделю, контекст распухает |
+| **3. Накопление** — аудиты копятся, никто не читает | Через месяц 40 документов, следующий агент начинает с нуля |
+
+---
+
+## Решение 1: Цикл A-R-C-A как обязательные фазы задачи
+
+Каждая задача проходит 4 фазы. Переход между фазами — это **gate**, который кто-то проверяет.
+
+```
+AUDIT ──► RESEARCH ──► CONCLUSION ──► ACTION
+ что        как          что решил      делаю только
+ есть       можно        и почему       то, что решил
+   │           │             │              │
+ review     review      ◄ GATE ►         review
+```
+
+На доске это отражается дополнительным label `phase:*`:
+
+```
+phase:audit        — агент изучает текущее состояние
+phase:research     — агент ищет варианты решения
+phase:conclusion   — агент сформулировал решение, ждёт одобрения
+phase:action       — решение одобрено, агент вносит правки
+phase:verify       — правки проверяются
+```
+
+**Ключевое правило gate:** label `phase:action` ставит **только тот, кто одобрил conclusion** (не сам исполнитель). Без `phase:action` на Issue — PR не принимается. Это механически блокирует «сразу кодить».
+
+---
+
+## Решение 2: Радиус аудита задаётся координатором, а не агентом
+
+Это главная защита от «аудировать весь проект». Агент **не решает сам**, что аудировать. В каждом Issue координатор заполняет раздел:
+
+```markdown
+## Радиус аудита
+Модули:       src/auth/, src/core/session.ts
+Интерфейсы:   всё, что импортирует src/auth/ (найти через grep)
+Контекст:     docs/modules/auth.md, ADR-003, ADR-005
+Долг в зоне:  DEBT.md → записи #auth-*
+
+## Вне радиуса — НЕ аудировать
+src/payment/, src/ui/ — даже если кажется связанным.
+Если нужно выйти за радиус → создай Question координатору.
+```
+
+Агент аудирует **только внутри радиуса** и отвечает на **фиксированные вопросы** (не свободное эссе):
+
+```markdown
+# AUDIT — Issue #12
+1. Что уже есть по этой задаче? (файлы, функции, точки входа)
+2. Что из существующего можно переиспользовать?
+3. Что сломается, если я это изменю? (кто зависит)
+4. Какой долг здесь уже лежит? (с ссылкой на DEBT.md или новая запись)
+5. Что я НЕ понял и нужно спросить?
+Лимит: 1 экран. Больше — значит радиус задан неверно, сообщи координатору.
+```
+
+---
+
+## Решение 3: Аудиты не копятся — они обновляют живые документы
+
+Вот ключевой приём против клубка. Два типа документов:
+
+**Временные (per-task)** — живут в Issue, не в репозитории:
+- Audit, Research, Conclusion пишутся **комментариями в Issue**
+- После закрытия задачи их никто не обязан перечитывать
+
+**Живые (per-module)** — в репозитории, их **обновляют, а не дополняют**:
+
+```
+docs/
+├── modules/
+│   ├── auth.md          ← «паспорт модуля»: что есть, как устроено, известные проблемы
+│   ├── payment.md
+│   └── ...
+├── decisions/
+│   └── ADR-xxx.md       ← решения (неизменяемые, только добавляются)
+└── DEBT.md              ← реестр долга: 1 строка на пункт, со статусом
+```
+
+Правило: **последний шаг фазы Action — обновить паспорт модуля**. Агент не пишет «аудит №17», он правит `auth.md`, чтобы он отражал реальность после его изменений. Старое описание заменяется, не накапливается.
+
+Следующий агент читает: паспорт модуля (1 файл) + ADR, указанные в Issue + записи DEBT по своей зоне. Это **всё**. История задач остаётся в Issues для расследований, но не в обязательном чтении.
+
+---
+
+## Решение 4: Долг фиксируется, но не чинится «по пути»
+
+Самый частый способ раздуть задачу — «я тут увидел, заодно починил». Правило:
+
+```
+Нашёл долг в радиусе → запиши в DEBT.md одной строкой → продолжай свою задачу.
+Чинить долг = отдельный Issue, который создаёт координатор.
+Исключение: долг блокирует твою задачу → Question координатору, он решает.
+```
+
+Формат записи в DEBT.md:
+```
+| ID | Модуль | Суть | Найдено в | Риск | Статус |
+| D-014 | auth | Два способа валидации токена, дублируют друг друга | #12 | medium | open |
+```
+
+---
+
+## Решение 5: Не каждая задача требует полного цикла
+
+Иначе правило станет бюрократией и его начнут обходить. Координатор присваивает **размер**:
+
+| Размер | Когда | Что требуется |
+|---|---|---|
+| **S** | опечатка, конфиг, однострочный фикс | Audit + Conclusion одним комментарием (3–5 строк), gate — координатор |
+| **M** | изменение внутри одного модуля | Полный ARCA, всё в комментариях Issue, каждая фаза ≤ 1 экран |
+| **L** | затрагивает несколько модулей или интерфейсы | Полный ARCA + Research оформляется как ADR + обязательное участие architect |
+
+Label: `size:S`, `size:M`, `size:L`.
+
+---
+
+## Решение 6: Кто что проверяет (маршрутизация ревью)
+
+| Фаза | Артефакт | Кто ревьюит | Что проверяет |
+|---|---|---|---|
+| Audit | комментарий в Issue | **architect** (для M/L), координатор (для S) | Радиус соблюдён? Долг зафиксирован? Ничего не упущено из зависимостей? |
+| Research | комментарий / ADR | **architect** | Варианты не противоречат существующим ADR? Переиспользование рассмотрено? |
+| Conclusion | комментарий (фикс. формат) | **координатор** — это gate | Понятно ли следующему агенту *почему*? Объём правок соответствует задаче? |
+| Action | PR | **reviewer** + qa | Правки соответствуют conclusion? Паспорт модуля обновлён? |
+
+Формат Conclusion фиксированный — именно он становится «понятным следующему»:
+
+```markdown
+# CONCLUSION — Issue #12
+Решение:      [одно предложение]
+Почему:       [2–3 причины, со ссылкой на пункты аудита/ресёрча]
+Отвергнуто:   [альтернатива] — потому что [причина]
+Что меняю:    [список файлов/функций — точный]
+Что НЕ меняю: [что оставляю как есть и почему]
+Новый долг:   [если решение осознанно создаёт долг — записать в DEBT.md]
+```
+
+Строка «Отвергнуто» — обязательна. Именно она экономит время будущим агентам: они не будут повторно исследовать отброшенный путь.
+
+---
+
+## Как это выглядит в Issue целиком
+
+```
+Issue #12  [agent:coder] [size:M] [phase:audit] [status:in-progress]
+
+Комментарии:
+  1. 🔍 AUDIT (coder)         → architect: ✅ approved
+  2. 📚 RESEARCH (coder)      → architect: ✅ approved, "вариант 2, не 1"
+  3. 🎯 CONCLUSION (coder)    → coordinator: ✅ gate open → phase:action
+  4. 🔧 PR #45 (coder)        → reviewer: ✅, qa: ✅
+  5. 📄 Обновлён docs/modules/auth.md, DEBT.md +D-014
+  → status:done
+```
+
+Любой, кто открыл Issue через месяц, за минуту видит: что нашли, что выбрали, что отвергли, почему.
+
+---
+
+## Что я бы хотел согласовать до оформления в файлы
+
+1. **Паспорт модуля вместо накопления аудитов** — принимаете этот подход? Он требует, чтобы у вас был список модулей (хотя бы начальный).
+2. **Размеры S/M/L** — достаточно трёх, или вам нужна отдельная категория для «исследовательских» задач без кода?
+3. **Gate на conclusion только у координатора** — или для size:S разрешить архитектору?
+
+Когда согласуем — это ляжет в `AGENT_RULES.md` (фазы, форматы, радиус), `COORDINATOR_RULES.md` (как задавать радиус и размер) и в шаблон `task.yml` (поля «Радиус аудита» и «Размер»).
+
+
+
+# Хорошо. Все три решения зафиксированы.
+
+Теперь я соберу **полный комплект файлов**. Вот что нужно создать:
+
+```
+repo/
+├── docs/
+│   ├── AGENT_RULES.md              ← правила для всех агентов (включая ARCA)
+│   ├── COORDINATOR_RULES.md        ← правила координатора
+│   ├── KNOWLEDGE_BASE.md           ← шпаргалка labels/statuses/gates
+│   ├── modules/
+│   │   └── _TEMPLATE.md            ← шаблон паспорта модуля
+│   ├── decisions/
+│   │   └── _TEMPLATE.md            ← шаблон ADR
+│   └── research/                   ← (пустая папка, агенты заполняют)
+├── DEBT.md                         ← реестр техдолга
+├── .github/
+│   └── ISSUE_TEMPLATE/
+│       ├── task.yml                ← шаблон задачи
+│       └── question.yml            ← шаблон вопроса
+```
+
+Начну с первого и главного — **AGENT_RULES.md**, потому что это документ, который получает каждый агент.
+
+---
+
+## Файл 1: `docs/AGENT_RULES.md`
+
+```markdown
+# Регламент агента
+
+Этот документ обязателен к исполнению для каждого агента.
+Нарушение любого пункта — основание для отклонения результата.
+
+---
+
+## 1. Принцип ARCA
+
+Каждая задача проходит четыре фазы. Порядок обязателен.
+Пропуск фазы запрещён. Размер фазы определяет координатор (size: S/M/L).
+
+```
+AUDIT → RESEARCH → CONCLUSION → ACTION
+```
+
+| Фаза | Суть | Результат |
+|---|---|---|
+| **AUDIT** | Что уже есть в радиусе задачи | Комментарий в Issue по шаблону |
+| **RESEARCH** | Какие варианты решения существуют | Комментарий в Issue (M) или ADR (L) |
+| **CONCLUSION** | Что решил делать и почему | Комментарий в Issue по шаблону — это GATE |
+| **ACTION** | Внесение правок строго по conclusion | PR + обновление паспорта модуля |
+
+**GATE:** фаза ACTION начинается только после того,
+как координатор одобрил CONCLUSION и поставил `phase:action`.
+До этого момента — писать код, менять файлы, создавать PR **запрещено**.
+
+---
+
+## 2. Как проходить каждую фазу
+
+### 2.1 AUDIT
+
+Поставь себе label `phase:audit`.
+Изучи **только то, что указано в разделе «Радиус аудита» в Issue**.
+Напиши комментарий в Issue строго по шаблону:
+
+```
+🔍 AUDIT — Issue #XX
+
+1. Что уже есть:
+   [файлы, функции, точки входа в радиусе]
+
+2. Что можно переиспользовать:
+   [существующий код/модули, которые решают часть задачи]
+
+3. Что сломается при изменении:
+   [кто импортирует/вызывает то, что я буду менять]
+
+4. Известный долг в зоне:
+   [записи из DEBT.md по этому модулю, или "нет записей"]
+
+5. Паспорт модуля актуален?
+   [да / нет — что устарело]
+
+6. Непонятно / нужно уточнить:
+   [вопросы, или "вопросов нет"]
+```
+
+**Лимит:** 1 экран текста. Если больше — радиус задан неверно.
+Сообщи координатору через Issue-question.
+
+**Для size:S** — допускается сокращённый формат:
+пункты 1, 3, 6 одним абзацем (3–5 строк).
+
+После публикации — поставь `phase:research`.
+Жди approve от координатора на аудит. Если координатор вернул — исправь.
+
+---
+
+### 2.2 RESEARCH
+
+Изучи варианты решения задачи.
+
+Для **size:S** — research встраивается в conclusion (отдельный комментарий не нужен).
+
+Для **size:M** — комментарий в Issue:
+
+```
+📚 RESEARCH — Issue #XX
+
+Рассмотренные варианты:
+
+Вариант A: [название]
+  Суть: [1–2 предложения]
+  Плюсы: [список]
+  Минусы: [список]
+  Совместимость с текущим кодом: [высокая/средняя/низкая]
+
+Вариант B: [название]
+  Суть: [1–2 предложения]
+  Плюсы: [список]
+  Минусы: [список]
+  Совместимость с текущим кодом: [высокая/средняя/низкая]
+
+Рекомендация: [вариант] — потому что [1 предложение]
+```
+
+Для **size:L** — оформи как ADR в `docs/decisions/ADR-XXX.md` по шаблону.
+
+После публикации — жди комментарий координатора.
+Координатор может скорректировать направление.
+
+---
+
+### 2.3 CONCLUSION
+
+Это **gate**. Без одобрения координатора дальше нельзя.
+
+Напиши комментарий строго по шаблону:
+
+```
+🎯 CONCLUSION — Issue #XX
+
+Решение:      [одно предложение — что именно делаю]
+Почему:       [2–3 причины, со ссылкой на пункты аудита/ресёрча]
+Отвергнуто:   [альтернатива] — потому что [причина]
+Что меняю:    [список файлов/функций — точный]
+Что НЕ меняю: [что оставляю как есть и почему]
+Новый долг:   [если решение осознанно создаёт долг — описать]
+              [если не создаёт — "нет"]
+```
+
+Для **size:S** — допускается объединить research + conclusion:
+
+```
+🎯 CONCLUSION — Issue #XX (size:S)
+Суть: [что делаю]
+Проверил: [что посмотрел — 1 строка]
+Альтернатива: [была ли / нет]
+Файлы: [какие меняю]
+```
+
+**Строка «Отвергнуто» обязательна для size:M и size:L.**
+Она защищает будущих агентов от повторного исследования тупиковых путей.
+
+Поставь `phase:conclusion`. Жди координатора.
+Координатор ставит `phase:action` — только тогда начинай работу.
+
+---
+
+### 2.4 ACTION
+
+Координатор поставил `phase:action` — теперь можно менять код/файлы.
+
+1. Работай строго в рамках того, что написано в твоём CONCLUSION
+2. Если в процессе обнаружил что conclusion неполный:
+   - СТОП
+   - Допиши conclusion
+   - Жди повторного одобрения координатора
+   - Не «чини по ходу»
+3. Создай PR в указанную ветку
+4. В PR description: `Closes #XX`
+5. Последний шаг перед сдачей:
+   - **Обнови паспорт модуля** (`docs/modules/[module].md`)
+   - **Обнови DEBT.md** если нашёл новый долг (одна строка)
+6. Напиши комментарий в Issue:
+
+```
+🔧 ACTION — Issue #XX
+
+PR: #YY
+Что сделано: [перечисление — кратко]
+Паспорт модуля обновлён: [да, какой]
+DEBT.md обновлён: [да, записи D-XXX / нет новых]
+Замечания: [если есть]
+```
+
+7. Поставь `phase:verify`, `status:review`
+
+---
+
+## 3. Как брать задачи
+
+1. Ищи Issues с **твоим** label (`agent:твоя-роль`) + `status:ready`
+2. Проверь depends-on: все зависимости `status:done`?
+   - Да → бери
+   - Нет → не трогай
+3. Поставь `status:in-progress`, `phase:audit`, assignee: ты
+4. Прочитай:
+   - Описание Issue (задача + радиус аудита + ожидаемый результат)
+   - Паспорт модуля (`docs/modules/[module].md`)
+   - ADR, указанные в Issue
+   - Записи DEBT.md по своему модулю
+5. Начинай фазу AUDIT
+
+**Это всё, что ты обязан прочитать.** Историю других Issues читать не нужно,
+если она не указана в depends-on или входных данных явно.
+
+---
+
+## 4. Если заблокирован
+
+1. Создай Issue по шаблону «Question»
+2. Свой Issue переведи в `status:blocked`
+3. Добавь комментарий: `Blocked by #XX — [причина]`
+4. **СТОП.** Жди разблокировки. Не «делай пока другое в этой же задаче».
+
+---
+
+## 5. Работа с долгом
+
+```
+Нашёл долг в радиусе аудита?
+  → Запиши в DEBT.md одной строкой
+  → Продолжай свою задачу
+
+Долг мешает выполнить задачу?
+  → Question координатору
+  → Координатор решает: чинить сейчас (новый Issue) или обойти
+
+Починить долг «заодно» — ЗАПРЕЩЕНО.
+Каждый фикс долга — отдельный Issue с полным циклом ARCA.
+```
+
+---
+
+## 6. Зоны ответственности
+
+| Роль | Может менять | Только читать |
+|---|---|---|
+| researcher | `docs/research/` | всё остальное |
+| architect | `docs/decisions/`, `docs/modules/` | `src/` |
+| coder | `src/`, `tests/` | `docs/` (кроме паспорта своего модуля) |
+| reviewer | **ничего** (только review) | всё |
+| qa | `tests/e2e/`, `tests/integration/` | `src/` |
+| devops | `infra/`, `.github/workflows/` | `src/` |
+
+**Исключение:** после фазы ACTION каждый агент **обязан** обновить
+паспорт модуля в `docs/modules/` — даже если он coder, а не architect.
+
+---
+
+## 7. Правила окружений
+
+| | develop (test) | staging | main (production) |
+|---|---|---|---|
+| Кто мержит PR | Любой агент | Только координатор | Координатор + владелец |
+| CI обязательно | unit-тесты | unit + integration | unit + integration + e2e |
+| Review | Не требуется | 1 approve | Координатор + QA + владелец |
+
+- Твой PR → `develop`: можешь мержить сам после прохождения CI
+- `develop → staging`: **не трогай** — только координатор
+- `staging → main`: **не трогай** — только координатор + владелец
+
+---
+
+## 8. Чего нельзя
+
+- ❌ Писать код до `phase:action`
+- ❌ Брать задачи с чужим agent-label
+- ❌ Менять файлы вне своей зоны и вне радиуса аудита
+- ❌ Чинить долг «заодно» без отдельного Issue
+- ❌ Мержить в staging или main
+- ❌ Менять статус/фазу чужих Issues
+- ❌ Игнорировать depends-on
+- ❌ Работать без привязки к Issue
+- ❌ Пропускать обновление паспорта модуля после ACTION
+- ❌ Выходить за радиус аудита без вопроса координатору
+```
+
+---
+
+Это первый файл. Прочитайте, скажите если что-то не так или нужно поправить — и я перейду к следующему (`COORDINATOR_RULES.md`).
+
+
+## Файл 2: `docs/COORDINATOR_RULES.md`
+
+```markdown
+# Регламент координатора (A1)
+
+Ты — координатор-оркестратор проекта.
+Ты НЕ пишешь код. Ты НЕ исследуешь. Ты НЕ делаешь аудит кода.
+Ты: планируешь, декомпозируешь, назначаешь, задаёшь радиус,
+определяешь размер, проверяешь gates, принимаешь результаты,
+управляешь окружениями, генерируешь launch-пакеты.
+
+GitHub Projects Board — источник правды.
+Ты поддерживаешь его в актуальном состоянии.
+
+---
+
+## 1. Цикл работы координатора
+
+```
+ПОЛУЧИЛ ЗАДАЧУ ОТ ВЛАДЕЛЬЦА
+       │
+       ▼
+ДЕКОМПОЗИЦИЯ → Issues с зависимостями
+       │
+       ▼
+МОНИТОРИНГ ◄──────────────────────────┐
+       │                               │
+       ├─ разблокировка задач          │
+       ├─ генерация launch-пакетов     │
+       ├─ проверка gates (ARCA)        │
+       ├─ приёмка результатов          │
+       ├─ управление мержами           │
+       │                               │
+       └───────────────────────────────┘
+```
+
+---
+
+## 2. Декомпозиция задачи
+
+Получив задачу от владельца:
+
+1. Разбей на атомарные Issues (одна задача = один агент = один результат)
+2. Для каждого Issue заполни ВСЕ обязательные поля:
+
+```
+Обязательные поля каждого Issue:
+  ✅ Назначенный агент        (label agent:*)
+  ✅ Тип задачи               (label type:*)
+  ✅ Приоритет                 (label priority:*)
+  ✅ Целевое окружение         (label env:*)
+  ✅ Статус                    (label status:*)
+  ✅ Размер                    (label size:S/M/L)
+  ✅ Описание                  (что сделать)
+  ✅ Радиус аудита             (что аудировать, что НЕ аудировать)
+  ✅ Ожидаемый результат       (что агент сдаёт)
+  ✅ Зависимости               (depends-on, если есть)
+  ✅ Ограничения               (что нельзя менять)
+  ✅ Created by                (A1-coordinator)
+```
+
+3. Расставь зависимости:
+   - Задача без зависимостей → `status:ready`
+   - Задача с незавершёнными зависимостями → `status:blocked`
+   - Никогда не ставь `status:ready` если depends-on не все `done`
+
+---
+
+## 3. Определение размера задачи
+
+Размер определяешь ТЫ при создании Issue. Агент не выбирает размер сам.
+
+| Размер | Когда | Что требуется от агента |
+|---|---|---|
+| **S** | Опечатка, конфиг, однострочный фикс, правка документации | AUDIT + CONCLUSION одним комментарием (3–5 строк). RESEARCH не нужен. |
+| **M** | Изменение внутри одного модуля, не затрагивает интерфейсы | Полный ARCA. Всё в комментариях Issue. Каждая фаза ≤ 1 экран. |
+| **L** | Затрагивает несколько модулей, меняет интерфейсы, новый модуль | Полный ARCA. RESEARCH оформляется как ADR. Обязательно участие architect. |
+
+Если сомневаешься между S и M → ставь M.
+Если сомневаешься между M и L → ставь L.
+
+---
+
+## 4. Задание радиуса аудита
+
+Радиус аудита — ОБЯЗАТЕЛЬНАЯ часть каждого Issue.
+Агент аудирует ТОЛЬКО то, что ты указал. Это защита от расползания.
+
+Формат:
+
+```markdown
+## Радиус аудита
+Модули:       [конкретные папки/файлы]
+Интерфейсы:   [что импортирует/вызывает эти модули]
+Контекст:     [паспорта модулей, ADR — конкретные ссылки]
+Долг в зоне:  DEBT.md → записи с тегом [#module-name]
+
+## Вне радиуса — НЕ аудировать
+[конкретные модули/папки, которые кажутся связанными, но трогать не надо]
+[Если нужно выйти за радиус → Question координатору]
+```
+
+Как определять радиус:
+- Посмотри паспорт модуля → раздел «Зависимости»
+- Включи сам модуль + его прямые зависимости (1 уровень)
+- Транзитивные зависимости (2+ уровня) — НЕ включай
+- Если не уверен — лучше меньше. Агент спросит если ему не хватит.
+
+---
+
+## 5. Проверка gates (ARCA)
+
+### 5.1 После AUDIT (агент поставил phase:research)
+Проверь:
+- [ ] Агент остался в радиусе? (не аудировал лишнее)
+- [ ] Зависимости выявлены корректно?
+- [ ] Долг зафиксирован? (записи в DEBT.md или "нет")
+- [ ] Паспорт модуля актуален? (если нет — агент должен отметить)
+- [ ] Формат соблюдён?
+
+Если ОК → комментарий: `✅ AUDIT approved` → агент продолжает
+Если НЕ ОК → комментарий с указанием что исправить
+
+### 5.2 После RESEARCH (агент опубликовал варианты)
+Проверь:
+- [ ] Варианты реалистичны?
+- [ ] Не противоречат существующим ADR?
+- [ ] Переиспользование существующего кода рассмотрено?
+- [ ] Для size:L — ADR создан в docs/decisions/?
+
+Если нужно скорректировать направление → комментарий: `⚠️ Рекомендую вариант X, потому что...`
+Если ОК → `✅ RESEARCH approved`
+
+### 5.3 После CONCLUSION — это главный GATE
+Проверь:
+- [ ] Решение понятно без контекста? (другой агент поймёт?)
+- [ ] Строка «Отвергнуто» заполнена? (для M/L)
+- [ ] «Что меняю» — точный список файлов?
+- [ ] «Что НЕ меняю» — осознанный выбор, не пропуск?
+- [ ] Объём правок соответствует размеру задачи?
+- [ ] Новый долг — зафиксирован или явно «нет»?
+
+**Если ВСЁ ОК:**
+```
+✅ CONCLUSION approved — GATE OPEN
+→ phase:action
+```
+Поставь label `phase:action`. Только после этого агент имеет право писать код.
+
+**Если НЕ ОК:**
+```
+❌ CONCLUSION rejected
+Причина: [конкретно]
+Действие: [что переделать]
+```
+Оставь label `phase:conclusion`. Агент исправляет и сдаёт повторно.
+
+### 5.4 После ACTION (агент поставил phase:verify, status:review)
+Проверь:
+- [ ] PR соответствует conclusion? (не больше, не меньше)
+- [ ] Паспорт модуля обновлён?
+- [ ] DEBT.md обновлён (если найден новый долг)?
+- [ ] CI прошёл?
+- [ ] Для size:L — reviewer дал approve?
+
+Если ОК → `status:done`
+Если НЕ ОК → `status:rejected` + комментарий что исправить
+
+---
+
+## 6. Мониторинг и разблокировка
+
+После КАЖДОГО изменения статуса любой задачи выполни:
+
+```
+ЦИКЛ МОНИТОРИНГА:
+
+1. РАЗБЛОКИРОВКА
+   Для каждого Issue со status:blocked:
+     Все depends-on в status:done?
+       ДА → status:blocked → status:ready
+            Если agent:external-* → ГЕНЕРИРУЙ LAUNCH-ПАКЕТ (см. раздел 7)
+       НЕТ → оставь blocked
+
+2. LAUNCH-КОНТРОЛЬ
+   Для каждого Issue со status:ready + label agent:external-*:
+     Есть launch-пакет в комментариях?
+       НЕТ → сгенерируй и опубликуй
+       ДА  → проверь актуальность (зависимости могли измениться)
+
+3. БЛОКЕРЫ
+   Есть ли Issues со status:blocked дольше [разумного времени]?
+     ДА → разберись: кто блокирует, можно ли ускорить/переназначить
+
+4. ВОПРОСЫ
+   Есть ли Issues с type:question + status:ready?
+     ДА → ответь или перенаправь нужному агенту
+```
+
+---
+
+## 7. Launch-пакеты для внешних агентов
+
+Когда Issue с label `agent:external-*` переходит в `status:ready`,
+ты ОБЯЗАН сгенерировать launch-пакет и опубликовать его как комментарий.
+
+### 7.1 LAUNCH — первый запуск
+
+```markdown
+🚀 LAUNCH: [Role] — Issue #XX "[Title]"
+
+## КТО ТЫ
+Роль: [role]
+Репо: [owner/repo]
+Регламент: docs/AGENT_RULES.md (прочитай перед началом работы)
+
+## ЗАДАЧА
+[1–3 предложения — конкретно что сделать]
+Issue: [полная ссылка]
+Размер: [S/M/L]
+
+## ВХОДНЫЕ ДАННЫЕ
+- [ссылка на паспорт модуля] — текущее состояние модуля
+- [ссылка на ADR] — принятые решения (обязательно к исполнению)
+- [ссылка на артефакт] — [что это и зачем]
+- DEBT.md записи: [#tag или "нет записей в зоне"]
+
+## РАДИУС АУДИТА
+Аудировать: [модули/файлы]
+НЕ аудировать: [что не трогать]
+
+## СДАТЬ
+- Артефакт: [конкретно — PR / файл / документ]
+- Комментарии в Issue #XX по шаблону ARCA
+- Обновить: docs/modules/[module].md
+- Обновить: DEBT.md (если найден долг)
+- Статус Issue → review
+
+## ВЕТКА
+Работай в: [имя ветки]
+PR в: [целевая ветка]
+
+## ОГРАНИЧЕНИЯ
+- [что нельзя менять]
+- [какие файлы вне зоны]
+
+## НАПОМИНАНИЕ О ПОРЯДКЕ
+1. AUDIT → опубликуй → жди approve координатора
+2. RESEARCH → опубликуй → жди approve
+3. CONCLUSION → опубликуй → жди GATE (phase:action)
+4. ACTION → только после gate
+```
+
+После публикации:
+- Добавь label `launch-ready`
+- Упомяни владельца: `@username — launch-пакет готов для Issue #XX`
+
+### 7.2 CONTINUE — продолжение после разблокировки
+
+```markdown
+🔄 CONTINUE: [Role] — Issue #XX "[Title]"
+
+## КОНТЕКСТ
+Ты уже работал над Issue #XX.
+Ты был заблокирован: [причина, ссылка на блокирующий Issue]
+
+## ЧТО ИЗМЕНИЛОСЬ
+- Issue #YY DONE: [что было решено]
+- Ключевое решение: [1 предложение — суть]
+- Артефакт: [ссылка на результат, который разблокировал]
+
+## ТЕКУЩЕЕ СОСТОЯНИЕ ТВОЕЙ РАБОТЫ
+- Ветка: [имя]
+- Фаза, на которой остановился: [audit/research/conclusion/action]
+- Что было сделано: [кратко]
+- Что осталось: [кратко]
+
+## ДЕЙСТВУЙ
+[конкретная инструкция — с какой фазы продолжить и что учесть]
+```
+
+### 7.3 HOTFIX — срочное исправление
+
+```markdown
+🔥 HOTFIX: [Role] — Issue #XX "[Title]"
+
+## СРОЧНОСТЬ
+[почему это нужно сейчас]
+
+## ЗАДАЧА
+[что исправить — максимально конкретно]
+
+## РАДИУС
+Только: [файл:строки или функция]
+Больше НИЧЕГО не трогать.
+
+## СДАТЬ
+PR в ветку: [hotfix/* → develop или staging или main]
+Размер: S — сокращённый ARCA допускается.
+```
+
+---
+
+## 8. Управление окружениями
+
+### 8.1 Ветки
+
+```
+main ← production (защищённая)
+  └── staging ← предпрод (защищённая)
+       └── develop ← тест (базовая для feature-веток)
+            ├── feature/[issue-number]-[short-name]
+            ├── fix/[issue-number]-[short-name]
+            └── hotfix/[issue-number]-[short-name]
+```
+
+### 8.2 Мерж в develop (test)
+
+```
+Кто мержит:     любой агент (self-merge)
+Условия:
+  ✅ PR из feature/* или fix/*
+  ✅ CI: unit-тесты прошли
+  ✅ Issue привязан (Closes #XX)
+  ✅ Issue в status:review или status:done
+  ✅ phase:action или phase:verify
+Не требуется:
+  ❌ Approve другого агента
+  ❌ Твоё (координатора) одобрение на мерж
+```
+
+### 8.3 Мерж в staging
+
+```
+Кто мержит:     ТОЛЬКО ТЫ (координатор)
+Когда:          набрался пул задач для релиза или по решению владельца
+
+Процесс:
+1. Проверь: все Issues, входящие в релиз, в status:done
+2. Проверь: нет открытых type:question, связанных с этими Issues
+3. Проверь: все ADR актуальны
+4. Создай PR: develop → staging
+5. В описании PR:
+   ```
+   ## Release to Staging
+   Issues: #10, #12, #15
+   Summary: [что входит — 2-3 строки]
+   Риски: [если есть]
+   ADR: [ссылки на затронутые решения]
+   ```
+6. Дождись:
+   ✅ CI: unit + integration тесты
+   ✅ Минимум 1 approve от agent:reviewer
+7. Мержи
+8. После мержа:
+   - Создай Issue: "Smoke-test staging [дата]"
+     label: agent:qa или agent:external-qa, type:test, env:staging
+   - Дождись результата QA
+```
+
+### 8.4 Мерж в main (production)
+
+```
+Кто мержит:     ТОЛЬКО ТЫ + подтверждение владельца
+
+Процесс:
+1. Проверь:
+   ✅ Smoke-тест staging пройден (Issue type:test в status:done)
+   ✅ На staging прошло минимум [N часов] без багов
+   ✅ Нет открытых priority:critical Issues
+2. Создай PR: staging → main
+3. В описании PR:
+   ```
+   ## Release to Production
+   Version: [X.Y.Z]
+   Issues: [полный список]
+   Changelog:
+   - [что добавлено]
+   - [что исправлено]
+   - [что изменено]
+   Staging period: [дата деплоя на staging] → [сегодня]
+   Smoke-test: Issue #XX ✅
+   Риски: [если есть]
+   Rollback plan: [как откатить]
+   ```
+4. Поставь label: `needs-human`
+5. Упомяни владельца: `@username — Release PR готов, нужен approve`
+6. Дождись:
+   ✅ CI: unit + integration + e2e
+   ✅ Approve: ты + QA + владелец
+7. Владелец дал approve → мержи
+8. Создай Release tag: vX.Y.Z
+9. Создай Issue: "Post-deploy monitoring [version]"
+```
+
+---
+
+## 9. Создание и ведение паспортов модулей
+
+При создании нового модуля (или при обнаружении модуля без паспорта):
+
+1. Создай файл `docs/modules/[module-name].md` по шаблону `_TEMPLATE.md`
+2. Заполни начальное состояние
+3. При назначении задач — ВСЕГДА указывай ссылку на паспорт в «Входных данных»
+4. При приёмке результата (phase:verify) — ПРОВЕРЯЙ что агент обновил паспорт
+
+---
+
+## 10. Работа с техдолгом
+
+1. Периодически просматривай DEBT.md
+2. Группируй записи по модулю
+3. Если накопилось 3+ записей по одному модулю — создай Issue type:bugfix
+   на рефакторинг, с полным циклом ARCA
+4. Записи с risk:high — создавай Issue сразу, не копи
+5. Закрытый долг — помечай статус `resolved` + ссылка на Issue
+
+---
+
+## 11. Чего тебе нельзя
+
+- ❌ Писать код
+- ❌ Делать аудит/ресёрч вместо агента
+- ❌ Ставить phase:action без проверки conclusion
+- ❌ Пропускать обязательные поля при создании Issue
+- ❌ Создавать Issue без радиуса аудита
+- ❌ Мержить в staging без approve reviewer
+- ❌ Мержить в main без approve владельца
+- ❌ Игнорировать type:question дольше одного цикла мониторинга
+- ❌ Назначать агенту задачу вне его зоны ответственности
+```
+
+---
+
+## Файл 3: `docs/KNOWLEDGE_BASE.md`
+
+```markdown
+# 📖 Knowledge Base — Labels, Statuses, Gates
+
+Справочник для всех участников проекта.
+
+---
+
+## 1. Labels
+
+### Роли агентов (кто делает)
+| Label | Цвет | Описание | Тип |
+|---|---|---|---|
+| `agent:coordinator` | 🟣 | A1 — оркестратор | внутренний |
+| `agent:researcher` | 🔵 | исследование, анализ | внутренний |
+| `agent:architect` | 🟤 | архитектура, ADR | внутренний |
+| `agent:coder` | 🟢 | написание кода | внутренний |
+| `agent:reviewer` | 🟡 | код-ревью | внутренний |
+| `agent:qa` | 🟠 | тестирование | внутренний |
+| `agent:devops` | ⚫ | инфраструктура | внутренний |
+| `agent:external-coder` | 🟩 | внешний coder | внешний (launch) |
+| `agent:external-qa` | 🟧 | внешний QA | внешний (launch) |
+| `agent:external-devops` | ⬛ | внешний devops | внешний (launch) |
+
+### Статусы задачи (где сейчас)
+| Label | Цвет | Кто ставит |
+|---|---|---|
+| `status:inbox` | ⚪ | координатор (при создании) |
+| `status:ready` | 🔵 | координатор (зависимости выполнены) |
+| `status:in-progress` | 🟡 | агент (взял в работу) |
+| `status:blocked` | 🔴 | агент (ждёт другую задачу / ответ) |
+| `status:review` | 🟣 | агент (сдал на проверку) |
+| `status:done` | 🟢 | координатор (принял результат) |
+| `status:rejected` | ⛔ | координатор (вернул на доработку) |
+
+### Фазы ARCA
+| Label | Значение | Кто ставит |
+|---|---|---|
+| `phase:audit` | агент проводит аудит | агент |
+| `phase:research` | агент исследует варианты | агент |
+| `phase:conclusion` | агент сформулировал решение, ждёт gate | агент |
+| `phase:action` | **GATE OPEN** — можно писать код | **только координатор** |
+| `phase:verify` | правки сделаны, на проверке | агент |
+
+### Тип задачи
+| Label | Описание |
+|---|---|
+| `type:feature` | новая функциональность |
+| `type:bugfix` | исправление бага |
+| `type:research` | исследование без кода |
+| `type:question` | вопрос от агента к агенту |
+| `type:decision` | архитектурное решение (ADR) |
+| `type:infra` | инфраструктура |
+| `type:test` | написание/прогон тестов |
+| `type:docs` | документация |
+| `type:debt` | устранение техдолга |
+
+### Размер задачи
+| Label | Когда | ARCA |
+|---|---|---|
+| `size:S` | однострочный фикс, конфиг, опечатка | audit+conclusion одним комментарием |
+| `size:M` | внутри одного модуля | полный ARCA в комментариях |
+| `size:L` | несколько модулей, интерфейсы | полный ARCA + ADR + architect |
+
+### Приоритет
+| Label | Цвет |
+|---|---|
+| `priority:critical` | 🔴 |
+| `priority:high` | 🟠 |
+| `priority:medium` | 🟡 |
+| `priority:low` | 🟢 |
+
+### Окружение
+| Label | Описание |
+|---|---|
+| `env:test` | тестовый стенд |
+| `env:staging` | предпрод |
+| `env:production` | прод |
+
+### Служебные
+| Label | Кто ставит | Значение |
+|---|---|---|
+| `launch-ready` | координатор | launch-пакет для внешнего агента готов |
+| `needs-human` | координатор | требуется решение владельца |
+| `has-pr` | агент | есть связанный PR |
+| `merge-ready` | координатор | PR проверен, можно мержить |
+
+---
+
+## 2. Жизненный цикл задачи
+
+```
+                    СОЗДАНИЕ (координатор)
+                           │
+                    status:inbox
+                           │
+              ┌─── Зависимости готовы? ───┐
+              │                            │
+             ДА                          НЕТ
+              │                            │
+        status:ready                status:blocked
+              │                            │
+              │                     (ждёт depends-on)
+              │                            │
+        Агент берёт                  Разблокировка
+     status:in-progress ◄─────────── status:ready
+              │
+        phase:audit
+              │
+        phase:research
+              │
+        phase:conclusion
+              │
+      ┌─ GATE: координатор ─┐
+      │                      │
+   approved                rejected
+      │                      │
+ phase:action          исправление
+      │                      │
+ phase:verify          └──► phase:conclusion
+      │
+ status:review
+      │
+ ┌─ координатор ─┐
+ │                │
+done           rejected
+ │                │
+status:done    status:rejected → status:in-progress
+```
+
+---
+
+## 3. Кто что может
+
+| Действие | Кто |
+|---|---|
+| Создать Issue | координатор, любой агент (type:question) |
+| Назначить агента (label agent:*) | координатор |
+| Определить размер (label size:*) | координатор |
+| Задать радиус аудита | координатор |
+| Взять задачу (status:in-progress) | назначенный агент |
+| Поставить phase:audit/research/conclusion | агент (свой Issue) |
+| **Поставить phase:action** | **только координатор (GATE)** |
+| Поставить phase:verify | агент |
+| Поставить status:review | агент |
+| **Поставить status:done** | **только координатор** |
+| Поставить status:rejected | только координатор |
+| Поставить status:blocked | агент (свой Issue) |
+| Генерировать launch-пакет | только координатор |
+| Мерж PR → develop | любой агент (после CI) |
+| Мерж PR → staging | только координатор |
+| Мерж PR → main | координатор + владелец |
+| Обновить паспорт модуля | агент (свой модуль, после action) |
+| Записать в DEBT.md | любой агент |
+| Создать Issue на устранение долга | координатор |
+
+---
+
+## 4. Быстрые правила (шпаргалка)
+
+### Агент хочет начать кодить
+→ Проверь: есть label `phase:action`?
+→ НЕТ — кодить нельзя.
+
+### Агент не понимает задачу
+→ Создай Issue type:question → укажи кому → blocked
+
+### Агент нашёл баг не по своей задаче
+→ Запиши в DEBT.md → продолжай свою задачу
+
+### Агент хочет поменять файл вне зоны
+→ Question координатору → координатор решает
+
+### Issue готов, но агент внешний
+→ Координатор генерирует launch-пакет → label:launch-ready → @owner
+
+### PR готов, куда мержить?
+→ feature/* → develop: агент сам
+→ develop → staging: только координатор
+→ staging → main: координатор + владелец
+
+### Непонятно какой размер у задачи
+→ Размер определяет координатор. Агент не выбирает.
+```
+
+---
+
+## Файл 4: `docs/modules/_TEMPLATE.md`
+
+```markdown
+# Паспорт модуля: [Название]
+
+> Последнее обновление: [дата] — Issue #XX — [кто обновил]
+
+---
+
+## 1. Назначение
+[Одним абзацем — зачем этот модуль существует, что он делает]
+
+## 2. Расположение
+```
+src/[module-name]/
+├── [структура файлов]
+```
+
+## 3. Публичный интерфейс
+[Экспортируемые функции/классы/типы — что используют другие модули]
+
+```
+[сигнатуры или описание — кратко]
+```
+
+## 4. Зависимости
+
+### Этот модуль использует:
+| Модуль | Что именно | Зачем |
+|---|---|---|
+| [module] | [функция/тип] | [зачем] |
+
+### Этот модуль используется в:
+| Модуль | Что именно | Зачем |
+|---|---|---|
+| [module] | [функция/тип] | [зачем] |
+
+## 5. Конфигурация
+[env-переменные, конфиг-файлы, значения по умолчанию]
+
+## 6. Известные ограничения
+[Что модуль НЕ делает, известные edge cases]
+
+## 7. Техдолг
+[Ссылки на записи в DEBT.md по этому модулю, или "нет"]
+
+## 8. История значимых изменений
+| Дата | Issue | Суть изменения |
+|---|---|---|
+| [дата] | #XX | [что изменилось] |
+```
+
+---
+
+## Файл 5: `docs/decisions/_TEMPLATE.md`
+
+```markdown
+# ADR-XXX: [Название решения]
+
+- **Статус:** [proposed / accepted / deprecated / superseded by ADR-YYY]
+- **Дата:** [YYYY-MM-DD]
+- **Issue:** #XX
+- **Автор:** [agent role]
+
+## Контекст
+[Почему возник вопрос. Какая проблема решается. 2–3 предложения.]
+
+## Рассмотренные варианты
+
+### Вариант A: [название]
+- Суть: [1–2 предложения]
+- Плюсы: [список]
+- Минусы: [список]
+
+### Вариант B: [название]
+- Суть: [1–2 предложения]
+- Плюсы: [список]
+- Минусы: [список]
+
+## Решение
+[Какой вариант выбран и почему. 1–2 предложения.]
+
+## Последствия
+- Что это меняет в архитектуре/коде
+- Какие модули затронуты
+- Какой долг создаёт (если создаёт)
+```
+
+---
+
+## Файл 6: `DEBT.md`
+
+```markdown
+# Реестр технического долга
+
+> Формат: одна строка = один пункт долга.
+> Не чини долг «заодно» — каждый фикс через отдельный Issue с циклом ARCA.
+
+| ID | Модуль | Тег | Суть | Найдено в | Риск | Статус | Закрыто |
+|---|---|---|---|---|---|---|---|
+| D-001 | — | — | пример записи | #0 | low | template | — |
+
+## Как добавлять
+1. Возьми следующий номер D-XXX
+2. Заполни все колонки
+3. Тег = #module-name (для фильтрации)
+4. Риск: low / medium / high
+5. Статус: open / in-progress (#XX) / resolved (#XX)
+6. Коммит в ту же ветку, где работаешь
+```
+
+---
+
+## Файл 7: `.github/ISSUE_TEMPLATE/task.yml`
+
+```yaml
+name: "📋 Task"
+description: "Стандартная задача для агента"
+labels: ["status:inbox"]
+body:
+  - type: dropdown
+    id: agent
+    attributes:
+      label: "Назначенный агент"
+      options:
+        - agent:researcher
+        - agent:architect
+        - agent:coder
+        - agent:reviewer
+        - agent:qa
+        - agent:devops
+        - agent:external-coder
+        - agent:external-qa
+        - agent:external-devops
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: "Тип задачи"
+      options:
+        - type:feature
+        - type:bugfix
+        - type:research
+        - type:infra
+        - type:test
+        - type:docs
+        - type:debt
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: "Размер (определяет координатор)"
+      options:
+        - "size:S — минимальное изменение"
+        - "size:M — внутри одного модуля"
+        - "size:L — несколько модулей / интерфейсы"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Приоритет"
+      options:
+        - priority:critical
+        - priority:high
+        - priority:medium
+        - priority:low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: "Целевое окружение"
+      options:
+        - env:test
+        - env:staging
+        - env:production
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Описание задачи"
+      description: "Что нужно сделать. Конкретно, измеримо."
+    validations:
+      required: true
+
+  - type: textarea
+    id: audit_radius
+    attributes:
+      label: "Радиус аудита"
+      description: "Что агент ДОЛЖЕН аудировать и что НЕ ДОЛЖЕН"
+      placeholder: |
+        Аудировать:
+        - src/auth/ — весь модуль
+        - src/core/types.ts — интерфейсы, используемые auth
+        - docs/modules/auth.md — паспорт модуля
+        - DEBT.md → записи #auth
+
+        НЕ аудировать:
+        - src/payment/, src/ui/ — вне зоны
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: "Входные данные / артефакты"
+      placeholder: |
+        - docs/modules/auth.md — паспорт модуля
+        - docs/decisions/ADR-003.md — решение по архитектуре
+        - #10 — результаты исследования
+    validations:
+      required: false
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: "Зависимости (depends-on)"
+      placeholder: "#10, #11"
+    validations:
+      required: false
+
+  - type: textarea
+    id: output
+    attributes:
+      label: "Ожидаемый результат"
+      description: "Что агент должен сдать после фазы ACTION"
+      placeholder: |
+        - PR в ветку feature/12-auth-module
+        - Файлы: src/auth/**
+        - Обновить: docs/modules/auth.md
+        - Обновить: DEBT.md (если найден долг)
+        - Комментарий в этом Issue по шаблону ACTION
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: "Ограничения"
+      placeholder: |
+        - Не менять src/core/types.ts
+        - Не менять существующие API-контракты
+    validations:
+      required: false
+
+  - type: input
+    id: branch
+    attributes:
+      label: "Ветка для работы"
+      placeholder: "feature/12-auth-module"
+    validations:
+      required: false
+
+  - type: input
+    id: created_by
+    attributes:
+      label: "Создано"
+      placeholder: "A1-coordinator"
+    validations:
+      required: true
+```
+
+---
+
+## Файл 8: `.github/ISSUE_TEMPLATE/question.yml`
+
+```yaml
+name: "❓ Question"
+description: "Вопрос от агента к другому агенту или координатору"
+labels: ["status:inbox", "type:question"]
+body:
+  - type: input
+    id: from_agent
+    attributes:
+      label: "От кого"
+      placeholder: "A4-coder"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: to_agent
+    attributes:
+      label: "Кому"
+      options:
+        - agent:coordinator
+        - agent:researcher
+        - agent:architect
+        - agent:coder
+        - agent:reviewer
+        - agent:qa
+        - agent:devops
+    validations:
+      required: true
+
+  - type: input
+    id: blocks_issue
+    attributes:
+      label: "Блокирует Issue"
+      placeholder: "#12"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: "Вопрос"
+      description: "Конкретный вопрос, на который нужен ответ для продолжения работы"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "Контекст"
+      description: "На какой фазе ARCA возник вопрос, что уже известно"
+      placeholder: |
+        Фаза: audit
+        Обнаружил: [что именно]
+        Варианты: [если есть предположения]
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: "Предлагаемые варианты ответа (если есть)"
+      description: "Помоги отвечающему — предложи варианты"
+    validations:
+      required: false
+```
+
+---
+
+## Итого: полный список файлов
+
+| # | Файл | Готов |
+|---|---|---|
+| 1 | `docs/AGENT_RULES.md` | ✅ (предыдущее сообщение) |
+| 2 | `docs/COORDINATOR_RULES.md` | ✅ |
+| 3 | `docs/KNOWLEDGE_BASE.md` | ✅ |
+| 4 | `docs/modules/_TEMPLATE.md` | ✅ |
+| 5 | `docs/decisions/_TEMPLATE.md` | ✅ |
+| 6 | `DEBT.md` | ✅ |
+| 7 | `.github/ISSUE_TEMPLATE/task.yml` | ✅ |
+| 8 | `.github/ISSUE_TEMPLATE/question.yml` | ✅ |
+
+Папку `docs/research/` создайте пустой (положите туда `.gitkeep`).
+
+Кладите в репозиторий, запускайте сессию координатора — он сможет работать по этим правилам. Если при первом прогоне что-то окажется лишним или недостаточным — вернётесь, скорректируем.

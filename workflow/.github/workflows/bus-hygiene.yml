@@ -1,0 +1,146 @@
+name: Bus Hygiene & Mail Relay
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, closed, reopened]
+  push:
+    branches:
+      - "arena/**"
+
+jobs:
+  issue-hygiene:
+    name: Issue Label & Routing Hygiene
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Enforce routing on ready & clean labels on close
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+
+          repo = os.environ["REPO"]
+          num = os.environ["ISSUE_NUMBER"]
+
+          issue = json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/issues/{num}"], text=True))
+          state = issue.get("state")
+          state_reason = issue.get("state_reason")
+          labels = [l["name"] for l in issue.get("labels", [])]
+
+          if state == "open":
+              has_ready = "status:ready" in labels
+              has_to = any(l.startswith("to:") for l in labels)
+              has_agent = any(l.startswith("agent:") for l in labels)
+              if has_ready and (not has_to or not has_agent):
+                  missing = []
+                  if not has_to:
+                      missing.append("to:*")
+                  if not has_agent:
+                      missing.append("agent:*")
+                  new_labels = [l for l in labels if not l.startswith("status:")] + ["status:inbox"]
+                  cmd = ["gh", "api", "-X", "PATCH", f"repos/{repo}/issues/{num}"]
+                  for l in new_labels:
+                      cmd.extend(["-f", f"labels[]={l}"])
+                  subprocess.check_call(cmd)
+                  body = (
+                      f"⚠️ BUS-HYGIENE #{num} — снят `status:ready` (отсутствует маршрутизация: {', '.join(missing)})\n"
+                      f"— bus-hygiene · автоматический контроль шины\n\n"
+                      f"Задача без `to:*` и `agent:*` невидима для паркованных узлов. "
+                      f"Статус возвращён в `status:inbox` до разметки координатором."
+                  )
+                  subprocess.check_call(["gh", "api", f"repos/{repo}/issues/{num}/comments", "-f", f"body={body}"])
+          elif state == "closed":
+              strip_prefixes = ("to:", "phase:")
+              strip_exact = {
+                  "launch-ready", "needs-human",
+                  "status:inbox", "status:ready", "status:in-progress",
+                  "status:blocked", "status:review", "status:rejected",
+              }
+              cleaned = [
+                  l for l in labels
+                  if not l.startswith(strip_prefixes) and l not in strip_exact
+              ]
+              if state_reason != "not_planned" and "status:done" not in cleaned:
+                  cleaned.append("status:done")
+              if set(cleaned) != set(labels):
+                  cmd = ["gh", "api", "-X", "PATCH", f"repos/{repo}/issues/{num}"]
+                  if cleaned:
+                      for l in cleaned:
+                          cmd.extend(["-f", f"labels[]={l}"])
+                  else:
+                      cmd.extend(["--input", "-"])
+                      subprocess.run(cmd, input=b'{"labels":[]}', check=True)
+                      raise SystemExit(0)
+                  subprocess.check_call(cmd)
+          PY
+
+  relay-mail:
+    name: Auto-Relay External docs/MAIL.md
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout pushed branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Relay docs/MAIL.md to target issue idempotently
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+
+          mail_path = Path("docs/MAIL.md")
+          if not mail_path.is_file():
+              raise SystemExit(0)
+          content = mail_path.read_text(encoding="utf-8").strip()
+          first_line = content.splitlines()[0] if content else ""
+          m = re.match(r"^📬 DELIVERED #(\d+)\b", first_line)
+          if not m:
+              print("docs/MAIL.md does not start with '📬 DELIVERED #<N>', skipping relay.")
+              raise SystemExit(0)
+
+          issue_num = m.group(1)
+          repo = os.environ["REPO"]
+          branch = os.environ["BRANCH"]
+          sha = os.environ["HEAD_SHA"]
+          sha7 = sha[:7]
+
+          raw_lines = subprocess.check_output(
+              [
+                  "gh", "api", "--paginate",
+                  f"repos/{repo}/issues/{issue_num}/comments?per_page=100",
+                  "--jq", ".[] | @json",
+              ],
+              text=True,
+          ).splitlines()
+          comments = [json.loads(line) for line in raw_lines if line.strip()]
+          if any(sha in (c.get("body") or "") or f"head `{sha7}`" in (c.get("body") or "") for c in comments):
+              print(f"SHA {sha7} already relayed to issue #{issue_num}, skipping.")
+              raise SystemExit(0)
+
+          relay_body = (
+              f"{first_line}\n"
+              f"— bus-hygiene · авто-ретрансляция ветки `{branch}` · head `{sha7}` (`{sha}`)\n\n"
+              f"> Автоматически перенесено из `docs/MAIL.md` ветки `{branch}`:\n\n"
+              f"{content}"
+          )
+          subprocess.check_call([
+              "gh", "api", f"repos/{repo}/issues/{issue_num}/comments",
+              "-f", f"body={relay_body}",
+          ])
+          print(f"Relayed docs/MAIL.md ({sha7}) to issue #{issue_num}.")
+          PY
