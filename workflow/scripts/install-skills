@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""install-skills — синхронизация нативных папок CLI (.claude/, .agents/) и раскатка в проекты.
+
+Решает две задачи без ручного копирования:
+1) В самом репозитории agents синхронизирует канонические карточки agents/{auditor,researcher,executor,reviewer}.md
+   и навыки skills/*/SKILL.md в нативные каталоги автоподхвата CLI-клиентов:
+   - .claude/agents/*.md и .claude/skills/*/SKILL.md (Claude Code / ZCode);
+   - .agents/skills/*/SKILL.md (Codex CLI / универсальный стандарт Agent Skills).
+   Режим --check проверяется автоматически в scripts/preflight и CI (нулевой рассинхрон).
+2) Раскатывает роли, скиллы и (по флагу --with-harness) генератор scripts/spawn-pack в любой
+   целевой проектный репозиторий (--target /path/to/project), соблюдая ADOPTION.md §1
+   (не перезаписывает отличающиеся локальные файлы без --force).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = ROOT / "schema" / "bus.json"
+
+
+def canonical_sources(root: Path = ROOT) -> tuple[dict[str, Path], dict[str, Path]]:
+    schema = json.loads((root / "schema" / "bus.json").read_text(encoding="utf-8"))
+    roles: dict[str, Path] = {}
+    for role_name, cfg in sorted(schema["subagent_roles"].items()):
+        p = root / cfg["prompt"]
+        if not p.is_file():
+            raise FileNotFoundError(f"не найдена карточка роли {role_name}: {p}")
+        roles[role_name] = p
+
+    skills: dict[str, Path] = {}
+    skills_dir = root / "skills"
+    for child in sorted(skills_dir.iterdir()):
+        skill_md = child / "SKILL.md"
+        if child.is_dir() and skill_md.is_file():
+            skills[child.name] = skill_md
+    return roles, skills
+
+
+def expected_native_map(roles: dict[str, Path], skills: dict[str, Path]) -> dict[str, Path]:
+    """Возвращает карту относительный_путь_назначения -> исходный_файл для нативного автоподхвата."""
+    mapping: dict[str, Path] = {}
+    for role_name, src in roles.items():
+        mapping[f".claude/agents/{role_name}.md"] = src
+    for skill_name, src in skills.items():
+        mapping[f".claude/skills/{skill_name}/SKILL.md"] = src
+        mapping[f".agents/skills/{skill_name}/SKILL.md"] = src
+    return mapping
+
+
+def expected_harness_map(roles: dict[str, Path], skills: dict[str, Path], root: Path = ROOT) -> dict[str, Path]:
+    """Дополнительные файлы при раскатке --with-harness в целевой проект."""
+    mapping: dict[str, Path] = {
+        "schema/bus.json": root / "schema" / "bus.json",
+        "scripts/spawn-pack": root / "scripts" / "spawn-pack",
+        "scripts/install-skills": root / "scripts" / "install-skills",
+    }
+    for doc_name in ("README.md", "collegium.md"):
+        p = root / "agents" / doc_name
+        if p.is_file():
+            mapping[f"agents/{doc_name}"] = p
+    for role_name, src in roles.items():
+        mapping[f"agents/{role_name}.md"] = src
+    skills_readme = root / "skills" / "README.md"
+    if skills_readme.is_file():
+        mapping["skills/README.md"] = skills_readme
+    for skill_name, src in skills.items():
+        mapping[f"skills/{skill_name}/SKILL.md"] = src
+    return mapping
+
+
+def check_self_sync(root: Path = ROOT) -> list[str]:
+    roles, skills = canonical_sources(root)
+    expected = expected_native_map(roles, skills)
+    errors: list[str] = []
+
+    for rel_dst, src in sorted(expected.items()):
+        dst = root / rel_dst
+        if not dst.is_file():
+            errors.append(f"отсутствует нативное зеркало {rel_dst} (запустите: python3 scripts/install-skills)")
+        elif dst.read_bytes() != src.read_bytes():
+            errors.append(f"рассинхрон содержимого {rel_dst} != {src.relative_to(root)} (запустите: python3 scripts/install-skills)")
+
+    # Проверяем отсутствие устаревших файлов в .claude/agents, .claude/skills и .agents/skills
+    managed_roots = [
+        root / ".claude" / "agents",
+        root / ".claude" / "skills",
+        root / ".agents" / "skills",
+    ]
+    expected_set = set(expected.keys())
+    for mroot in managed_roots:
+        if not mroot.exists():
+            continue
+        for f in sorted(mroot.rglob("*")):
+            if f.is_file():
+                rel = f.relative_to(root).as_posix()
+                if rel not in expected_set:
+                    errors.append(f"лишний устаревший файл в нативном каталоге: {rel}")
+
+    return errors
+
+
+def sync_into_target(
+    target: Path,
+    mapping: dict[str, Path],
+    *,
+    is_self: bool,
+    force: bool,
+    dry_run: bool,
+) -> tuple[int, list[str]]:
+    conflicts: list[str] = []
+    actions: list[str] = []
+
+    for rel_dst, src in sorted(mapping.items()):
+        dst = target / rel_dst
+        src_bytes = src.read_bytes()
+        if dst.is_file():
+            if dst.read_bytes() == src_bytes:
+                actions.append(f"UNCHANGED {rel_dst}")
+                continue
+            if not is_self and not force:
+                conflicts.append(rel_dst)
+                continue
+            actions.append(f"UPDATE    {rel_dst}")
+        else:
+            actions.append(f"CREATE    {rel_dst}")
+
+        if not dry_run:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(src_bytes)
+            if rel_dst.startswith("scripts/"):
+                dst.chmod(dst.stat().st_mode | 0o111)
+
+    if conflicts:
+        return 2, [f"КОНФЛИКТ (файл уже существует и отличается, укажите --force): {c}" for c in conflicts]
+
+    # В режиме --self удаляем устаревшие зеркала, если исходный навык/роль удалены
+    if is_self:
+        expected_set = set(mapping.keys())
+        for sub in (".claude/agents", ".claude/skills", ".agents/skills"):
+            mroot = target / sub
+            if not mroot.exists():
+                continue
+            for f in sorted(mroot.rglob("*")):
+                if f.is_file() and f.relative_to(target).as_posix() not in expected_set:
+                    actions.append(f"REMOVE    {f.relative_to(target).as_posix()}")
+                    if not dry_run:
+                        f.unlink()
+                        if f.parent != mroot and not any(f.parent.iterdir()):
+                            shutil.rmtree(f.parent, ignore_errors=True)
+
+    return 0, actions
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Проверить побайтовую синхронность .claude/ и .agents/ с agents/ и skills/")
+    parser.add_argument("--target", type=Path, help="Целевой проектный репозиторий для установки ролей и навыков")
+    parser.add_argument("--with-harness", action="store_true", help="При --target также скопировать agents/, skills/, schema/bus.json и scripts/spawn-pack")
+    parser.add_argument("--force", action="store_true", help="Разрешить перезапись отличающихся файлов в --target")
+    parser.add_argument("--dry-run", action="store_true", help="Показать план без записи файлов на диск")
+    args = parser.parse_args(argv)
+
+    if args.check:
+        errs = check_self_sync(ROOT)
+        if errs:
+            print("install-skills CHECK FAILED:", file=sys.stderr)
+            for e in errs:
+                print(f"  - {e}", file=sys.stderr)
+            return 1
+        roles, skills = canonical_sources(ROOT)
+        print(f"install-skills OK: синхронизированы {len(roles)} ролей (.claude/agents) и {len(skills)} навыков (.claude/skills + .agents/skills)")
+        return 0
+
+    roles, skills = canonical_sources(ROOT)
+    target = args.target.resolve() if args.target else ROOT
+    is_self = target == ROOT
+
+    if not target.exists() and not args.dry_run:
+        target.mkdir(parents=True, exist_ok=True)
+
+    mapping = expected_native_map(roles, skills)
+    if not is_self and args.with_harness:
+        mapping.update(expected_harness_map(roles, skills, ROOT))
+
+    rc, messages = sync_into_target(
+        target,
+        mapping,
+        is_self=is_self,
+        force=args.force,
+        dry_run=args.dry_run,
+    )
+    if rc != 0:
+        print("install-skills ABORTED (соблюдение ADOPTION.md §1 — без перезаписи чужих правок):", file=sys.stderr)
+        for m in messages:
+            print(f"  - {m}", file=sys.stderr)
+        return rc
+
+    created_or_updated = [m for m in messages if not m.startswith("UNCHANGED")]
+    mode_label = "DRY-RUN" if args.dry_run else "SYNCED"
+    print(
+        f"install-skills {mode_label}: target={target} | roles={len(roles)} | skills={len(skills)} "
+        f"| changed={len(created_or_updated)} | total_files={len(mapping)}"
+    )
+    if args.dry_run:
+        for m in messages:
+            print(f"  {m}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

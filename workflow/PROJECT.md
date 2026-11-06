@@ -1,9 +1,24 @@
 # ПРОЕКТНЫЙ СЛОЙ ВОРКФЛОУ — Alien Cosmic
 
-Канон команды живёт в репо **bestdeejay-design/agents** (эталон) и его копии в
-`workflow/` этого репо (PROTOCOL, WORKFLOW, BUS, BOARD, OPS, AGENT_RULES,
-COORDINATOR_RULES, KNOWLEDGE_BASE, EXAMPLES, шаблоны). Этот файл — только
-проектная конкретизация: что в Alien Cosmic работает иначе или дополнительно.
+Канон команды живёт в репо **bestdeejay-design/agents** (эталон, Workflow v2 f793de3/ADR-0002)
+и его копии в `workflow/` этого репо. Этот файл — только проектная конкретизация:
+что в Alien Cosmic работает иначе или дополнительно. Версия — `workflow/CANON_VERSION.md`.
+
+## Workflow v2 в проекте (ADR-0002)
+
+- **Саб-оркестрация обязательна**: координатор собирает сабов через `workflow/scripts/spawn-pack`
+  (роль из `workflow/agents/` + навыки из `workflow/skills/`); исполнитель M/L поднимается
+  Clean-Room только с `CONTEXT_PACK = AUDIT_PACK + SPEC_PACK + REVIEWER_KICK`; ревьювер
+  до кодинга выдаёт `REVIEWER_KICK` (3–5 ловушек). Нативные зеркала — `workflow/.claude/`,
+  `workflow/.agents/` (install-skills).
+- **Тиры**: size:S = Fast-Track Дуэт (мини-аудит+код+preflight → свежий reviewer → VERDICT на sha7);
+  size:M/L = гейт CONCLUSION до кода → Волна 1 (свежий executor, коллегиальная приёмка 4 ролями)
+  → Волна 2 (смена ролей executor↔reviewer). Примеры проекта: S = стамп-бамп/точечный CSS-фикс;
+  M = новая секция панели/сим; L = онбординг-движок, редизайн командирки.
+- **Preflight перед каждым пушем**: `python3 workflow/scripts/preflight` (хуки установлены:
+  core.hooksPath=.githooks). Схема маркеров — `workflow/schema/bus.json`.
+- **Хаб**: ничего не пушим в bestdeejay-design/agents; поставки канона — ветка → PR → ревью
+  не-автором → письмо.
 
 ## Роли и каналы (наш состав)
 
@@ -48,6 +63,29 @@ COORDINATOR_RULES, KNOWLEDGE_BASE, EXAMPLES, шаблоны). Этот файл 
 | Правки | `status:in-progress` + маркер 🔁 REJECTED в issue |
 | На приёмку | `status:done` (фактически: слито, ждёт владельца) |
 | Готово | `status:done` + issue закрыт |
+
+## Уровни окружений (отображение COORDINATOR_RULES §8)
+
+| Уровень канона | У нас | Кто двигает |
+|---|---|---|
+| test | локальные стенды (:8806/r/ и клоны) + ветка `test` → Pages `/test/` | исполнитель (self-merge разрешён) |
+| staging | ace.dj1.ru/r/ (rsync /opt/ace/game) после approve ревьювера и полного канона §4+check_r | координатор |
+| production | Pages deploy-prod **И** rsync gostiny-prod-01 — оба разом, после приёмки владельца | координатор + приёмка владельца |
+
+Инвариант SHA: в production уезжает тот же коммит, что прошёл staging/приёмку.
+HOTFIX — только координатором по слову владельца/critical+инцидент (§7). Правила уровней
+соблюдаются процессно; rulesets/environments (уровни 2–3 лестницы принуждения §12)
+НЕ установлены — честный статус проекта: «гейты на дисциплине»; кандидат в задачи (type:infra).
+
+## Миграция статусов и labels
+
+Таксономия labels канона (status/phase/agent/to/type/size/priority/env + флаги
+external/launch-ready/blocked-external/needs-human/has-pr) — первичный источник;
+борд Project #3 и поля «Сессия/Этап» — вид поверх (PROJECTS-BLUEPRINT §7).
+Отображение: Бэклог=нет label/Ждёт=blocked/К работе=ready/В работе=in-progress/
+На проверке=review/Правки=rejected/На приёмку=done+needs-human/Готово=done+закрыт.
+Устаревшая проектная строка «На приёмку = status:done» заменена: до приёмки владельца
+issue остаётся открытым (`review`+`needs-human`), закрывается координатором `🏁 DONE`.
 
 ## Прочее
 

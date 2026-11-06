@@ -1,0 +1,187 @@
+{
+  "schema_version": "2.0.0",
+  "updated_at": "2026-11-06",
+  "description": "Единый машиночитаемый источник правды: 52 labels ядра, 21 маркер шины, тир-матрица S/M/L и роли саб-агентов коллегии (ADR-0002).",
+  "label_groups": {
+    "status": {
+      "cardinality": "exactly_one_when_open",
+      "values": [
+        {"name": "status:inbox", "color": "C5DEF5", "description": "Создана, не обработана координатором"},
+        {"name": "status:ready", "color": "0E8A16", "description": "Бриф полон, можно брать в работу"},
+        {"name": "status:in-progress", "color": "FBCA04", "description": "Исполнитель работает"},
+        {"name": "status:blocked", "color": "D93F0B", "description": "Ждёт зависимость или ответ на question"},
+        {"name": "status:review", "color": "6F42C1", "description": "Поставка сдана, на проверке или приёмке"},
+        {"name": "status:done", "color": "1D76DB", "description": "Принято (координатор после приёмки)"},
+        {"name": "status:rejected", "color": "B60205", "description": "Возвращено на правки (счётчик N/2)"}
+      ]
+    },
+    "phase": {
+      "cardinality": "at_most_one_for_M_L",
+      "values": [
+        {"name": "phase:audit", "color": "BFE5BF", "description": "Фаза ARCA: аудит радиуса"},
+        {"name": "phase:research", "color": "BFD4F2", "description": "Фаза ARCA: варианты решения"},
+        {"name": "phase:conclusion", "color": "F9D0C4", "description": "Фаза ARCA: решение, ждёт гейта координатора"},
+        {"name": "phase:action", "color": "E11D21", "description": "Фаза ARCA: гейт открыт координатором, можно менять файлы"},
+        {"name": "phase:verify", "color": "5319E7", "description": "Фаза ARCA: поставка сдана, идёт ревью"}
+      ]
+    },
+    "agent": {
+      "cardinality": "exactly_one",
+      "values": [
+        {"name": "agent:coordinator", "color": "7057FF", "description": "Функция задачи: coordinator"},
+        {"name": "agent:researcher", "color": "7057FF", "description": "Функция задачи: researcher"},
+        {"name": "agent:architect", "color": "7057FF", "description": "Функция задачи: architect"},
+        {"name": "agent:coder", "color": "7057FF", "description": "Функция задачи: coder"},
+        {"name": "agent:reviewer", "color": "7057FF", "description": "Функция задачи: reviewer"},
+        {"name": "agent:qa", "color": "7057FF", "description": "Функция задачи: qa"},
+        {"name": "agent:devops", "color": "7057FF", "description": "Функция задачи: devops"}
+      ]
+    },
+    "to": {
+      "cardinality": "exactly_one_when_open_none_when_closed",
+      "values": [
+        {"name": "to:owner", "color": "1F6FEB", "description": "Текущий адресат: владелец"},
+        {"name": "to:coordinator", "color": "1F6FEB", "description": "Текущий адресат: координатор"},
+        {"name": "to:arena", "color": "1F6FEB", "description": "Текущий адресат: внешний исполнитель Арена"},
+        {"name": "to:sz-pool", "color": "1F6FEB", "description": "Текущий адресат: любой свободный SZ, ждёт claim"},
+        {"name": "to:sz-1", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-1"},
+        {"name": "to:sz-2", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-2"},
+        {"name": "to:sz-3", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-3"},
+        {"name": "to:sz-4", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-4"},
+        {"name": "to:sz-5", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-5"}
+      ]
+    },
+    "type": {
+      "cardinality": "exactly_one",
+      "values": [
+        {"name": "type:feature", "color": "A2EEEF", "description": "Новая функциональность"},
+        {"name": "type:bugfix", "color": "D73A4A", "description": "Исправление"},
+        {"name": "type:research", "color": "0075CA", "description": "Исследование без поставки кода"},
+        {"name": "type:decision", "color": "8A6D3B", "description": "Решение, оформляется ADR"},
+        {"name": "type:test", "color": "F9A825", "description": "Тестирование / проверка уровня"},
+        {"name": "type:docs", "color": "0B6E99", "description": "Документация"},
+        {"name": "type:infra", "color": "434343", "description": "Инфраструктура, CI, процессные файлы"},
+        {"name": "type:debt", "color": "795548", "description": "Устранение записанного техдолга"},
+        {"name": "type:question", "color": "D876E3", "description": "Вопрос, блокирующий или уточняющий задачу"}
+      ]
+    },
+    "size": {
+      "cardinality": "exactly_one_for_tasks",
+      "values": [
+        {"name": "size:S", "color": "C2E0C6", "description": "1–2 файла, без смены интерфейсов, однопроходный Fast-Track дуэт"},
+        {"name": "size:M", "color": "FEF2C0", "description": "Внутри одного модуля, коллегия 4 сабов + 2-я волна со сменой ролей"},
+        {"name": "size:L", "color": "F9C6C6", "description": "Несколько модулей или интерфейсы, ARCA + ADR + 2 волны со сменой ролей"}
+      ]
+    },
+    "priority": {
+      "cardinality": "exactly_one",
+      "values": [
+        {"name": "priority:critical", "color": "B60205", "description": "Приоритет: critical"},
+        {"name": "priority:high", "color": "D93F0B", "description": "Приоритет: high"},
+        {"name": "priority:medium", "color": "FBCA04", "description": "Приоритет: medium"},
+        {"name": "priority:low", "color": "0E8A16", "description": "Приоритет: low"}
+      ]
+    },
+    "env": {
+      "cardinality": "exactly_one_for_tasks",
+      "values": [
+        {"name": "env:test", "color": "7ED3B2", "description": "Потолок поставки: уровень test"},
+        {"name": "env:staging", "color": "F5A623", "description": "Потолок поставки: уровень staging"},
+        {"name": "env:production", "color": "E11D21", "description": "Потолок поставки: уровень production"}
+      ]
+    },
+    "flags": {
+      "cardinality": "zero_or_more",
+      "values": [
+        {"name": "external", "color": "9E7BFF", "description": "Исполнителя запускает владелец вручную"},
+        {"name": "launch-ready", "color": "00A6A6", "description": "Launch-пакет опубликован, ждём запуска владельцем"},
+        {"name": "blocked-external", "color": "8B5CF6", "description": "Блокер — внешний агент или ручной запуск владельца"},
+        {"name": "needs-human", "color": "FF7A00", "description": "Нужно решение или приёмка владельца"},
+        {"name": "has-pr", "color": "2B6CB0", "description": "Есть связанный PR"}
+      ]
+    }
+  },
+  "markers": [
+    {"emoji": "🚀", "token": "LAUNCH", "prefix": "🚀 LAUNCH", "publisher": "coordinator"},
+    {"emoji": "🔄", "token": "CONTINUE", "prefix": "🔄 CONTINUE", "publisher": "coordinator"},
+    {"emoji": "🔥", "token": "HOTFIX", "prefix": "🔥 HOTFIX", "publisher": "coordinator"},
+    {"emoji": "👀", "token": "READ", "prefix": "👀 READ", "publisher": "executor"},
+    {"emoji": "🎯", "token": "CONCLUSION", "prefix": "🎯 CONCLUSION", "publisher": "executor"},
+    {"emoji": "✅", "token": "GATE OPEN", "prefix": "✅ GATE OPEN", "publisher": "coordinator"},
+    {"emoji": "❌", "token": "GATE CLOSED", "prefix": "❌ GATE CLOSED", "publisher": "coordinator"},
+    {"emoji": "🔁", "token": "REJECTED", "prefix": "🔁 REJECTED", "publisher": "coordinator"},
+    {"emoji": "🏁", "token": "DONE", "prefix": "🏁 DONE", "publisher": "coordinator"},
+    {"emoji": "📬", "token": "DELIVERED", "prefix": "📬 DELIVERED", "publisher": "executor"},
+    {"emoji": "👤", "token": "NEEDS-HUMAN", "prefix": "👤 NEEDS-HUMAN", "publisher": "coordinator"},
+    {"emoji": "🔍", "token": "QA", "prefix": "🔍 QA", "publisher": "qa"},
+    {"emoji": "🔎", "token": "VERDICT", "prefix": "🔎 VERDICT", "publisher": "reviewer"},
+    {"emoji": "💓", "token": "HEARTBEAT", "prefix": "💓 HEARTBEAT", "publisher": "executor"},
+    {"emoji": "📣", "token": "PING", "prefix": "📣 PING", "publisher": "coordinator"},
+    {"emoji": "✅", "token": "CI", "prefix": "✅ CI", "publisher": "ci"},
+    {"emoji": "✋", "token": "CLAIM", "prefix": "✋ CLAIM", "publisher": "executor"},
+    {"emoji": "⛔", "token": "BLOCKED", "prefix": "⛔ BLOCKED", "publisher": "any"},
+    {"emoji": "❓", "token": "QUESTION", "prefix": "❓ QUESTION", "publisher": "any"},
+    {"emoji": "♻️", "token": "RECLAIMED", "prefix": "♻️ RECLAIMED", "publisher": "coordinator"},
+    {"emoji": "📌", "token": "DECISION", "prefix": "📌 DECISION", "publisher": "coordinator_or_owner"}
+  ],
+  "tiers": {
+    "size:S": {
+      "mode": "fast-track-duet",
+      "pre_action_gate_pause": false,
+      "subagents_required": ["executor", "reviewer"],
+      "waves": 1,
+      "role_swap": "paired_tasks_rotation",
+      "heartbeat_minutes": 10,
+      "stale_minutes": 15,
+      "lease_minutes": 30
+    },
+    "size:M": {
+      "mode": "collegium-4-plus-swap",
+      "pre_action_gate_pause": true,
+      "subagents_required": ["auditor", "researcher", "executor", "reviewer"],
+      "waves": 2,
+      "role_swap": "both_intra_task_and_paired_tasks",
+      "heartbeat_minutes": 30,
+      "stale_minutes": 60,
+      "lease_minutes": 120
+    },
+    "size:L": {
+      "mode": "collegium-4-adr-plus-swap",
+      "pre_action_gate_pause": true,
+      "adr_required": true,
+      "subagents_required": ["auditor", "researcher", "executor", "reviewer"],
+      "waves": 2,
+      "role_swap": "both_intra_task_and_paired_tasks",
+      "heartbeat_minutes": 1440,
+      "stale_minutes": 1440,
+      "lease_minutes": 2880
+    }
+  },
+  "subagent_roles": {
+    "auditor": {
+      "prompt": "agents/auditor.md",
+      "write_access": false,
+      "default_skills": ["subagent-collegium"],
+      "deliverable": "AUDIT_PACK + Collegial Lens 1 (Radius & Invariants)"
+    },
+    "researcher": {
+      "prompt": "agents/researcher.md",
+      "write_access": false,
+      "default_skills": ["subagent-collegium"],
+      "deliverable": "SPEC_PACK + Collegial Lens 2 (Spec & Pattern Fidelity)"
+    },
+    "executor": {
+      "prompt": "agents/executor.md",
+      "write_access": true,
+      "fresh_context_mandatory": true,
+      "default_skills": ["clean-execution", "bus-delivery"],
+      "deliverable": "Minimal verified diff + preflight receipt + Collegial Lens 4 (Fragility Map)"
+    },
+    "reviewer": {
+      "prompt": "agents/reviewer.md",
+      "write_access": false,
+      "default_skills": ["adversarial-review", "bus-delivery"],
+      "deliverable": "Pre-Flight REVIEWER_KICK + Collegial Lens 3 (Fresh Verification & Edge Cases)"
+    }
+  }
+}

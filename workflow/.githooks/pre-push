@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — механический запрет прямых пушей в main (инцидент #41, ADR-0002).
+# Установка: python3 scripts/preflight --install-hooks  (или: git config core.hooksPath .githooks)
+set -euo pipefail
+
+REMOTE_NAME="${1:-origin}"
+REMOTE_URL="${2:-}"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  if [ "$remote_ref" = "refs/heads/main" ] || [ "$remote_ref" = "refs/heads/master" ]; then
+    cat >&2 <<EOF
+⛔ ЗАБЛОКИРОВАНО (.githooks/pre-push): прямой пуш в ${remote_ref#refs/heads/} запрещён!
+   Репозиторий: ${REMOTE_URL:-$REMOTE_NAME}
+   Локальная ссылка: $local_ref (${local_sha:0:7}) -> $remote_ref
+
+   Обязательный цикл канона (инцидент #41 / ADR-0002):
+   1) Рабочая ветка от свежего origin/main (work/<issue>-<slug> или arena/*)
+   2) python3 scripts/preflight
+   3) Пуш своей ветки -> PR -> независимое ревью не-автором -> письмо с диапазоном
+EOF
+    exit 1
+  fi
+done
+
+exit 0
