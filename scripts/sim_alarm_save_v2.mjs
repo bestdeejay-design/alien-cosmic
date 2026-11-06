@@ -44,28 +44,30 @@ try {
   const v = res.value;
   assert(v.schema === 2, 'schema не 2');
   const c = v.homeDto.commander;
-  assert(c.level === 5, 'уровень не сохранился: ' + c.level);
-  // progress = x + 7x = 8x при долях старого порога: 120/260 → 960/2080.
-  assert(BigInt(c.xpMicro) === 960n * 1000000n, 'кредит 7×: прогресс ' + c.xpMicro + ' != 960');
+  // SPEC §2 (канон владельца 02.11, migration curve 2): кредит 7× = 960,
+  // излишек конвертируется в уровни по единой шкале 60+40·L: 960−260−300−340=60 → L8.
+  assert(c.level === 8, 'уровень после конверсии излишка: ' + c.level + ' (ожидался 8)');
+  assert(BigInt(c.xpMicro) === 60n * 1000000n, 'кредит 7×: прогресс ' + c.xpMicro + ' != 60');
   assert(c.legacySnapshot && c.legacySnapshot.rawXp === 120 && c.legacySnapshot.normalizingCredit === 840,
     'legacySnapshot неверен: ' + JSON.stringify(c.legacySnapshot));
-  assert(c.unspent === 4, 'очки навыка L5: ' + c.unspent);
+  assert(c.unspent === 7, 'очки навыка L8 (level-1): ' + c.unspent);
   // Повторная миграция уже v2 — не добавляет кредит.
   const again = STORE.prepareRaidV2(JSON.stringify(v));
   assert(again.migrated === false, 'повторная миграция не идентична');
   assert(BigInt(again.value.homeDto.commander.xpMicro) === BigInt(c.xpMicro), 'кредит начислен повторно');
-  pass(`S1 миграция: L5 сохранена, progress 960/2080 (120+840), unspent=4, повтор не дублирует`);
+  pass(`S1 миграция: L5/120 → конверсия излишка в L8 (progress 60), unspent=7, повтор не дублирует`);
 } catch (e) { fail('S1 миграция', e); }
 
 // ---------- S2: L1/L20 и границы ----------
 try {
   const r1 = STORE.prepareRaidV2(legacySave(1, 17));
   const c1 = r1.value.homeDto.commander;
-  assert(c1.level === 1 && BigInt(c1.xpMicro) === 136n * 1000000n, 'пример L1,x=17 → 136: ' + c1.xpMicro);
+  // 17+7·17=136 → порог L1 (100) → L2, остаток 36.
+  assert(c1.level === 2 && BigInt(c1.xpMicro) === 36n * 1000000n, 'пример L1,x=17 → L2/36: ' + c1.level + '/' + c1.xpMicro);
   const r20 = STORE.prepareRaidV2(legacySave(20, 0));
   const c20 = r20.value.homeDto.commander;
   assert(c20.level === 20 && c20.xpMicro === '0', 'L20 с нулевым raw сломан');
-  pass('S2 края: L1 (17→136) и L20 (0) мигрируют корректно');
+  pass('S2 края: L1 (17→конверсия в L2/36) и L20 (0) мигрируют корректно');
 } catch (e) { fail('S2 края', e); }
 
 // ---------- S3: v2 roundtrip + будущая схема ----------

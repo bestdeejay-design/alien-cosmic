@@ -76,7 +76,12 @@ try {
   // ace#4: guest entry is an explicit choice, no automatic simulation startup.
   await page.locator('#auth-close').click();
 
-  // Автопоказ капсул при входе (maybeShowOnEntry, задержка 900 мс).
+  // Автопоказ капсул: с ace#25/35 онбординг гейтит maybeShowOnEntry, капсулы
+  // показываются ПОСЛЕ тура (showAfterOnboarding, ~1.5 с). Свежая сессия без
+  // сейва всегда начинает с тура — скипаем его, капсулы открываются сами.
+  const obSkip = page.locator('#ob-skip');
+  await obSkip.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  if (await obSkip.isVisible().catch(() => false)) { await obSkip.click(); await sleep(1500); }
   await page.waitForSelector('#chest-overlay:not(.hidden)', { timeout: 15000 });
   await sleep(300);
 

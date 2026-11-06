@@ -79,8 +79,10 @@ try {
   const expectedB = ledger.plan.waves.flatMap((w) => w.slots).reduce((sum, slot) => sum + slot.bounty, 0);
   assert(ledger.bounty === expectedB, `B=${ledger.bounty} != ${expectedB}`);
   const { outcome } = EVT.prepareAlarmSettlement(s, ledger.plan.eventId);
-  assert(outcome.payout === outcome.bounty, 'победа: выплата != B');
-  assert(outcome.xp === outcome.bounty, 'победа: XP != B');
+  // COMMANDER2_SPEC §3/§4 (канон А2/А3, 03.11): победа — payout=⌊B×2⌋,
+  // XP=B·modeMul+2·creditedKills (light modeMul=1); preservation — только score.
+  assert(outcome.payout === Math.floor(outcome.bounty * 2.0), 'победа: выплата != ⌊B×2⌋');
+  assert(outcome.xp === outcome.bounty + 2 * outcome.creditedKills, 'победа: XP != B+2·kills');
   assert(outcome.score === outcome.bounty + outcome.preservation, 'score != B+P');
   const xpMicro = BigInt(s.homeDto.commander.xpMicro);
   assert(xpMicro === BigInt(outcome.xp) * 1000000n, 'XP командира не применился');
@@ -104,10 +106,11 @@ try {
   PLAN.surrenderAlarm(l2);
   assert(l2.result === 'loss' && l2.cause === 'surrender', 'сдача не зафиксирована');
   const r2 = EVT.prepareAlarmSettlement(s2, l2.plan.eventId);
-  assert(r2.outcome.xp === 0, 'D2: при поражении XP должен быть 0');
-  assert(r2.outcome.payout === Math.floor(r2.outcome.bounty / 2), 'D2: выплата != floor(B/2)');
-  assert(BigInt(s2.homeDto.commander.xpMicro) === 0n, 'D2: командир получил XP за поражение');
-  pass(`E1 поражение (D2): B=${r2.outcome.bounty}, выплата=${r2.outcome.payout} (50%), XP=0`);
+  // SPEC §3/§4: поражение/сдача — payout 0, XP=2·creditedKills (частичный опыт).
+  assert(r2.outcome.payout === 0, 'D2(А2): за поражение выплата должна быть 0');
+  assert(r2.outcome.xp === 2 * r2.outcome.creditedKills, 'поражение: XP != 2·creditedKills');
+  assert(BigInt(s2.homeDto.commander.xpMicro) === BigInt(r2.outcome.xp) * 1000000n, 'XP командира не сошёлся с исходом');
+  pass(`E1 поражение (D2, А2/А3): B=${r2.outcome.bounty}, выплата=0, XP=${r2.outcome.xp} (2·kills)`);
 } catch (e) { fail('E1 исходы D2', e); }
 
 // ---------- E2: единственный runtime-вход XP ----------
@@ -131,10 +134,12 @@ try {
   //   commander.js — сам барьер: addXp no-op на v2-командире (гейт C1(v2));
   //   home-raid.js — legacy-волны: на v2 не тикают (game.js переключает на
   //     updateAlarmHome при session.schema === 2), двойной барьер;
-  //   game.js — XP возврата вылазки: no-op через v2-командира.
+  //   game.js — XP возврата вылазки: no-op через v2-командира;
+  //   alarm-v2-director.js — учебная тревога 15 XP раз/24 ч (SPEC §3.1 X6/§3.3,
+  //     барьер lastTrainingXpAt; на v2-командире addXp барьерится в commander.js).
   // Новый источник XP обязан пройти через settle (prepareAlarmXpAward).
   const { readdirSync } = await import('node:fs');
-  const allowed = new Set(['commander.js', 'home-raid.js', 'game.js']);
+  const allowed = new Set(['commander.js', 'home-raid.js', 'game.js', 'alarm-v2-director.js']);
   const offenders = [];
   for (const f of readdirSync(path.join(ROOT, 'r/js')).filter((x) => x.endsWith('.js'))) {
     const src = readFileSync(path.join(ROOT, 'r/js', f), 'utf8');

@@ -101,7 +101,9 @@ try {
   assert(localStorage.getItem(STORE.RAID_BACKUP_PROFILE) === raw, 'оригинал не в бэкапе');
   const v = promoted.value;
   assert(v.schema === 2 && v.alarmV2.walletMicro === '250000000', 'миграция кривая: ' + v.alarmV2.walletMicro);
-  assert(BigInt(v.homeDto.commander.xpMicro) === 960n * 1000000n, 'кредит 7× не начислен');
+  // SPEC §2 curve 2: 8×120=960 конвертируется в уровни (L5→L8, остаток 60).
+  assert(v.homeDto.commander.level === 8 && BigInt(v.homeDto.commander.xpMicro) === 60n * 1000000n,
+    'кредит 7× не сконвертирован в уровни: ' + v.homeDto.commander.level + '/' + v.homeDto.commander.xpMicro);
   // Повторная промоция того же канона — no-op, кредит не дублируется.
   const again = await STORE.promoteStoredRaid(localStorage, RAID_KEY, STORE.RAID_BACKUP_PROFILE);
   await flushLocks();

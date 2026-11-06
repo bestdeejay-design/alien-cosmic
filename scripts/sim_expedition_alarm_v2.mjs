@@ -7,12 +7,18 @@
 //   EX4 бюджет/груз зачисляются в кошелёк РОВНО один раз (микро-остаток,
 //      returnId, lastSettledReturnId; reload через промоцию не дублирует);
 //   EX5 грейд-таймер/очередь/СБОР-hold переживают вылет/возврат (П2-компенсация);
-//   EX6 семантическое равенство базы до/после учения и отката ERROR_HOLD
+//   EX6 семантическое равенство базы до/после учения (rollback удалён, SPEC §6.1)
 //      (Ф-2), замороженные таймеры не продвигаются;
 //   EX7 компенсация оффлайн-времени кэп 24 ч (не 100): таймеры не улетают.
 // Запуск: node scripts/sim_expedition_alarm_v2.mjs
+//
+// ace dual-path (копия из котла alien-cosmic/scripts, патч путей ../r/ → ../game/r/).
+// Патч EX6 kindness (ace#35/37efaec): равенство базы после учения — вне
+// узаконенных kindness-полей (сборщики → gather, кристаллы/минералы).
 // ============================================================
 import './harness.mjs';
+import { existsSync as _es } from 'node:fs';
+const _P = (f) => (_es(new URL('../game/r/js/', import.meta.url).pathname) ? '../game/r/' : '../r/') + f;
 import { V } from './stamp.mjs';
 
 const failures = [];
@@ -20,13 +26,13 @@ const fail = (phase, err) => { failures.push(phase); console.log(`FAIL  ${phase}
 const pass = (msg) => console.log(`PASS  ${msg}`);
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
-await import('../r/js/game.js');
-const DIR = await import('../r/js/alarm-v2-director.js' + V);
-const U = await import('../r/js/units.js' + V);
-const B = await import('../r/js/buildings.js' + V);
-const R = await import('../r/js/raid.js' + V);
-const STORE = await import('../r/js/alarm-v2-store.js' + V);
-const ASM = await import('../r/js/alarm-v2-assembly.js' + V);
+await import(_P('js/game.js'));
+const DIR = await import(_P('js/alarm-v2-director.js' + V));
+const U = await import(_P('js/units.js' + V));
+const B = await import(_P('js/buildings.js' + V));
+const R = await import(_P('js/raid.js' + V));
+const STORE = await import(_P('js/alarm-v2-store.js' + V));
+const ASM = await import(_P('js/alarm-v2-assembly.js' + V));
 
 const game = globalThis.game;
 assert(game, 'движок полигона не поднялся');
@@ -85,20 +91,27 @@ try {
   DIR.startAlarmEvent(game, { mode: 'light', kind: 'normal' });
   let v = R.validateRaidLoadout(game.state, { tier: 1, units: { worker: 2 }, budget: 0, seed: 1 });
   assert(!v.ok && v.reasonKey === 'ui.raid.errAlarmActive', 'бой не запретил вылазку: ' + JSON.stringify(v));
-  // откат события, чтобы продолжить
-  DIR.rollbackAlarmEvent(game);
+  // COMMANDER2_SPEC §6.1: rollbackAlarmEvent удалён (бой необратим); легальный
+  // выход — сдача (payout 0, потери канон). Сдаём событие, чтобы продолжить.
+  DIR.surrenderAlarmEvent(game);
+  { let g = 0; while (game.state.game.raidSession.alarmV2.activeEvent && g++ < 2000) ticks(20); }
+  assert(!game.state.game.raidSession.alarmV2.activeEvent, 'сдача не закрыла событие');
+  assert(typeof DIR.rollbackAlarmEvent === 'undefined', 'rollbackAlarmEvent должен быть удалён');
   ticks(2);
   // восстановление (recovery) — отказ тем же ключом
   meta().recovery = { ruins: [] };
   v = R.validateRaidLoadout(game.state, { tier: 1, units: { worker: 2 }, budget: 0, seed: 1 });
-  assert(!v.ok && v.reasonKey === 'ui.raid.errAlarmActive', 'восстановление не запретило вылазку');
+  // ace#22: активной тревоге — свой текст «Идёт тревога: волна N из M»
+  // (errAlarmActive), восстановлению — честный errRecovery. В этой точке
+  // activeEvent уже сдан, поэтому ключ жёсткий — OR маскировал бы регресс.
+  assert(!v.ok && v.reasonKey === 'ui.raid.errRecovery', 'восстановление не запретило вылазку');
   meta().recovery = null;
   // учение — отказ (Ф-5: живой бой на карте базы)
   DIR.startTrainingAlarm(game, { mode: 'light' });
   v = R.validateRaidLoadout(game.state, { tier: 1, units: { worker: 2 }, budget: 0, seed: 1 });
   assert(!v.ok && v.reasonKey === 'ui.raid.errAlarmActive', 'учение не запретило вылазку');
   DIR.endTrainingAlarm(game, game.state);
-  pass('EX1 запреты: бой/восстановление/учение → errAlarmActive, вылазка не стартует');
+  pass('EX1 запреты: бой/восстановление/учение → errAlarmActive; выход из боя только сдачей (§6.1)');
 } catch (e) { fail('EX1 запреты', e); }
 
 // ---------- EX2: домашние часы заморожены на вылазке ----------
@@ -220,38 +233,53 @@ try {
       'учение не заспавнило противника (ledger мёртв — заморозка theft-тика)');
     DIR.endTrainingAlarm(game, game.state);
     ticks(2);
+    // COMMANDER2_SPEC §3.1 X6: учение теперь платит 15 XP раз в сутки —
+    // командир после учения легально отличается (XP+15, водяной знак);
+    // равенство базы проверяем по материальной части (без cmd-поля).
     const fp1 = fingerprint(game.state);
-    assert(fp1 === fp0, 'база после учения != до\n  до:   ' + fp0 + '\n  после: ' + fp1);
+    // ace#35 (37efaec, kindness): выход из тура онбординга (в т.ч. авто-финал
+    // после учебной тревоги) легально выдаёт простаивающим сборщикам gather
+    // на ближайший разведанный кристалл — двигаются ТОЛЬКО сборщики
+    // (позиция/приказ) и только кристаллы добычи/минералы. Бойцы, постройки,
+    // технологии, разведка обязаны остаться бит-в-бит. Поэтому равенство
+    // базы проверяем ИСКЛЮЧАЯ узаконенные kindness-поля: строки workers в 'u'
+    // и поля 'c' (кристаллы) и 'm' (минералы); сами workers отдельно
+    // проверяем на неизменность состава и HP ниже.
+    const stripKindnessFp = (st) => JSON.stringify({
+      b: st.buildings.filter((x) => !x.dead)
+        .map((x) => [x.type, x.tx, x.ty, x.level || 1, Math.round(x.hp)]).sort(),
+      nu: st.units.filter((x) => !x.dead && !x.garrison && x.type !== 'worker')
+        .map((x) => [x.type, Math.round(x.x), Math.round(x.y), Math.round(x.hp)]).sort(),
+      t: st.tech.player,
+      explored: (() => { let n = 0; for (let y = 0; y < st.map.h; y++) for (let x = 0; x < st.map.w; x++) if (st.fog.tileExplored(x, y)) n++; return n; })(),
+    });
+    assert(stripKindnessFp(game.state) === stripKindnessFp(st),
+      'база после учения != до (вне kindness-полей)\n  до:   ' + stripKindnessFp(st) + '\n  после: ' + stripKindnessFp(game.state));
+    // Сборщики: состав и HP не изменились; если сборщик вышел из idle —
+    // только в легальный kindness-gather (ace#35).
+    const w0 = JSON.parse(fp0).u.filter((r) => r[0] === 'worker').sort();
+    const w1 = JSON.parse(fp1).u.filter((r) => r[0] === 'worker').sort();
+    assert(JSON.stringify(w0.map((r) => r[3])) === JSON.stringify(w1.map((r) => r[3])),
+      'kindness задел HP/состав сборщиков: ' + JSON.stringify(w0) + ' -> ' + JSON.stringify(w1));
+    for (const u of st.units.filter((x) => !x.dead && !x.garrison && x.type === 'worker'))
+      assert(!u.order || u.order.kind === 'idle' || u.order.kind === 'gather',
+        'сборщик после учения в неожиданном приказе: ' + JSON.stringify(u.order));
+    // Кристаллы: только уменьшение (добыча), никаких исчезновений тайлов.
+    const cs0 = JSON.parse(fp0).c, cs1 = JSON.parse(fp1).c;
+    assert(cs1.length <= cs0.length, 'kindness удалил кристаллы: ' + cs0.length + ' -> ' + cs1.length);
+    // Командир: легальный дельта-эффект X6 — +15 XP и водяной знак суток.
+    const cmdOf = (fp) => JSON.parse(fp.match(/"cmd":"(.*?)","explored"/)[1].replace(/\\"/g, '"'));
+    const c0 = cmdOf(fp0), c1 = cmdOf(fp1);
+    assert(c1.level === c0.level, 'учение не должно менять уровень');
+    assert(BigInt(c1.xpMicro) - BigInt(c0.xpMicro) === 15000000n, 'учебная не заплатила 15 XP');
+    assert(c1.lastTrainingXpAt != null, 'водяной знак учебной (15 XP/24 ч) не записан');
   }
-  // 6б. ERROR_HOLD → откат (Ф-2): база до === базе после, замороженные
-  // таймеры (грейд) не продвинулись — гидратация из preBattleDto.
-  {
-    const st = bootHome();
-    const depot = st.buildings.find((b) => b.side === 'player' && b.type === 'depot');
-    depot.gradeUp = { t: 40, total: 90 };
-    const fp0 = fingerprint(st);
-    DIR.startAlarmEvent(game, { mode: 'light', kind: 'normal' });
-    // Дефект-7 (дельта ревизии): откат проверяется на РЕАЛЬНОМ бою —
-    // до волны со спавном врагов и уроном, а не в тихом WARNING.
-    {
-      let g2 = 0;
-      const aled = () => st.game.raidSession.alarmV2.activeEvent &&
-        st.game.raidSession.alarmV2.activeEvent.ledger;
-      while (aled() && aled().phase !== 'WAVE' && g2++ < 2000) ticks(20);
-      ticks(30);
-      assert(st.units.some((u) => u.side === 'enemy' && !u.dead),
-        'событие не заспавнило врагов для проверки отката');
-    }
-    const rb = DIR.rollbackAlarmEvent(game);
-    assert(rb.ok, 'откат не прошёл');
-    ticks(2);
-    const fp1 = fingerprint(game.state);
-    assert(fp1 === fp0, 'база после отката != до\n  до:   ' + fp0 + '\n  после: ' + fp1);
-    const depot2 = game.state.buildings.find((b) => b.side === 'player' && b.type === 'depot');
-    assert(depot2.gradeUp && depot2.gradeUp.t <= 40 && depot2.gradeUp.t >= 37,
-      'замороженный грейд-таймер продвинулся: ' + JSON.stringify(depot2.gradeUp));
-  }
-  pass('EX6 семантика базы: учение и откат ERROR_HOLD возвращают базу бит-в-бит, таймеры заморожены');
+  // 6б. COMMANDER2_SPEC §6.1 (канон 02.11): «Отменить бой»/rollback удалён —
+  // откатов к снимку нет, все потери боя канон. Бывший сценарий
+  // «ERROR_HOLD → откат возвращает базу бит-в-бит» не существует: выход из
+  // боя — только сдача (см. EX1). Грейд-таймер депо при сдаче не замораживается
+  // (бой необратим), поэтому проверка снята вместе с механизмом.
+  pass('EX6 семантика базы: учение возвращает базу бит-в-бит ИСКЛЮЧАЯ узаконенные kindness-поля (ace#35: сборщики→gather, кристаллы/минералы); rollback удалён по канону потерь (§6.1)');
 } catch (e) { fail('EX6 семантика базы', e); }
 
 // ---------- EX7: компенсация оффлайн-времени — кэп 24 ч ----------

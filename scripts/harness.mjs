@@ -104,6 +104,7 @@ class FakeEl {
     (this._handlers.blur || []).forEach((fn) => fn({ type: 'blur', target: this }));
   }
   appendChild(c) { c.parent = this; this.children.push(c); return c; }
+  removeChild(c) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); c.parent = null; return c; }
   append(...nodes) { for (const n of nodes) this.appendChild(n); }
   prepend(...nodes) { for (const n of nodes.reverse()) { n.parent = this; this.children.unshift(n); } }
   insertBefore(n, ref) {

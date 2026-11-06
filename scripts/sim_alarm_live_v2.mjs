@@ -67,7 +67,10 @@ try {
   const m = meta(st);
   assert(m.activeEvent && m.activeEvent.ledger.phase === 'WARNING', 'нет фазы WARNING');
   assert(m.activeEvent.theft, 'журнал кражи не создан');
-  assert(m.preBattleDto, 'предбоевой снимок не снят');
+  // SPEC §6/PERSISTENCE §1 (канон потерь): снимок ДО события — session.homeDto,
+  // для отката не используется (бой необратим); meta.initialDto — зеркало.
+  assert(st.game.raidSession.homeDto && st.game.raidSession.homeDto.capturedAt > 0, 'предбоевой снимок homeDto не снят');
+  assert(m.initialDto, 'зеркало initialDto не снято');
   const again = DIR.startAlarmEvent(game, { mode: 'hard', kind: 'normal' });
   assert(!again.ok, 'повторный старт прошёл во время события');
   const state = DIR.alarmUiState(st);
@@ -117,7 +120,9 @@ try {
   assert(m.report, 'отчёт не создан');
   const rep = m.report;
   assert(rep.result === 'victory', 'ожидалась победа: ' + rep.result);
-  assert(rep.payout === rep.bounty && rep.xp === rep.bounty, 'выплата/XP != B');
+  // COMMANDER2_SPEC §3/§4 (А2/А3): победа — payout=⌊B×2⌋, XP=B+2·creditedKills.
+  assert(rep.payout === Math.floor(rep.bounty * 2.0), 'победа: выплата != ⌊B×2⌋');
+  assert(rep.xp === rep.bounty + 2 * (rep.creditedKills || 0), 'победа: XP != B+2·kills');
   assert(typeof rep.sectorDamage === 'number' && rep.repairCost >= 0, 'разбор секторов/ремонта сломан');
   assert(rep.mode === 'light' && rep.waves === 2, 'режим/волны в отчёте неверны');
   // 300 с минус тики самого прогона (clock уже тикает после settle).
@@ -132,7 +137,7 @@ try {
   assert(BigInt(m.walletMicro) >= BigInt(rep.payout) * 1000000n, 'кошелёк не вырос');
   const state = DIR.alarmUiState(st);
   assert(state.cooldownSec > 0, 'cooldown не виден в UI');
-  pass(`L3 победа→settle: B=${rep.bounty} P=${rep.preservation} score=${rep.score}, отчёт есть, повтор без выплаты, cooldown 300 с`);
+  pass(`L3 победа→settle: B=${rep.bounty} payout=${rep.payout} (2B) XP=${rep.xp}, отчёт есть, повтор без выплаты, cooldown 300 с`);
 } catch (e) { fail('L3 settle', e); }
 
 // ---------- L3b: потеря груза = немедленное поражение (D4) ----------
@@ -159,8 +164,10 @@ try {
     ticks(2);
     m = meta(st);
     assert(!m.activeEvent && m.report && m.report.result === 'loss', 'поражение не сохранилось');
-    assert(m.report.xp === 0, 'D2: за поражение XP не даётся');
-    pass(`L3b D4/D2: вывоз груза → поражение (причина ${m.report.cause}), выплата ${m.report.payout} (50% B), XP 0`);
+    // SPEC §3/§4 (А2/А3): поражение — payout 0, XP=2·creditedKills (здесь 0).
+    assert(m.report.payout === 0 && m.report.xp === 2 * (m.report.creditedKills || 0),
+      'D2 (А2/А3): поражение — payout 0, XP=2·creditedKills');
+    pass(`L3b D4/D2: вывоз груза → поражение (причина ${m.report.cause}), выплата 0, XP ${m.report.xp} (2·kills)`);
   } else {
     // Сценарий может не дойти до спавна носильщика за окно — фиксируем честно.
     pass('L3b D4: сценарий не встретил носильщика за окно (проверено в sim_alarm_economy_v2/theft)');
@@ -182,12 +189,17 @@ try {
   DIR.endTrainingAlarm(game, st);
   assert(!st.alarmTraining, 'учение не завершилось');
   assert(st.game.raidSession.alarmV2.walletMicro === before.minerals, 'кошелёк изменился после учения');
-  assert(JSON.stringify(st.game.raidSession.homeDto.commander) === before.commander, 'командир изменился после учения');
+  // SPEC §3.1 X6/§3.3: учебная тревога платит 15 XP один раз в 24 ч (watermark
+  // lastTrainingXpAt) — командир может подрасти ровно на 15, других изменений нет.
+  const cb = JSON.parse(before.commander), ca = st.game.raidSession.homeDto.commander;
+  const gained = BigInt(ca && ca.xpMicro || 0) - BigInt(cb && cb.xpMicro || 0);
+  assert(gained === 0n || gained === 15000000n, 'командир изменился вне учебной награды: +'+gained);
+  assert((ca && ca.level) >= (cb && cb.level), 'уровень командира упал после учения');
   const afterB = st.buildings.filter((b) => !b.dead);
   assert(afterB.length === before.buildings,
     'здания изменились после учения: было ' + before.buildings + ', стало ' + afterB.length +
     ' (типы: ' + afterB.map((b) => b.type).join(',') + ')');
-  pass('L4 учебная копия: наград нет, кошелёк/командир/база восстановлены');
+  pass(`L4 учебная копия: наград нет (кроме 15 XP раз/24 ч: +${Number(gained)/1000000}), кошелёк/база восстановлены`);
 } catch (e) { fail('L4 учение', e); }
 
 // ---------- L5: телеметрия измерений SZ (ACCEPTANCE §3.6) ----------
