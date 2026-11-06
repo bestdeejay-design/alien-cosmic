@@ -169,11 +169,37 @@ class FakeEl {
     }
     return out;
   }
+  // Поиск по РЕАЛЬНОМУ дереву (узлы, собранные createElement+appendChild):
+  // раньше querySelector видел только innerHTML-разметку (_parseTags), поэтому
+  // модули, строящие DOM API-ем (onboarding buildLegend → lg.querySelector
+  // ('.ob-legend-title')), в headless получали null и «онбординг не поднялся»
+  // (TypeError на .textContent — артефакт стаба, на живом DOM легенда ок,
+  // вердикт 06.11). Селекторы — простые формы: '#id', '.class', 'tag'.
+  _realQueryAll(sel) {
+    let match;
+    if (sel.startsWith('#')) { const id = sel.slice(1); match = (n) => n.id === id; }
+    else if (sel.startsWith('.')) { const cls = sel.slice(1); match = (n) => !!(n.classList && n.classList.contains && n.classList.contains(cls)); }
+    else if (/^[a-z]+$/i.test(sel)) { const tag = sel.toLowerCase(); match = (n) => String(n.tag || '').toLowerCase() === tag; }
+    else return [];
+    const out = [];
+    const walk = (n) => {
+      for (const c of n.children || []) {
+        if (match(c)) out.push(c);
+        walk(c);
+      }
+    };
+    walk(this);
+    return out;
+  }
   querySelector(sel) {
     for (const c of this.children) {
       if (sel.startsWith('#') && c.id === sel.slice(1)) return c;
       if (!sel.startsWith('#') && c._parseTags && c._parseTags(sel).length) return c;
     }
+    // Реальное дерево — БЕЗ кэша (иначе detach узла оставил бы протухший
+    // результат в _qcache: closeLegend удаляет легенду, а поиск её же вернул бы её).
+    const real = this._realQueryAll(sel);
+    if (real.length) return real[0];
     this._qcache = this._qcache || {};
     if (this._qcache[sel]) return this._qcache[sel];
     // Вложенность: узел, собранный через innerHTML, живёт «ленивым» потомком
@@ -195,6 +221,10 @@ class FakeEl {
     return (this._qcache[sel] = nodes[0]);
   }
   querySelectorAll(sel) {
+    // Реальное дерево первым: у innerHTML-миров real-детей нет, результат
+    // совпадает со старым; у createElement-миров раньше возвращался [].
+    const real = this._realQueryAll(sel);
+    if (real.length) return real;
     this._qallCache = this._qallCache || {};
     if (this._qallCache[sel]) return this._qallCache[sel];
     const kids = this.children.filter((c) => (sel.startsWith('#') ? c.id === sel.slice(1) : c._parseTags && c._parseTags(sel).length));
