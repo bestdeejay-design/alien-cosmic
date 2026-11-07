@@ -18,11 +18,26 @@ async function bootBattle(page) {
   await page.evaluate(() => localStorage.setItem('terranrts.language', 'ru'));
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForTimeout(600);
-  await page.locator('#btn-quick-primary').click();
-  await page.waitForTimeout(250);
-  await page.locator('#quick-faction-human').click();
-  await page.waitForTimeout(250);
-  await page.locator('#btn-quick-battle-start').click();
+  // ace-канон бута (ace#34+/#42): мастер входа → «играть без профиля» → игра
+  // стартует сразу (меню-флоу «Быстрая игра» упразднён); у свежего гостя
+  // открыт легенды онбординга — скипаем (.ob-skip), чтобы HUD был без оверлея
+  // (паттерн guestGate из ob_walkthrough.mjs).
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate(() => window.game && window.game.started).catch(() => false)) break;
+    const foot = page.locator('#auth-foot-guest');
+    if (await foot.isVisible().catch(() => false)) {
+      await foot.click();
+      await page.waitForTimeout(300);
+      continue;
+    }
+    await page.waitForTimeout(500);
+  }
+  for (let i = 0; i < 10; i++) {
+    const skip = page.locator('.ob-skip');
+    if (!(await skip.isVisible().catch(() => false))) break;
+    await skip.click();
+    await page.waitForTimeout(300);
+  }
   await page.waitForTimeout(1000);
 }
 
@@ -168,19 +183,17 @@ const browser = await chromium.launch();
   order.kind === 'attackMove' && order.modeOff
     ? ok('тач: тап в режиме — приказ attackMove, режим снят')
     : bad(`тач: приказ=${order.kind}, modeOff=${order.modeOff}`);
-  // Override в меню «Ещё»: выход в меню, раскрыть, переключить на desktop.
-  await page.evaluate(() => window.game.toMenu());
-  await page.locator('#menu-more summary').click();
-  await page.waitForTimeout(200);
-  const sel = page.locator('#ui-profile-select');
-  (await sel.count()) === 1 ? ok('меню: селектор профиля в «Ещё»') : bad('меню: селектора профиля нет');
-  await sel.selectOption('desktop');
+  // Override-персист: на /r/ лендинга НЕТ (владелец 29.10 — #landing-page
+  // жёстко спрятан inline-стилем), путь «меню → Ещё → селектор» недостижим.
+  // Канонный механизм тот же, что стоял за селектором: game.profile.set()
+  // пишет terrranrts.profile.user и применяет профиль немедленно.
+  await page.evaluate(() => window.game.profile.set('desktop'));
   await page.waitForTimeout(200);
   const ov = await page.evaluate(() => ({
-    stored: localStorage.getItem('terranrts.profile'),
+    stored: localStorage.getItem('terranrts.profile.user'),
     input: document.documentElement.getAttribute('data-input'),
   }));
-  ov.stored === 'desktop' && ov.input === 'desktop' ? ok('меню: override desktop сохранён и применён') : bad(`меню: override не сработал (${JSON.stringify(ov)})`);
+  ov.stored === 'desktop' && ov.input === 'desktop' ? ok('override desktop сохранён (terranrts.profile.user) и применён') : bad(`override не сработал (${JSON.stringify(ov)})`);
   await ctx.close();
 }
 

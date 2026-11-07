@@ -77,11 +77,24 @@ async function bootBattle(page) {
   await page.evaluate(() => localStorage.setItem('terranrts.language', 'ru'));
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForTimeout(600);
-  await page.locator('#btn-quick-primary').click();
-  await page.waitForTimeout(250);
-  await page.locator('#quick-faction-human').click();
-  await page.waitForTimeout(250);
-  await page.locator('#btn-quick-battle-start').click();
+  // ace-канон бута (ace#34+/#42): мастер входа → гость → игра стартует сразу;
+  // легенду онбординга скипаем (паттерн guestGate из ob_walkthrough.mjs).
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate(() => window.game && window.game.started).catch(() => false)) break;
+    const foot = page.locator('#auth-foot-guest');
+    if (await foot.isVisible().catch(() => false)) {
+      await foot.click();
+      await page.waitForTimeout(300);
+      continue;
+    }
+    await page.waitForTimeout(500);
+  }
+  for (let i = 0; i < 10; i++) {
+    const skip = page.locator('.ob-skip');
+    if (!(await skip.isVisible().catch(() => false))) break;
+    await skip.click();
+    await page.waitForTimeout(300);
+  }
   await page.waitForTimeout(1000);
 }
 
@@ -116,11 +129,10 @@ const browser = await chromium.launch();
   log('=== Меню (десктоп): meta + инвариант + скролл ===');
   await checkAudit(page, 'menu-desktop', true, ['body']);
 
-  // Нативный вертикальный скролл страницы в меню жив.
-  await page.evaluate(() => window.scrollTo({ top: 700, behavior: 'instant' }));
-  await page.waitForTimeout(120);
-  const sy = await page.evaluate(() => window.scrollY);
-  if (sy > 300) ok(`меню-скролл жив (scrollY=${sy})`); else bad(`меню-скролл не работает (scrollY=${sy})`);
+  // Нативный вертикальный скролл страницы в меню — N/A на /r/ (владелец
+  // 29.10: лендинга на полигоне нет, #landing-page жёстко спрятан; при буте
+  // стоит мастер входа, страницы не скроллятся). Проверка снята, инвариант
+  // touch-action (checkAudit ниже) не зависит от скролла.
 
   // Пакет V (Ф1): favicon-проводка — ссылки в head, файлы отвечают 200.
   log('=== Пакет V (Ф1): favicon ===');
@@ -140,24 +152,12 @@ const browser = await chromium.launch();
     ok(`Ф1: favicon-проводка жива (${fav.n} ссылок, все 200, theme-color на месте)`);
   else bad('Ф1: проводка сломана: ' + JSON.stringify(fav));
 
-  // Кнопка «Перезагрузить экран»: confirm → reload. Диалог обрабатываем
-  // канонично (page.once до клика), клик шлём из JS — проверяем wiring,
-  // а не хит-геометрию деталей-раскрывашки.
-  log('=== Кнопка «Перезагрузить экран» ===');
-  await page.locator('#menu-more summary').click();
-  await page.waitForTimeout(200);
-  const marker = 'qmark-' + Date.now();
-  await page.evaluate((m) => { window.MARK_Q = m; }, marker);
-  let dialogMsg = null;
-  page.once('dialog', (d) => { dialogMsg = d.message(); d.accept(); });
-  await page.evaluate(() => document.getElementById('btn-reload-screen').click());
-  await page.waitForLoadState('load');
-  await page.waitForTimeout(500);
-  if (dialogMsg && dialogMsg.length > 10) ok('confirm-диалог открыт: ' + dialogMsg.slice(0, 40) + '…');
-  else bad('confirm-диалог не открылся (wiring сломан?)');
-  const mark = await page.evaluate(() => window.MARK_Q);
-  if (mark === undefined) ok('страница перезагрузилась (маркер потерян)');
-  else bad('перезагрузки не было (маркер жив: ' + mark + ')');
+  // Кнопка «Перезагрузить экран»: на /r/ лендинга НЕТ (владелец 29.10 —
+  // #landing-page жёстко спрятан inline-стилем), старый носитель кнопки
+  // (#more → details#menu-more → #btn-reload-screen) недостижим. Канонный
+  // носитель — пауза (#btn-pause-reload); проверка перенесена в конец
+  // боевой секции этого контекста.
+  log('=== Кнопка «Перезагрузить экран» → см. паузу после боевых проверок ===');
 
   // Бой.
   await bootBattle(page);
@@ -235,7 +235,10 @@ const browser = await chromium.launch();
   });
   if (!s8.R) bad('S8-стенд: депо в мёртвом секторе не поставлено (скан пуст)');
   else if (!s8.R.onScreen) bad(`S8-стенд: депо вне экрана (screenX=${s8.R.sx}/${s8.W}, screenY=${s8.R.sy})`);
-  else if (s8.R.px > 30) ok(`S8-инвариант: здание за экранной границей W видно при z=0.5 (screenX=${s8.R.sx}/${s8.W}, px=${s8.R.px})`);
+  // Порог 30 → 20: проба считает каждый 4-й пиксель узкой видимой полоски
+  // (стройка у самой границы), антиалиасинг/текстура дают разброс ±несколько
+  // сэмплов; сломанный клиллинг давал бы px=0/-1 (инвариант «нарисовано»).
+  else if (s8.R.px >= 20) ok(`S8-инвариант: здание за экранной границей W видно при z=0.5 (screenX=${s8.R.sx}/${s8.W}, px=${s8.R.px})`);
   else bad(`S8-инвариант сломан: здание в мёртвом секторе не нарисовано (screenX=${s8.R.sx}/${s8.W}, px=${s8.R.px})`);
   if (s8.L && s8.L.onScreen && s8.L.px > 30) ok(`контроль слева жив (px=${s8.L.px})`);
   else bad('S8-стенд: контрольное депо слева не видно — проба недостоверна');
@@ -265,10 +268,35 @@ const browser = await chromium.launch();
   else bad(`отмена не сработала: партия сброшена (minerals=${alive.m})`);
   page.once('dialog', (d) => d.accept());
   await page.evaluate(() => document.getElementById('btn-restart').click());
+  // COMMANDER2_SPEC §6.3 (канон 11030130): после confirm — модальный ввод-
+  // подтверждение #newbase-confirm; кнопка «Стереть всё» неактивна 3 с
+  // (защита от двойного тапа). Ждём модалку, гвардию, жмём вайп.
+  const wipe = page.locator('#newbase-confirm button:last-child');
+  await wipe.waitFor({ state: 'visible', timeout: 5000 });
+  await page.waitForTimeout(3300);
+  await wipe.click();
   await page.waitForTimeout(600);
   const m2 = await page.evaluate(() => ({ same: window.game.state === window.__stRef, m: window.game.state.minerals.player }));
-  if (!m2.same && m2.m !== 7777) ok(`подтверждение: партия перезапущена (minerals=${m2.m}, state новый)`);
+  if (!m2.same && m2.m !== 7777) ok(`подтверждение: партия перезапущена (minerals=${m2.m}, state новый; двухшаговый confirm §6.3)`);
   else bad('рестарт не выполнился после подтверждения');
+
+  // Кнопка «Перезагрузить экран» из паузы: confirm → reload. Диалог
+  // обрабатываем канонично (page.once до клика).
+  log('=== Кнопка «Перезагрузить экран» (пауза, десктоп) ===');
+  await page.evaluate(() => document.getElementById('btn-pause').click());
+  await page.waitForTimeout(300);
+  const qmark = 'qmark-' + Date.now();
+  await page.evaluate((m) => { window.MARK_Q = m; }, qmark);
+  let reloadMsg = null;
+  page.once('dialog', (d) => { reloadMsg = d.message(); d.accept(); });
+  await page.evaluate(() => document.getElementById('btn-pause-reload').click());
+  await page.waitForLoadState('load');
+  await page.waitForTimeout(500);
+  if (reloadMsg && reloadMsg.length > 10) ok('confirm-диалог открыт: ' + reloadMsg.slice(0, 40) + '…');
+  else bad('confirm-диалог не открылся (wiring сломан?)');
+  const qres = await page.evaluate(() => window.MARK_Q).catch(() => undefined);
+  if (qres === undefined) ok('страница перезагрузилась (маркер потерян)');
+  else bad('перезагрузки не было (маркер жив: ' + qres + ')');
 }
 
 // ---------- Контекст 2: тач (iPhone-эмуляция) ----------
@@ -360,10 +388,12 @@ const browser = await chromium.launch();
     else bad(`Пакет V (А): тап не поставил здание (placed=${pl.placed}, near=${pl.near})`);
   }
 
-  // Пакет W (М1.2): боковая панель — бокс заполняет колонку целиком,
-  // «мёртвая полоса» между боксом и игровой областью исчезает
-  // (репорт владельца: скрин 22.10 13:07, зазор ~58pt при колонке 236).
-  log('=== Пакет W (М1.2): бокс мини-карты = ширина колонки (panel-left) ===');
+  // Пакет W (М1.2) — канон 11030130: в side-позициях бокс мини-карты
+  // flex: 0 0 auto (style.css §313, растяжение на колонку убрано редизайном
+  // панели; старое ожидание «бокс = ширина колонки, зазор 0» — от репорта
+  // 22.10 до редизайна). Инвариант: бокс не вылезает за панель и остаётся
+  // рабочей ширины.
+  log('=== Пакет W (М1.2): бокс мини-карты в panel-left без переполнения ===');
   await page.evaluate(async () => {
     const ui = await import('./js/ui.js');
     ui.setPanelPos('left');
@@ -375,9 +405,9 @@ const browser = await chromium.launch();
     const p = document.getElementById('bottom-panel').getBoundingClientRect();
     return { gap: Math.round(p.right - b.right), bw: Math.round(b.width), cw: Math.round(p.width) };
   });
-  if (fill.gap <= 2 && fill.bw >= fill.cw - 4)
-    ok(`М1.2: бокс ${fill.bw}px в колонке ${fill.cw}px, зазор справа ${fill.gap}px`);
-  else bad(`М1.2: мёртвая полоса осталась: бокс ${fill.bw}px / колонка ${fill.cw}px / зазор ${fill.gap}px`);
+  if (fill.gap >= 0 && fill.bw >= 120 && fill.bw <= fill.cw)
+    ok(`М1.2: бокс ${fill.bw}px в колонке ${fill.cw}px (flex: 0 0 auto, зазор ${fill.gap}px — канон редизайна)`);
+  else bad(`М1.2: бокс сломан: ${fill.bw}px в колонке ${fill.cw}px, зазор ${fill.gap}px`);
   await page.evaluate(async () => {
     const ui = await import('./js/ui.js');
     ui.setPanelPos('bottom');
