@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
-# .githooks/pre-push — механический запрет прямых пушей в main (инцидент #41, ADR-0002).
-# Установка: python3 scripts/preflight --install-hooks  (или: git config core.hooksPath .githooks)
+# .githooks/pre-push — страж репозитория (решение владельца 15.11, #170).
+# 1) ЗАМОК: любой пуш запрещён, пока владелец не снял замок (scripts/guard --unlock).
+# 2) Прямые пуши в main запрещены всегда (инцидент #41, ADR-0002).
+# Установка: python3 scripts/preflight --install-hooks  (git config core.hooksPath .githooks)
 set -euo pipefail
 
 REMOTE_NAME="${1:-origin}"
 REMOTE_URL="${2:-}"
+
+if ! python3 "$(dirname "$0")/../scripts/guard" --is-open >/dev/null 2>&1; then
+  cat >&2 <<EOF
+🔒 ЗАМОК РЕПОЗИТОРИЯ: пуши запрещены — правки только по слову владельца.
+   Репозиторий: ${REMOTE_URL:-$REMOTE_NAME}
+
+   Владелец снимает замок:  python3 scripts/guard --unlock "<фраза>"
+   Состояние:               python3 scripts/guard --status
+   Нарушение замка = инцидент (PROTOCOL §3: казус → правило).
+EOF
+  exit 1
+fi
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "${remote_ref:-}" ] && continue
@@ -15,7 +29,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
    Локальная ссылка: $local_ref (${local_sha:0:7}) -> $remote_ref
 
    Обязательный цикл канона (инцидент #41 / ADR-0002):
-   1) Рабочая ветка от свежего origin/main (work/<issue>-<slug> или arena/*)
+   1) Рабочая ветка от свежего origin/main (work/<issue>-<slug> или ветка контура исполнителя)
    2) python3 scripts/preflight
    3) Пуш своей ветки -> PR -> независимое ревью не-автором -> письмо с диапазоном
 EOF

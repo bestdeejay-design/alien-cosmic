@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "slug": "example",
+    "repo": "org/example",
+    "canon_prefix": ""
+  },
+  "pool_label": "to:pool",
+  "branch_prefixes": [
+    "work",
+    "ext",
+    "agent"
+  ],
+  "roster": [
+    {
+      "id": "worker-1",
+      "name": "Worker 1",
+      "mode": "direct_gh",
+      "color": "C5DEF5",
+      "board_color": "GREEN",
+      "description": "Текущий адресат: внутренний исполнитель worker-1 (прямой доступ к gh API)"
+    },
+    {
+      "id": "worker-2",
+      "name": "Worker 2",
+      "mode": "direct_gh",
+      "color": "C5DEF5",
+      "board_color": "GREEN",
+      "description": "Текущий адресат: внутренний исполнитель worker-2 (прямой доступ к gh API)"
+    },
+    {
+      "id": "sandbox-1",
+      "name": "Sandbox 1",
+      "mode": "isolated_branch",
+      "branch_prefix": "ext",
+      "color": "BFDADC",
+      "board_color": "PURPLE",
+      "description": "Текущий адресат: изолированный исполнитель sandbox-1 (push своей ветки + docs/MAIL.md)"
+    }
+  ],
+  "env_skills": [],
+  "custom_board_fields": [],
+  "custodians": [
+    {
+      "id": "watcher-schema",
+      "kind": "schema-sentinel",
+      "check": "python3 tests/check_core_labels.py --labels-json tests/fixtures/labels-core.json --report-extra",
+      "cadence": "ежечасно"
+    },
+    {
+      "id": "watcher-board",
+      "kind": "board-gardener",
+      "check": "python3 scripts/board_link.py --hygiene",
+      "cadence": "каждые 6 часов"
+    },
+    {
+      "id": "watcher-docs",
+      "kind": "doc-linter",
+      "check": "python3 tests/regression.py",
+      "cadence": "ежедневно"
+    }
+  ]
+}

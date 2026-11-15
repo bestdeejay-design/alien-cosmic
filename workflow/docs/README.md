@@ -1,9 +1,9 @@
 # docs/ — воркфлоу команды: исследование и финальный комплект (вариант C)
 
 > **Статус: УТВЕРЖДЁН КАНОНОМ владельцем 03.11.2026.** Комплект собран (вариант C,
-> выбран 27.10), прошёл сухой прогон ([TEST-REPORT.md](./TEST-REPORT.md), [TEST-REPORT-V2.md](./TEST-REPORT-V2.md)),
+> выбран 27.10), прошёл сухой прогон ([TEST-REPORT.md](./history/TEST-REPORT.md), [TEST-REPORT-V2.md](./history/TEST-REPORT-V2.md)),
 > второе ревью не-автором (2 блокера + мажоры исправлены, PR #11) и живой сухой прогон
-> полного цикла ([TEST-REPORT-V3.md](./TEST-REPORT-V3.md), issue #12).
+> полного цикла ([TEST-REPORT-V3.md](./history/TEST-REPORT-V3.md), issue #12).
 > Комплект — действующий канон команды; корневые README/PROTOCOL/WORKFLOW/BOARD/BUS/OPS —
 > его верхний уровень, при расхождении правится тот и другой одним решением координатора.
 
@@ -11,24 +11,24 @@
 
 | # | Развилка | Решение |
 |---|---|---|
-| 1 | Объём первого этапа | Сначала аудит + ресёрч + варианты — **выполнено** (AUDIT, RESEARCH, WORKFLOW-VARIANTS) |
+| 1 | Объём первого этапа | Сначала аудит + ресёрч + варианты — **выполнено** (архив в [history/](./history/README.md)) |
 | 2 | Self-merge в test | Разрешён только на уровне test; у внешних агентов неприменим (см. п. 6) |
 | 3 | Окружения в общем слое | Абстрактно: уровни test → staging → production как гейты, без имён веток |
 | 4 | Источник правды по статусам | Labels в issues — канон, GitHub Projects — только вид |
 | 5 | **Вариант воркфлоу** | **C (тир-гибрид)** — выбран 27.10.2026 |
 | 6 | Внешний исполнитель | **Пуш своей ветки после каждой задачи**; главная/чужие ветки и мержи запрещены; поставка = ветка + письмо с диапазоном (актуальная редакция комментария владельца к issue #1; прежний полный запрет push снят аудитом AUDIT-V2 A2-01) |
 | 7 | Ожидание между сессиями | Маркеры-сигналы первой строкой комментария + `scripts/wait-signal` (только gh CLI): запустил ожидание — сессию не держат (комментарий владельца к issue #1) |
-| 8 | Рой SZ (до 5 внутренних) | Таймеров не ставят, ждут `wait-signal` (ETag, 60–120 c); захват задачи — claim-протокол; зависимости — нативные `blocked by`, декомпозиция L — sub-issues (вторая сессия) |
+| 8 | Пул внутренних исполнителей | Таймеров не ставят, ждут `wait-signal` (ETag, 60–120 c); захват задачи из `to:pool` — claim-протокол; зависимости — нативные `blocked by`, декомпозиция L — sub-issues |
 | 9 | GitHub Projects и адресация | Главный вид — таблица «01 Контроль»; GitHub Assignees не используется (общий аккаунт), текущий адресат — ровно один `to:*`, постановщик — только строка `Поставил:` в теле issue; labels остаются правдой, Project — вид ([PROJECTS-BLUEPRINT.md](./PROJECTS-BLUEPRINT.md)) |
 | 10 | Коллегия саб-агентов и смена ролей (`ADR-0002`) | Координатор обязан поднимать отдельных сабов (`auditor`, `researcher`, всегда свежий `executor`, `reviewer` — `../agents/`) и выдавать им нужные навыки (`../skills/`) через `scripts/spawn-pack`; на `M/L` до сдачи координатору обязательны `REVIEWER_KICK`, параллельная коллегиальная проверка всеми 4 сабами и **2-я волна со сменой ролей (`executor ↔ reviewer`)** как внутри задачи (доводка и стресс-тесты), так и между соседними карточками без аппрува собственных коммитов ([decisions/2026-11-06-subagent-collegium-and-enforcement.md](./decisions/2026-11-06-subagent-collegium-and-enforcement.md)) |
 | 11 | Масштабирование `size:S` и Progressive Disclosure (`ADR-0002`) | Корневой `AGENTS.md` ≤60 строк + модульные `skills/*/SKILL.md` + единый машинный словарь `../schema/bus.json`; для `size:S` действует однопроходный Fast-Track дуэт (свежий исполнитель со скиллом → свежий ревьювер + `scripts/preflight`) без промежуточной паузы `GATE OPEN` до кода |
-| 12 | Механическая защита и внешняя парковка (`ADR-0002`) | Локальный `.githooks/pre-push` + серверные `.github/workflows/{ci,bus-hygiene,guard-main}.yml` + `scripts/preflight` перекрывают прямые пуши в `main`, дрейф меток закрытых issues и ретрансляцию `MAIL.md`; в простое локальный рой ждёт внешним диспетчером `scripts/agent-runner` в изолированных `git worktree` (0 токенов LLM в ожидании) |
+| 12 | Механическая защита и внешняя парковка (`ADR-0002`) | Локальный `.githooks/pre-push` + `scripts/preflight` перекрывают прямые пуши в `main` и дрейф меток закрытых issues (`board_link --hygiene`), MAIL-ретрансляция — координатор вручную (серверный Actions снят с хаба — решение владельца 14.11); в простое локальный пул ждёт внешним диспетчером `scripts/agent-runner` в изолированных `git worktree` (0 токенов LLM в ожидании) |
+| 13 | Стерильное переносимое ядро и проектный оверлей (`ADR-0003`) | В базовом каноне нет зашитых имён сабов, платформ, проектов и аккаунтов: в ядре `schema/bus.json` 46 универсальных меток (`to:owner`, `to:coordinator`, `to:pool`), а конкретный ростер `to:<id>`, префиксы веток и регресс каждый координатор задаёт в своём оверлее (`project.json` + `PROJECT.md`); чистоту сторожит `tests/regression.py` в `preflight` и CI ([decisions/2026-11-11-portable-canon-and-project-overlay.md](./decisions/2026-11-11-portable-canon-and-project-overlay.md)) |
 
 ## Финальный комплект варианта C (рабочие документы)
 
 | Файл | Что внутри | Кто читает |
 |---|---|---|
-| [AGENTS.md](./AGENTS.md) | Точка входа холодной сессии (≤60 строк): роли, холодный старт, маршрут чтения, 6 запретов, сигналы. В проектном репо кладётся в корень | Каждый агент, первая минута сессии |
 | [AGENT_RULES.md](./AGENT_RULES.md) | Регламент исполнителя: ARCA по размерам S/M/L, два режима (внутренний/внешний), шаблоны фаз и письма о поставке, вопрос-цикл, долг, сигналы | Исполнители |
 | [COORDINATOR_RULES.md](./COORDINATOR_RULES.md) | Регламент координатора: декомпозиция, радиус, гейты, мониторинг и label-repair, launch-пакеты и выгрузка внешних поставок, HOTFIX, уровни, сигналы | Координатор |
 | [KNOWLEDGE_BASE.md](./KNOWLEDGE_BASE.md) | Шпаргалка: таксономия labels с цветами, две state-машины, кто что может, таблица маркеров-сигналов и `wait-signal`, синхронизация словарей | Все, при сомнении в label/переходе |
@@ -38,18 +38,18 @@
 | [decisions/_TEMPLATE.md](./decisions/_TEMPLATE.md) | Шаблон ADR (неизменяем после accepted, supersede вместо правок) | Architect, координатор |
 | `../DEBT.md` | Формат и правила реестра долга; в проектах — живой реестр | Все агенты |
 | `../.github/ISSUE_TEMPLATE/task.yml`, `question.yml` | Шаблоны issues; словарь полей синхронизирован с KNOWLEDGE_BASE | Координатор, любой агент (question) |
-| [create-labels.sh](./create-labels.sh) | Идемпотентное создание ядра labels (52, включая `to:*`) в любом репозитории | Координатор при внедрении |
-| [project-apply.sh](./project-apply.sh) | Применение схемы Projects: поля, опции Status и каркас видов через GraphQL (нужен scope `project`); сортировку/группировку не задаёт | Владелец или координатор при настройке проекта |
+| [create-labels.sh](./create-labels.sh) | Идемпотентное создание 46 универсальных labels ядра (+ проектный ростер `to:<id>`) в любом репозитории | Координатор при внедрении |
+| [project-apply.sh](./project-apply.sh) | Применение схемы Projects: поля, опции Status/Адресат и каркас видов через GraphQL (нужен scope `project`); сортировку/группировку не задаёт | Владелец или координатор при настройке проекта |
 | `../scripts/wait-signal` | Ожидатель сигналов v2: ETag-поллинг, валидируемый `--since` против устаревших сигналов, CI по `--sha`, захват `--claim --claim-as`; коды выхода 0/1/2/3 | Владелец, координатор, агенты в ожидании |
 | [`../AGENTS.md`](../AGENTS.md) | Компактный корневой маршрутизатор холодного старта (≤60 строк, Progressive Disclosure) | Каждый агент при старте в корне репозитория |
-| `../schema/bus.json` | Единый машиночитаемый словарь: 52 labels ядра, 21 маркер шины, тиры `size:S/M/L` и роли саб-агентов (`ADR-0002`) | Скрипты `spawn-pack`, `preflight`, `agent-runner`, CI |
+| `../schema/bus.json` | Единый машиночитаемый словарь: 46 labels ядра (+ шаблон `to:<id>`), 21 маркер шины, тиры `size:S/M/L` и роли саб-агентов (`ADR-0002`, `ADR-0003`) | Скрипты `spawn-pack`, `preflight`, `agent-runner`, CI |
 | [`../agents/README.md`](../agents/README.md) | Ролевые карточки саб-агентов (`auditor.md`, `researcher.md`, `executor.md`, `reviewer.md`) и регламент двух волн со сменой ролей (`collegium.md`) | Координатор и саб-агенты |
-| [`../skills/README.md`](../skills/README.md) | 11 подключаемых навыков `SKILL.md` (5 процессных + 6 инженерных/аудиторских); вендоро-зеркала автоподхвата в `../.claude/` и `../.agents/` | Координатор и саб-агенты по профилю задачи |
-| `../scripts/spawn-pack`, `../scripts/install-skills` | Генератор пакетов сабов и Delegation Enforcer (`--auto`, `--from-issue`, `--preset fullstack-audit`) + синхронизатор зеркал `.claude`/`.agents` и раскатка в проекты (`--target`) | Координатор при запуске сабов и внедрении в проект |
-| `../scripts/preflight`, `../scripts/agent-runner` | Единая предполётная проверка (ветка, пробелы, `bash -n`, `schema/bus.json`, ссылки, формы, радиус, тесты) и внешний ETag/worktree-диспетчер парковки | Все исполнители, ревьюверы, локальный рой и CI |
-| `../.githooks/pre-push`, `../.github/workflows/` | Локальный перехват пуша в `main` + серверные `ci.yml`, `bus-hygiene.yml` (гигиена меток и ретрансляция `MAIL.md`), `guard-main.yml` (детекция пуша в `main`) | Git локально и GitHub Actions на сервере |
-| [decisions/2026-11-05-owner-delegation.md](./decisions/2026-11-05-owner-delegation.md), [decisions/2026-11-06-subagent-collegium-and-enforcement.md](./decisions/2026-11-06-subagent-collegium-and-enforcement.md) | Принятые архитектурные решения канона: `ADR-0001` (делегирование операционных решений координатору) и `ADR-0002` (Workflow v2) | Владелец, координатор, ревьюверы |
-| [`../tests/README.md`](../tests/README.md) | Контрактные и поведенческие автотесты комплекта (`test_documentation.py`, `test_wait_signal.py`, `test_collegium_and_tooling.py`) | Исполнители, ревьюверы, CI |
+| [`../skills/README.md`](../skills/README.md) | 18 подключаемых навыков `SKILL.md` (5 процессных + 6 инженерных + 7 security-audit); вендоро-зеркала автоподхвата в `../.claude/` и `../.agents/` | Координатор и саб-агенты по профилю задачи |
+| `../scripts/spawn-pack`, `../scripts/install-skills` | Генератор пакетов сабов и Delegation Enforcer (`--auto`, `--from-issue`, `--preset fullstack-audit`, `--env-skills`) + синхронизатор зеркал `.claude`/`.agents` и раскатка в проекты (`--target`, `--project-root`) | Координатор при запуске сабов и внедрении в проект |
+| `../scripts/preflight`, `../scripts/agent-runner` | Единая предполётная проверка (ветка, пробелы, `bash -n`, `schema/bus.json`, чистота `regression.py`, ссылки, формы, радиус, тесты) и внешний ETag/worktree-диспетчер парковки | Все исполнители, ревьюверы, локальный пул и CI |
+| `../.githooks/pre-push` | Локальный перехват пуша в `main` + полный гейт `preflight` перед пушем (серверные workflow'и сняты с хаба — решение владельца 14.11; проектные копии могут сохранять свой серверный контур) | Git локально |
+| [decisions/2026-11-05-owner-delegation.md](./decisions/2026-11-05-owner-delegation.md), [decisions/2026-11-06-subagent-collegium-and-enforcement.md](./decisions/2026-11-06-subagent-collegium-and-enforcement.md), [decisions/2026-11-11-portable-canon-and-project-overlay.md](./decisions/2026-11-11-portable-canon-and-project-overlay.md) | Принятые архитектурные решения канона: `ADR-0001` (делегирование), `ADR-0002` (Workflow v2) и `ADR-0003` (чистое переносимое ядро и проектный оверлей) | Владелец, координатор, ревьюверы |
+| [`../tests/README.md`](../tests/README.md) | Контрактные и поведенческие автотесты комплекта (`test_documentation.py`, `test_wait_signal.py`, `test_collegium_and_tooling.py`, `regression.py`) | Исполнители, ревьюверы, CI |
 
 ## Дополнения к комплекту
 
@@ -57,35 +57,26 @@
 |---|---|
 | [EVIDENCE_RESEARCH.md](./EVIDENCE_RESEARCH.md) | Проверяемость выводов, глубина аудита и учёт входящих решений |
 | [ADOPTION.md](./ADOPTION.md) | Внедрение и согласованное обновление комплекта без затирания проектных правил |
-| [GITHUB-ALTERNATIVES.md](./GITHUB-ALTERNATIVES.md) | Архитектурный разбор альтернатив GitHub (Forgejo/Gitea, Multica, Paperclip, Vibe Kanban, Agent Orchestrator, Symphony, Beads) и карта отвязки транспорта |
+| [FIELD-LESSONS.md](./FIELD-LESSONS.md) | Полевые уроки эксплуатации параллельных сессий и GitHub Projects V2 |
+| [EXAMPLES.md](./EXAMPLES.md) | Образцы прогонов: size:M, S, question, HOTFIX, rejected×2, LAUNCH/CONTINUE, сигналы |
+| [AGENT-DOCS-SPEC.md](./AGENT-DOCS-SPEC.md) | Спецификация, по которой собран финальный комплект, и чек-лист проектного слоя |
+| [GITHUB-ALTERNATIVES.md](./history/GITHUB-ALTERNATIVES.md) | Архив (research): архитектурный разбор альтернатив GitHub и карта отвязки транспорта — вынесен из живого канона по решению владельца (issue #120/#125) |
 
 Эти дополнения не отменяют роли, гейты, независимое ревью и решения владельца варианта C.
 
-## Исследовательский слой (история «почему так»)
+## Архив истории становления канона (`docs/history/`)
 
-| Файл | Роль теперь |
-|---|---|
-| [AUDIT-2026-11-03.md](./AUDIT-2026-11-03.md) | Сверка прежних посылок со свежей базой и принятыми решениями |
-| [RESEARCH-2026-11-03.md](./RESEARCH-2026-11-03.md) | Источники и границы исследования дополнений |
-| [VALIDATION-2026-11-03.md](./VALIDATION-2026-11-03.md) | Воспроизводимые проверки и сравнение с базой |
-| [AUDIT.md](./AUDIT.md) | Аудит канона и прототипа, 18 противоречий — основание решений |
-| [RESEARCH-BEST-PRACTICES.md](./RESEARCH-BEST-PRACTICES.md) | Внешние практики с источниками |
-| [WORKFLOW-VARIANTS.md](./WORKFLOW-VARIANTS.md) | Варианты A/B/C и таблица «было → стало → почему»; вариант C выбран |
-| [EXAMPLES.md](./EXAMPLES.md) | Образцы прогонов: size:M, S, question, HOTFIX, rejected×2, LAUNCH/CONTINUE, сигналы |
-| [AGENT-DOCS-SPEC.md](./AGENT-DOCS-SPEC.md) | Спецификация, по которой собран финальный комплект |
-| [TEST-REPORT.md](./TEST-REPORT.md) | Протокол сухого прогона комплекта и честные находки с предложенными правками |
-| [AUDIT-V2.md](./AUDIT-V2.md) | Самокритичный аудит варианта C: 18 находок второй сессии |
-| [RESEARCH-V2.md](./RESEARCH-V2.md) | Глубокий ресёрч готовых решений (gh-aw, Spec Kit, Orbi, Beads, Multica и др.) с вердиктами adopt/borrow/reject |
-| [TEST-REPORT-V2.md](./TEST-REPORT-V2.md) | Правки по аудиту v2, живой замер ETag и регресс wait-signal v2 |
+Исторические прототипы, аудиты первых раундов и отчёты сухих прогонов изолированы в
+[history/README.md](./history/README.md) и при копировании канона в рабочие проекты не переносятся.
 
 ## Как читать
 
-- **Агент в новой сессии:** AGENTS.md → регламент своей роли → своё issue → паспорт/ADR из issue.
-- **Владелец:** TEST-REPORT и TEST-REPORT-V2 (что сломалось и что предлагается) → AGENT_RULES/COORDINATOR_RULES при утверждении.
-- **Координатор, внедряя в проект:** AGENT-DOCS-SPEC §5 (чек-лист конкретизации проектного слоя).
+- **Агент в новой сессии:** корневой `AGENTS.md` (единственная точка входа) → карточка роли в `agents/` и навыки в `skills/` → своё issue → паспорт/ADR из issue.
+- **Владелец:** `STATUS.md` и сводки координатора на борде → принятые решения в `docs/decisions/`.
+- **Координатор, внедряя в проект:** [ADOPTION.md](./ADOPTION.md) + шаблон оверлея (`project.example.json`, `docs/templates/PROJECT.template.md`) + [AGENT-DOCS-SPEC.md](./AGENT-DOCS-SPEC.md) §5.
 
 ## Правило слоёв
 
-Общий слой не привязан к конкретным проектам, репозиториям и кодовым базам как к норме.
-Имена текущей команды встречаются только в корневом каноне и в аудитах как факты,
-в финальном комплекте варианта C ролей только абстрактные.
+Живой канон полностью очищен от имён конкретных проектов, сабов, платформ и аккаунтов (`ADR-0003`).
+Любая конкретизация состава узлов (`to:<id>`), веток, стендов и регресса выполняется координатором
+в проектном оверлее своего репозитория.

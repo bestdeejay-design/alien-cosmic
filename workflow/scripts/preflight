@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""preflight — единая предполётная проверка исполнителя, ревьювера и CI (ADR-0002).
+"""preflight — единая предполётная проверка исполнителя, ревьювера и CI (ADR-0002, ADR-0003).
 
-Проверяет за один запуск:
-1) что работа не ведётся прямо на ветке main (кроме режима --ci-main в GitHub Actions);
+Проверяет за один запуск (как при установке канона в корень, так и в подкаталог `workflow/`):
+1) что работа не ведётся прямо на ветке main (кроме режима --ci-main в GitHub Actions)
+   и что префикс ветки входит в branch_prefixes project.json (префикс-гейт, issue #88);
 2) отсутствие конфликтных маркеров и хвостовых пробелов (git diff --check);
 3) синтаксис bash -n всех shell-скриптов и git-хуков;
-4) синхронность единого словаря schema/bus.json (52 labels + 21 маркер) со скриптами и доками,
-   лимит корневого AGENTS.md <= 60 строк, наличие карточек agents/* и skills/*,
-   0 битых локальных ссылок и отсутствие автозакрывающих ключевых слов в активных шаблонах;
+4) синхронность единого словаря schema/bus.json (46 базовых labels + проектный оверлей
+   project.json + 21 маркер) со скриптами и доками, лимит AGENTS.md <= 60 строк,
+   карточки agents/* и skills/*, чистоту живого канона от зашитых имён (Purity & Portability
+   Gate), 0 битых локальных ссылок и отсутствие автозакрывающих ключевых слов в шаблонах;
 5) соблюдение разрешённого радиуса файлов (--allow path1,path2);
 6) прогон автотестов (полный или --quick без долгих sleep-тестов wait-signal).
 
@@ -16,7 +18,7 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -27,20 +29,75 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLOSING_RE = re.compile(r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+#", re.I)
 
+# Метрика «какой канон»: fingerprint ключевых файлов живого канона в квитанции.
+# Координатор видит, против какой версии канона работал агент (измеримость
+# вместо ощущений). Состав — точка входа, контракт, единый источник Fast-Track
+# и машинный словарь; sha7 — как в каноне (VERDICT на sha7).
+CANON_FINGERPRINT_FILES = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "PROTOCOL.md",
+    "WORKFLOW.md",
+    "agents/collegium.md",
+    "schema/bus.json",
+)
 
-def _format_unittest_errors(result) -> str:
-    lines = []
-    for test, tb in list(getattr(result, "failures", [])) + list(getattr(result, "errors", [])):
-        last = tb.strip().splitlines()[-1] if tb.strip() else ""
-        lines.append(f"{test.id()}: {last}")
-    return "\n".join(lines)[-1200:]
+
+def canon_fingerprint(root: Path = ROOT) -> str:
+    """sha7 по ключевым файлам канона (рабочее дерево, как проверяет гейт)."""
+    digest = hashlib.sha256()
+    for rel in CANON_FINGERPRINT_FILES:
+        path = root / rel
+        digest.update(rel.encode("utf-8"))
+        digest.update(path.read_bytes() if path.is_file() else b"<missing>")
+    return digest.hexdigest()[:7]
 
 
-def run(cmd: list[str], check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=check, env=env)
+# Дедупликация (пилоты Fast-Track и REVIEWER_KICK): единый источник + указатели.
+# Гард от регресса — маркеры канона и указатели обязаны существовать, иначе
+# полные определения вернутся в дубли и придётся переделывать.
+DEDUP_GUARD = (
+    ("agents/collegium.md", "Единый источник определения Fast-Track"),
+    ("skills/adversarial-review/SKILL.md", "Единый источник"),
+    ("agents/researcher.md", "Единый источник"),
+    ("docs/KNOWLEDGE_BASE.md", "Единый источник"),
+    ("WORKFLOW.md", "agents/collegium.md §3"),
+    ("AGENTS.md", "agents/collegium.md) §3"),
+    ("docs/AGENT_RULES.md", "agents/collegium.md) §3"),
+    ("docs/AGENT_RULES.md", "KNOWLEDGE_BASE §5.1"),
+    ("agents/README.md", "collegium.md) §3"),
+    ("agents/reviewer.md", "adversarial-review/SKILL.md"),
+    ("BUS.md", "KNOWLEDGE_BASE §5.1"),
+)
 
 
-def install_hooks() -> None:
+def check_dedup_guard(root: Path = ROOT) -> list[str]:
+    """Чистая функция: нарушения дедуп-гарда (пусто = дедупликация цела)."""
+    errors: list[str] = []
+    for rel, needle in DEDUP_GUARD:
+        path = root / rel
+        if not path.is_file():
+            errors.append(f"дедуп-гард: отсутствует {rel}")
+        elif needle not in path.read_text(encoding="utf-8"):
+            errors.append(
+                f"дедуп-гард: {rel} потерял маркер/указатель «{needle}» "
+                "(единый источник дедупликации)"
+            )
+    return errors
+
+
+def run(cmd: list[str], check: bool = True, env: dict[str, str] | None = None, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check, env=env)
+
+
+def detect_git_toplevel() -> Path:
+    res = run(["git", "rev-parse", "--show-toplevel"], check=False)
+    if res.returncode == 0 and res.stdout.strip():
+        return Path(res.stdout.strip()).resolve()
+    return ROOT
+
+
+def install_hooks() -> str:
     hooks_dir = ROOT / ".githooks"
     if not (hooks_dir / "pre-push").is_file():
         raise RuntimeError("не найден .githooks/pre-push")
@@ -51,47 +108,118 @@ def install_hooks() -> None:
         ROOT / "scripts" / "install-skills",
         ROOT / "scripts" / "preflight",
         ROOT / "scripts" / "agent-runner",
+        ROOT / "scripts" / "project_overlay.py",
         ROOT / "docs" / "create-labels.sh",
         ROOT / "docs" / "project-apply.sh",
     ]:
         if script.is_file():
             script.chmod(script.stat().st_mode | 0o111)
-    run(["git", "config", "core.hooksPath", ".githooks"])
+    git_top = detect_git_toplevel()
+    try:
+        hooks_rel = hooks_dir.resolve().relative_to(git_top).as_posix()
+    except ValueError:
+        hooks_rel = ".githooks"
+    run(["git", "config", "core.hooksPath", hooks_rel], cwd=git_top)
+    return hooks_rel
 
 
-def check_schema_and_canon() -> list[str]:
+# Префиксы форм, которыми create-labels.sh мог снабжать описания; срезаются при
+# сверке описаний (см. label_description_diffs, шаг 2a).
+LABEL_DESCRIPTION_PREFIXES = ("статус:", "тип:", "флаг:", "размер s:", "размер m:", "размер l:")
+
+
+def normalize_label_description(text: str) -> str:
+    """Нормализовать описание метки: срезать префикс формы, схлопнуть пробелы, lower."""
+    lowered = text.strip().lower()
+    for prefix in LABEL_DESCRIPTION_PREFIXES:
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix):]
+            break
+    return " ".join(lowered.split())
+
+
+def label_description_diffs(schema_descriptions: dict[str, str], script_specs: dict[str, str]) -> list[str]:
+    """Сверка описаний меток schema/bus.json vs create-labels.sh (issue #86 / H1).
+
+    Правило нормализации: описание в скрипте может нести префикс формы
+    («Статус:», «Тип:», «Флаг:», «Размер S/M/L:») — префиксы срезаются с обеих
+    сторон (без учёта регистра), пробелы схлопываются. После нормализации
+    совпадением считается точное равенство ЛИБО вхождение описания bus.json
+    в описание скрипта как подстроки (допускает содержательные дополнения
+    в скрипте, но не подмену смысла). Иное расхождение — запись в diff.
+    """
+    diffs: list[str] = []
+    for name, bus_description in schema_descriptions.items():
+        script_description = script_specs.get(name)
+        if script_description is None:
+            continue  # отсутствие имени уже поймано сверкой множеств имён
+        norm_bus = normalize_label_description(bus_description)
+        norm_script = normalize_label_description(script_description)
+        if norm_bus != norm_script and norm_bus not in norm_script:
+            diffs.append(f"{name}: bus.json={bus_description!r} vs script={script_description!r}")
+    return diffs
+
+
+def check_schema_and_canon() -> tuple[list[str], list[str]]:
     errors: list[str] = []
+    warnings: list[str] = []
     schema_path = ROOT / "schema" / "bus.json"
     if not schema_path.is_file():
         return ["отсутствует schema/bus.json"]
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    git_top = detect_git_toplevel()
 
-    # 1. Корневой AGENTS.md <= 60 строк
+    # 1. Корневой AGENTS.md канона <= 60 строк
     agents_root = ROOT / "AGENTS.md"
     if not agents_root.is_file():
-        errors.append("отсутствует корневой AGENTS.md")
+        errors.append("отсутствует AGENTS.md канона")
     else:
         line_count = len(agents_root.read_text(encoding="utf-8").splitlines())
         if line_count > 60:
             errors.append(f"AGENTS.md превысил лимит 60 строк: сейчас {line_count}")
 
-    # 2. 52 labels в schema/bus.json == planned_labels(create-labels.sh)
+    # 2. 46 базовых labels ядра + опциональный ростер project.json == planned_labels(create-labels.sh)
     schema_labels = [
         entry["name"]
         for group in schema["label_groups"].values()
         for entry in group["values"]
     ]
-    if len(schema_labels) != 52 or len(set(schema_labels)) != 52:
-        errors.append(f"schema/bus.json должен содержать 52 уникальных label, сейчас {len(schema_labels)}")
+    if len(schema_labels) != 46 or len(set(schema_labels)) != 46:
+        errors.append(f"schema/bus.json должен содержать 46 уникальных базовых label ядра, сейчас {len(schema_labels)}")
 
-    sys.path.insert(0, str(ROOT / "tests"))
-    from check_core_labels import planned_labels  # type: ignore
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts"))
+    if str(ROOT / "tests") not in sys.path:
+        sys.path.insert(0, str(ROOT / "tests"))
 
+    from check_core_labels import planned_label_specs, planned_labels  # type: ignore
+    from project_overlay import load_overlay, overlay_labels  # type: ignore
+
+    try:
+        overlay = load_overlay(ROOT)
+    except ValueError as exc:
+        errors.append(f"некорректный project.json: {exc}")
+        overlay = {"loaded": False, "roster": []}
+
+    expected_script_labels = set(schema_labels) | {item["name"] for item in overlay_labels(overlay)}
     script_labels = planned_labels(ROOT)
-    if set(schema_labels) != set(script_labels):
-        diff1 = sorted(set(schema_labels) - set(script_labels))
-        diff2 = sorted(set(script_labels) - set(schema_labels))
-        errors.append(f"рассинхрон labels schema/bus.json vs create-labels.sh: +{diff1} -{diff2}")
+    if expected_script_labels != set(script_labels):
+        diff1 = sorted(expected_script_labels - set(script_labels))
+        diff2 = sorted(set(script_labels) - expected_script_labels)
+        errors.append(f"рассинхрон labels (schema/bus.json + project.json) vs create-labels.sh: +{diff1} -{diff2}")
+
+    # 2a. Сверка описаний planned_labels vs schema/bus.json (issue #86 / H1).
+    schema_descriptions = {
+        entry["name"]: entry["description"]
+        for group in schema["label_groups"].values()
+        for entry in group["values"]
+    }
+    script_specs = planned_label_specs(ROOT)
+    description_diffs = label_description_diffs(schema_descriptions, script_specs)
+    if description_diffs:
+        errors.append(
+            "рассинхрон описаний labels schema/bus.json vs create-labels.sh: " + "; ".join(description_diffs)
+        )
 
     # 3. 21 маркер в schema/bus.json присутствует в BUS.md и docs/KNOWLEDGE_BASE.md
     markers = schema.get("markers", [])
@@ -116,83 +244,99 @@ def check_schema_and_canon() -> list[str]:
             if not sp.is_file():
                 errors.append(f"не найден дефолтный навык '{sk}' роли {role}: skills/{sk}/SKILL.md")
 
-    sync_res = run([sys.executable, str(ROOT / "scripts" / "install-skills"), "--check"], check=False)
-    if sync_res.returncode != 0:
-        errors.append(f"рассинхрон нативных папок CLI (.claude/.agents): {sync_res.stderr.strip() or sync_res.stdout.strip()}")
+    if (ROOT / ".claude").is_dir() or (ROOT / ".agents").is_dir() or ROOT == git_top:
+        sync_res = run([sys.executable, str(ROOT / "scripts" / "install-skills"), "--check"], check=False)
+        if sync_res.returncode != 0:
+            errors.append(f"рассинхрон нативных папок CLI (.claude/.agents): {sync_res.stderr.strip() or sync_res.stdout.strip()}")
+
+    # 4a. Дедуп-гард: единые источники Fast-Track и REVIEWER_KICK + указатели.
+    errors.extend(check_dedup_guard(ROOT))
 
     # 5. Запрет автозакрытия issue в активных шаблонах, регламентах, ролях и навыках
+    task_form = ROOT / ".github" / "ISSUE_TEMPLATE" / "task.yml"
+    if not task_form.is_file() and (git_top / ".github" / "ISSUE_TEMPLATE" / "task.yml").is_file():
+        task_form = git_top / ".github" / "ISSUE_TEMPLATE" / "task.yml"
+
     guarded_paths = [
-        ROOT / ".github" / "ISSUE_TEMPLATE" / "task.yml",
+        task_form,
         ROOT / "docs" / "AGENT_RULES.md",
         ROOT / "docs" / "COORDINATOR_RULES.md",
         ROOT / "docs" / "PROJECTS-BLUEPRINT.md",
+        # Рабочие образцы поставки тоже охраняются от автозакрывающих слов (issue #83, M-02).
+        ROOT / "docs" / "EXAMPLES.md",
+        ROOT / "docs" / "AGENT-DOCS-SPEC.md",
         ROOT / "docs" / "templates" / "pull_request_template.md",
         *sorted((ROOT / "agents").glob("*.md")),
         *sorted((ROOT / "skills").rglob("*.md")),
     ]
     for gp in guarded_paths:
         if gp.is_file() and CLOSING_RE.search(gp.read_text(encoding="utf-8")):
-            errors.append(f"найдено автозакрывающее ключевое слово (Closes/Fixes/Resolves #) в {gp.relative_to(ROOT)}")
+            try:
+                rel_gp = gp.relative_to(ROOT)
+            except ValueError:
+                rel_gp = gp.relative_to(git_top)
+            errors.append(f"найдено автозакрывающее ключевое слово (Closes/Fixes/Resolves #) в {rel_gp}")
 
-    # 6. Локальные ссылки во всех Markdown-файлах (без необходимости PyYAML, если его нет, но с ним — ещё и формы)
+    # 6. Purity & Portability Gate (regression.py): ссылки, формы, незаявленные метки и чистота от зашитых имён.
+    # Никаких молчаливых fallback (issue #79, H-03): если гейт упал — это failure,
+    # если часть проверки пропущена (нет PyYAML для YAML-форм) — явный warning.
     try:
-        from regression import form_errors, inventory  # type: ignore
+        from regression import default_expected_labels, inventory  # type: ignore
 
-        inv = inventory(ROOT, None)
+        inv = inventory(ROOT, default_expected_labels(ROOT))
+    except Exception as exc:  # гейт обязан падать громко, а не деградировать молча
+        errors.append(f"Purity & Portability Gate не выполнился: {exc!r}")
+    else:
         if inv["broken_links"]:
             errors.append(f"битые локальные ссылки ({len(inv['broken_links'])}): {inv['broken_links'][:3]}")
-        fe = form_errors(ROOT)
-        if fe:
-            errors.append(f"ошибки YAML-форм issues: {fe}")
-    except ModuleNotFoundError:
-        # Fallback проверки ссылок на чистой стандартной библиотеке, если PyYAML не установлен
-        link_re = re.compile(r"!?\[[^\[\]\n]+\]\(([^()\n]+)\)")
-        fence_re = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
-        inline_re = re.compile(r"`+[^`\n]*`+")
-        for md in sorted(ROOT.rglob("*.md")):
-            if any(part in {".git", "node_modules", "__pycache__", ".venv"} for part in md.relative_to(ROOT).parts):
-                continue
-            fence = None
-            for idx, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
-                fm = fence_re.match(line)
-                if fm:
-                    ch = fm.group(1)[0]
-                    fence = ch if fence is None else (None if fence == ch else fence)
-                    continue
-                if fence is not None:
-                    continue
-                cleaned = inline_re.sub("", line)
-                for lm in link_re.finditer(cleaned):
-                    target = lm.group(1).strip().split()[0].strip("<>").split("#")[0]
-                    if not target or "://" in target or target.startswith("mailto:"):
-                        continue
-                    dest = (ROOT / target.lstrip("/")) if target.startswith("/") else (md.parent / target)
-                    if not dest.exists():
-                        errors.append(f"битая ссылка {md.relative_to(ROOT)}:{idx} -> {target}")
+        if inv["form_errors"]:
+            errors.append(f"ошибки YAML-форм issues: {inv['form_errors']}")
+        if inv.get("forms_skipped"):
+            warnings.append(f"Гейт Чистоты: проверка YAML-форм пропущена — {inv['forms_skipped'][0]}")
+        if inv["purity_violations"]:
+            sample = [f"{v['file']}:{v['line']}[{v['token']}]" for v in inv["purity_violations"][:5]]
+            errors.append(f"зашитые частные имена в живом каноне ({len(inv['purity_violations'])}): {', '.join(sample)}")
+        if inv["missing_labels"]:
+            errors.append(f"незаявленные префиксные метки вне schema/bus.json и project.json: {sorted(inv['missing_labels'].keys())}")
+        if inv["mirror_errors"]:
+            errors.append(f"рассинхрон зеркал (.claude/.agents): {inv['mirror_errors'][:3]}")
 
-    return errors
+    return errors, warnings
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--install-hooks", action="store_true", help="Установить git config core.hooksPath .githooks и права +x")
+    parser.add_argument("--install-hooks", action="store_true", help="Установить git config core.hooksPath и права +x")
     parser.add_argument("--ci-main", action="store_true", help="Разрешить запуск на ветке main (для GitHub Actions CI)")
     parser.add_argument("--quick", action="store_true", help="Быстрый прогон без длительных sleep-тестов wait-signal")
-    parser.add_argument("--skip-tests", action="store_true", help="Проверить только гигиену/схемы/скрипты без unittest")
+    parser.add_argument("--skip-tests", action="store_true", help="Проверить только гигиену/схемы/скрипты без unittest (Гейт Чистоты всё равно выполняется)")
+    parser.add_argument("--skip-purity", action="store_true", help="Явно пропустить Гейт Чистоты (квитанция честно печатает PURITY: SKIPPED (явно), а не purity=ok)")
     parser.add_argument("--allow", default="", help="Разрешённые префиксы путей через запятую (контроль радиуса)")
     parser.add_argument("--base", default="origin/main", help="Базовая ветка для проверки merge-base и радиуса")
+    parser.add_argument("--strict-board", action="store_true", help="Ветка без issue-ссылки — failure вместо warning (issue #46)")
+    parser.add_argument("--trivial", action="store_true", help="Явный bypass проверки ветка↔issue с пометкой в выводе")
     args = parser.parse_args(argv)
 
     if args.install_hooks:
-        install_hooks()
-        print("preflight: .githooks/pre-push активирован (core.hooksPath=.githooks)")
+        hooks_rel = install_hooks()
+        print(f"preflight: .githooks/pre-push активирован (core.hooksPath={hooks_rel})")
         raw_argv = sys.argv[1:] if argv is None else argv
         if raw_argv == ["--install-hooks"]:
             return 0
 
     failures: list[str] = []
+    git_top = detect_git_toplevel()
 
-    # 1. Проверка текущей ветки
+    # 1. Проверка текущей ветки. На репо без единого коммита HEAD не существует
+    # (issue #94 / L-02): preflight неприменим — внятный отказ вместо CalledProcessError.
+    head_check = run(["git", "rev-parse", "--verify", "HEAD"], check=False)
+    if head_check.returncode != 0:
+        print(
+            "preflight: FAIL — репозиторий без коммитов (нет HEAD): "
+            "preflight неприменим. Сделайте первый коммит и повторите.",
+            file=sys.stderr,
+        )
+        return 1
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     head_sha = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
     if branch == "main" and not args.ci_main:
@@ -200,12 +344,70 @@ def main(argv: list[str] | None = None) -> int:
 
     # 2. База ветки относительно origin/main (если ссылка существует)
     merge_base = "n/a"
+    base_sha = ""
     base_check = run(["git", "rev-parse", "--verify", args.base], check=False)
     if base_check.returncode == 0:
         base_sha = base_check.stdout.strip()
         mb = run(["git", "merge-base", "HEAD", base_sha], check=False)
         if mb.returncode == 0:
             merge_base = mb.stdout.strip()[:7]
+
+    # 2.5 board-link: ветка/коммиты ↔ открытый issue (issue #46)
+    warnings: list[str] = []
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts"))
+    import board_link  # type: ignore
+
+    # 2.4 префикс-гейт (issue #88/M1): ветка обязана начинаться с префикса
+    # branch_prefixes project.json (main и detached HEAD — вне этого гейта).
+    prefix_failure = board_link.branch_prefix_gate(branch, board_link.allowed_branch_prefixes())
+    if prefix_failure:
+        failures.append(prefix_failure)
+
+    bl_scope = base_check.returncode == 0 and merge_base != "n/a"
+    bl_subjects: list[str] = []
+    bl_files: list[str] = []
+    bl_added = 0
+    if bl_scope:
+        bl_subjects = [
+            line for line in run(
+                ["git", "log", f"{merge_base}..HEAD", "--format=%s", f"--max-count={board_link.MAX_SUBJECTS}"],
+                check=False,
+            ).stdout.splitlines() if line.strip()
+        ]
+        bl_files_set: set[str] = set()
+        diff_parts: list[str] = []
+        for name_args, diff_args in (
+            (["git", "diff", "--name-only", f"{base_sha}...HEAD"], ["git", "diff", f"{base_sha}...HEAD"]),
+            (["git", "diff", "--name-only", "HEAD"], ["git", "diff", "HEAD"]),
+        ):
+            name_res = run(name_args, check=False)
+            bl_files_set.update(line.strip() for line in name_res.stdout.splitlines() if line.strip())
+            diff_parts.append(run(diff_args, check=False).stdout)
+        bl_files = sorted(bl_files_set)
+        bl_added = board_link.count_added_nonblank("".join(diff_parts))
+
+    def _gh_lookup(ref: int) -> dict:
+        repo = board_link.soft_run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+        if repo.returncode != 0:
+            return {"error": repo.stderr.strip() or "gh недоступен"}
+        api = board_link.soft_run(["gh", "api", f"repos/{repo.stdout.strip()}/issues/{ref}", "--jq", board_link.ISSUE_JQ])
+        if api.returncode != 0:
+            return {"error": (api.stderr.strip().splitlines() or ["gh api failed"])[0]}
+        try:
+            return json.loads(api.stdout)
+        except ValueError:
+            return {"error": "неожиданный ответ gh api"}
+
+    gate_warnings, gate_failures = board_link.preflight_gate(
+        branch, bl_subjects, bl_files, bl_added,
+        scope_known=bl_scope,
+        strict=args.strict_board,
+        allow_trivial=args.trivial,
+        gh_lookup=(_gh_lookup if bl_scope else None),
+    )
+    warnings.extend(gate_warnings)
+    failures.extend(gate_failures)
 
     # 3. Проверка пробелов и конфликтных маркеров
     for diff_cmd in (["git", "diff", "--check"], ["git", "diff", "--cached", "--check"]):
@@ -220,17 +422,47 @@ def main(argv: list[str] | None = None) -> int:
         ROOT / "docs" / "project-apply.sh",
         ROOT / ".githooks" / "pre-push",
     ]
-    for sh in shell_scripts:
-        if sh.is_file():
-            res = run(["bash", "-n", str(sh)], check=False)
+    for sh_file in shell_scripts:
+        if sh_file.is_file():
+            res = run(["bash", "-n", str(sh_file)], check=False)
             if res.returncode != 0:
-                failures.append(f"bash -n {sh.relative_to(ROOT)}: {res.stderr.strip()}")
+                failures.append(f"bash -n {sh_file.relative_to(ROOT)}: {res.stderr.strip()}")
 
-    # 5. Контроль радиуса (если задан --allow)
-    if args.allow.strip() and base_check.returncode == 0:
-        allowed = [p.strip() for p in args.allow.split(",") if p.strip()]
-        changed_committed = run(["git", "diff", "--name-only", f"{args.base}...HEAD"], check=False).stdout.splitlines()
-        changed_worktree = run(["git", "diff", "--name-only", "HEAD"], check=False).stdout.splitlines()
+    # 5. Контроль радиуса (если задан --allow; поддерживает и корень, и подкаталог workflow/)
+    # Радиус-гейт обязателен и без origin/main (issue #73 / B-01): при недоступной
+    # базе проверяем рабочий дерево и индекс (git diff HEAD) вместо молчаливого пропуска.
+    if args.allow.strip():
+        raw_allowed = [p.strip() for p in args.allow.split(",") if p.strip()]
+        allowed = list(raw_allowed)
+        if ROOT != git_top:
+            try:
+                canon_rel = ROOT.relative_to(git_top).as_posix()
+                for pref in raw_allowed:
+                    if not pref.startswith(canon_rel + "/") and pref != canon_rel:
+                        allowed.append(f"{canon_rel}/{pref}")
+            except ValueError:
+                pass
+        if base_check.returncode == 0:
+            changed_committed = run(
+                ["git", "diff", "--name-only", f"{args.base}...HEAD"], check=False, cwd=git_top
+            ).stdout.splitlines()
+        else:
+            # База недоступна (issue #103): закоммиченные изменения всё равно
+            # попадают в радиус-гейт — диффуем HEAD от пустого дерева (все файлы,
+            # появившиеся коммитами ветки). Без HEAD (пустой репо) — graceful, как в #94.
+            head_check = run(["git", "rev-parse", "--verify", "HEAD"], check=False, cwd=git_top)
+            if head_check.returncode == 0:
+                empty_tree = run(["git", "hash-object", "-t", "tree", "/dev/null"], check=False, cwd=git_top)
+                if empty_tree.returncode == 0:
+                    changed_committed = run(
+                        ["git", "diff", "--name-only", empty_tree.stdout.strip(), "HEAD"],
+                        check=False, cwd=git_top,
+                    ).stdout.splitlines()
+                else:
+                    changed_committed = []
+            else:
+                changed_committed = []
+        changed_worktree = run(["git", "diff", "--name-only", "HEAD"], check=False, cwd=git_top).stdout.splitlines()
         all_changed = sorted({c.strip() for c in (changed_committed + changed_worktree) if c.strip()})
         outside = [
             f for f in all_changed
@@ -239,8 +471,20 @@ def main(argv: list[str] | None = None) -> int:
         if outside:
             failures.append(f"выход за разрешённый радиус ({args.allow}): {', '.join(outside)}")
 
-    # 6. Схема шины, ссылки, шаблоны, лимиты
-    failures.extend(check_schema_and_canon())
+    # 6. Схема шины, Purity & Portability Gate, ссылки, шаблоны, лимиты.
+    # Гейт Чистоты гоняется ВСЕГДА, включая --skip-tests (issue #79, H-03);
+    # пропустить его можно только явно, через --skip-purity — с честной квитанцией.
+    if args.skip_purity:
+        purity_status = "SKIPPED (явно)"
+        print("PURITY: SKIPPED (явно) — Гейт Чистоты не запускался (--skip-purity)", file=sys.stderr)
+    else:
+        canon_errors, canon_warnings = check_schema_and_canon()
+        failures.extend(canon_errors)
+        warnings.extend(canon_warnings)
+        if any("YAML-форм пропущена" in w for w in canon_warnings):
+            purity_status = "ok (forms: skipped — pip install -r tests/requirements.txt)"
+        else:
+            purity_status = "ok"
 
     # 7. Автотесты
     tests_summary = "skipped"
@@ -248,62 +492,29 @@ def main(argv: list[str] | None = None) -> int:
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         pattern = "test_collegium*.py" if args.quick else "test_*.py"
-
-        # === PROJECT-LAYER PATCH (alien-cosmic, база канона f793de3) — скоуп тестов конфигом ===
-        # НЕ часть апстрим-кода хаба. Хаб-тесты рассчитаны на окружение хаба
-        # bestdeejay-design/agents (BASE-коммиты истории хаба, чистый worktree);
-        # в проектной раскладке alien-cosmic часть из них структурно невыполнима.
-        # Скоуп задаётся опциональным конфигом workflow/preflight.json:
-        #   "test_exclude_files": [имена файлов]  — модуль не запускается вовсе;
-        #   "test_exclude_ids":   [глобы id]      — точечные исключения отдельных тестов
-        #     (fnmatch против полного id теста, например "module.Class.test_name").
-        # При отсутствии preflight.json поведение идентично апстриму (один discover).
-        # См. workflow/CANON_VERSION.md («Расхождения»).
-        cfg: dict = {}
-        cfg_path = ROOT / "preflight.json"
-        if cfg_path.is_file():
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        excluded_files = set(cfg.get("test_exclude_files", []))
-        excluded_id_marks = [m for m in cfg.get("test_exclude_ids", []) if m]
-
-        import unittest as _ut
-
-        test_files = sorted(
-            p.name for p in (ROOT / "tests").glob("test_*.py")
-            if fnmatch.fnmatch(p.name, pattern) and p.name not in excluded_files
-        )
-        sys.path.insert(0, str(ROOT / "tests"))
-        loader = _ut.TestLoader()
-        suite = _ut.TestSuite()
-        for name in test_files:
-            mod_suite = loader.loadTestsFromModule(__import__(name[:-3]))
-            if excluded_id_marks:
-                kept: list[_ut.TestCase] = []
-                stack = list(mod_suite)
-                while stack:
-                    item = stack.pop()
-                    if isinstance(item, _ut.TestSuite):
-                        stack.extend(item)
-                        continue
-                    tid = item.id()
-                    if any(fnmatch.fnmatchcase(tid, mark) for mark in excluded_id_marks):
-                        continue
-                    kept.append(item)
-                mod_suite = _ut.TestSuite(kept)
-            suite.addTest(mod_suite)
-
-        mode_tag = "quick" if args.quick else "full"
-        if test_files:
-            env["PYTHONPATH"] = str(ROOT / "tests") + os.pathsep + env.get("PYTHONPATH", "")
-            runner = _ut.TextTestRunner(stream=sys.stderr, verbosity=1)
-            result = runner.run(suite)
-            total_ran = result.testsRun
-            if not result.wasSuccessful():
-                failures.append(f"unittest ({mode_tag}) failed:\n" + _format_unittest_errors(result))
-            else:
-                tests_summary = f"{total_ran} passed ({mode_tag})"
+        if args.quick:
+            t_cmds = [
+                [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_documentation.py"],
+                [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_collegium*.py"],
+            ]
         else:
-            tests_summary = f"0 tests in scope ({mode_tag})"
+            t_cmds = [[sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", pattern]]
+
+        total_ran = 0
+        for tc in t_cmds:
+            tres = run(tc, check=False, env=env)
+            m = re.search(r"Ran (\d+) tests?", tres.stderr)
+            if m:
+                total_ran += int(m.group(1))
+            if tres.returncode != 0:
+                failures.append(f"unittest ({tc[-1]}) failed:\n{tres.stderr[-1200:]}")
+                break
+        else:
+            mode_tag = "quick" if args.quick else "full"
+            tests_summary = f"{total_ran} passed ({mode_tag})"
+
+    for warning in warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     if failures:
         print("PREFLIGHT FAILED:", file=sys.stderr)
@@ -313,7 +524,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"PREFLIGHT OK | branch={branch} | head={head_sha} | merge_base={merge_base} "
-        f"| schema=52_labels+21_markers | tests={tests_summary}"
+        f"| canon={canon_fingerprint()} | schema=46_labels+21_markers "
+        f"| purity={purity_status} | tests={tests_summary}"
     )
     return 0
 

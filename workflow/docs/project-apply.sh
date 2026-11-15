@@ -23,12 +23,13 @@
 
 set -euo pipefail
 
-OWNER="" NUMBER="" OWNER_TYPE="user" APPLY=0
+OWNER="" NUMBER="" OWNER_TYPE="user" APPLY=0 PROJECT_CFG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --owner) OWNER="${2:-}"; shift 2;;
     --number) NUMBER="${2:-}"; shift 2;;
     --owner-type) OWNER_TYPE="${2:-}"; shift 2;;
+    --project-config) PROJECT_CFG="${2:-}"; shift 2;;
     --apply) APPLY=1; shift;;
     -h|--help) sed -n '2,28p' "$0"; exit 0;;
     *) echo "project-apply: неизвестный аргумент: $1" >&2; exit 2;;
@@ -93,13 +94,7 @@ DESIRED_FIELDS='[
  {"name":"Адресат","dataType":"SINGLE_SELECT","options":[
    {"name":"Владелец","color":"ORANGE","description":"to:owner"},
    {"name":"Координатор","color":"BLUE","description":"to:coordinator"},
-   {"name":"Арена","color":"PURPLE","description":"to:arena"},
-   {"name":"SZ (пул)","color":"GREEN","description":"to:sz-pool"},
-   {"name":"SZ-1","color":"GREEN","description":"to:sz-1"},
-   {"name":"SZ-2","color":"GREEN","description":"to:sz-2"},
-   {"name":"SZ-3","color":"GREEN","description":"to:sz-3"},
-   {"name":"SZ-4","color":"GREEN","description":"to:sz-4"},
-   {"name":"SZ-5","color":"GREEN","description":"to:sz-5"}]},
+   {"name":"Пул исполнителей","color":"GREEN","description":"to:pool"}]},
  {"name":"Приоритет","dataType":"SINGLE_SELECT","options":[
    {"name":"Critical","color":"RED","description":"priority:critical"},
    {"name":"High","color":"ORANGE","description":"priority:high"},
@@ -121,6 +116,15 @@ DESIRED_FIELDS='[
  {"name":"Завершена","dataType":"DATE"},
  {"name":"Итерации правок","dataType":"NUMBER"}
 ]'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CANON_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OVERLAY_SCRIPT="$CANON_ROOT/scripts/project_overlay.py"
+if [ -f "$OVERLAY_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
+  OVERLAY_ARGS=(--root "$CANON_ROOT")
+  [ -n "$PROJECT_CFG" ] && OVERLAY_ARGS+=(--project-config "$PROJECT_CFG")
+  DESIRED_FIELDS="$(python3 "$OVERLAY_SCRIPT" "${OVERLAY_ARGS[@]}" --merge-board-fields-json "$DESIRED_FIELDS")"
+fi
 
 merge_options() { # CURRENT_JSON DESIRED_JSON
   jq -n --argjson current "${1:-[]}" --argjson desired "$2" '

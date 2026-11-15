@@ -4,12 +4,27 @@
 Решает две задачи без ручного копирования:
 1) В самом репозитории agents синхронизирует канонические карточки agents/{auditor,researcher,executor,reviewer}.md
    и навыки skills/*/SKILL.md в нативные каталоги автоподхвата CLI-клиентов:
-   - .claude/agents/*.md и .claude/skills/*/SKILL.md (Claude Code / ZCode);
+   - .claude/agents/*.md и .claude/skills/*/SKILL.md (Claude Code и совместимые CLI);
    - .agents/skills/*/SKILL.md (Codex CLI / универсальный стандарт Agent Skills).
    Режим --check проверяется автоматически в scripts/preflight и CI (нулевой рассинхрон).
 2) Раскатывает роли, скиллы и (по флагу --with-harness) генератор scripts/spawn-pack в любой
    целевой проектный репозиторий (--target /path/to/project), соблюдая ADOPTION.md §1
    (не перезаписывает отличающиеся локальные файлы без --force).
+
+Классификация файлов в .claude/skills/ и .agents/skills/ вне канон-маппинга (#104, R2-04).
+Имена берутся из трех источников: канон (skills/), env_skills проекта (project.json через
+загрузчик project_overlay) и остальное. Семантика честно по имени, без сравнения тел файлов:
+  (а) канон-навык — путь входит в маппинг skills/ (синхронизируется штатно);
+  (б) env_skill — каталог навыка заявлен в project.json (env_skills) проекта: владелец
+      проекта явно объявил его локальным навыком стека (PROJECT.template.md §4), поэтому
+      объявление имени — единственный источник истины. Такие файлы --check считает OK,
+      обычный запуск оставляет (KEEP), --force НЕ удаляет: для сноса нужно явное
+      перечисление --force --prune-env-skill <имя>;
+  (в) прочее (устаревшее зеркало канона / незаявленный навык / мусор) — --check даёт
+      ошибку, обычный запуск чистит штатно (как .claude/agents).
+Сравнение тел файлов не используется: кастомный env_skill может быть неотличим от зеркала
+по содержимому, а решение «зеркало это или навык проекта» принимает владелец проекта через
+env_skills в project.json.
 """
 from __future__ import annotations
 
@@ -21,6 +36,42 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schema" / "bus.json"
+SCRIPTS_DIR = Path(__file__).resolve().parent
+
+
+def load_env_skills(canon_root: Path) -> tuple[list[str], str]:
+    """Читает env_skills проекта через существующий загрузчик project_overlay (ADR-0003).
+
+    Порядок поиска: AGENT_PROJECT_CONFIG → <canon_root>/project.json →
+    <canon_root>/../project.json (раскладка workflow/). Возвращает (имена, источник).
+    """
+    if str(SCRIPTS_DIR) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS_DIR))
+    import project_overlay  # noqa: E402  (лежит рядом с install-skills)
+
+    overlay = project_overlay.load_overlay(canon_root)
+    source = overlay.get("path") or "project.json не найден — env_skills пуст"
+    return list(overlay.get("env_skills", [])), str(source)
+
+
+def skill_name_of(rel: str, prefixes: tuple[str, ...] = (".claude/skills/", ".agents/skills/")) -> str | None:
+    """Имя каталога навыка для rel-пути внутри нативных каталогов скиллов, иначе None."""
+    for prefix in prefixes:
+        if rel.startswith(prefix):
+            return rel[len(prefix):].split("/", 1)[0]
+    return None
+
+
+def classify_extra(rel: str, env_skills: frozenset[str]) -> str:
+    """Классификация файла вне канон-маппинга: 'env_skill' | 'stale_mirror'.
+
+    env_skill — имя каталога навыка заявлено в project.json; всё остальное
+    (устаревшее зеркало канона, незаявленный навык, мусор) — stale_mirror.
+    """
+    name = skill_name_of(rel)
+    if name is not None and name in env_skills:
+        return "env_skill"
+    return "stale_mirror"
 
 
 def canonical_sources(root: Path = ROOT) -> tuple[dict[str, Path], dict[str, Path]]:
@@ -41,6 +92,15 @@ def canonical_sources(root: Path = ROOT) -> tuple[dict[str, Path], dict[str, Pat
     return roles, skills
 
 
+def skill_dir_files(skill_path: Path) -> list[Path]:
+    """Все файлы скилла кроме SKILL.md (support/ и прочие ассеты) — раскатываются вместе со скиллом."""
+    extras: list[Path] = []
+    for f in sorted(skill_path.rglob("*")):
+        if f.is_file() and f != skill_path / "SKILL.md" and "__pycache__" not in f.parts:
+            extras.append(f)
+    return extras
+
+
 def expected_native_map(roles: dict[str, Path], skills: dict[str, Path]) -> dict[str, Path]:
     """Возвращает карту относительный_путь_назначения -> исходный_файл для нативного автоподхвата."""
     mapping: dict[str, Path] = {}
@@ -49,6 +109,10 @@ def expected_native_map(roles: dict[str, Path], skills: dict[str, Path]) -> dict
     for skill_name, src in skills.items():
         mapping[f".claude/skills/{skill_name}/SKILL.md"] = src
         mapping[f".agents/skills/{skill_name}/SKILL.md"] = src
+        for extra in skill_dir_files(src.parent):
+            rel = extra.relative_to(src.parent.parent)
+            mapping[f".claude/skills/{rel}"] = extra
+            mapping[f".agents/skills/{rel}"] = extra
     return mapping
 
 
@@ -58,6 +122,8 @@ def expected_harness_map(roles: dict[str, Path], skills: dict[str, Path], root: 
         "schema/bus.json": root / "schema" / "bus.json",
         "scripts/spawn-pack": root / "scripts" / "spawn-pack",
         "scripts/install-skills": root / "scripts" / "install-skills",
+        # Загрузчик project.json — нужен install-skills в adopted-проекте для классификации env_skills (#104)
+        "scripts/project_overlay.py": root / "scripts" / "project_overlay.py",
     }
     for doc_name in ("README.md", "collegium.md"):
         p = root / "agents" / doc_name
@@ -70,20 +136,34 @@ def expected_harness_map(roles: dict[str, Path], skills: dict[str, Path], root: 
         mapping["skills/README.md"] = skills_readme
     for skill_name, src in skills.items():
         mapping[f"skills/{skill_name}/SKILL.md"] = src
+        for extra in skill_dir_files(src.parent):
+            mapping[f"skills/{extra.relative_to(src.parent.parent)}"] = extra
     return mapping
 
 
-def check_self_sync(root: Path = ROOT) -> list[str]:
-    roles, skills = canonical_sources(root)
+def check_self_sync(
+    root: Path = ROOT,
+    env_skills: frozenset[str] = frozenset(),
+    canon_root: Path | None = None,
+    fix_hint: str = "python3 scripts/install-skills",
+) -> list[str]:
+    """Проверка нативных зеркал в `root` против канона в `canon_root` (по умолчанию совпадают).
+
+    При --check --project-root <host> root — хост с зеркалами .claude/.agents,
+    canon_root — корень канона (agents/, skills/, schema/). Сверяется ПОЛНОЕ дерево
+    каждого навыка (SKILL.md + support/ и прочие файлы, см. expected_native_map).
+    """
+    canon = canon_root if canon_root is not None else root
+    roles, skills = canonical_sources(canon)
     expected = expected_native_map(roles, skills)
     errors: list[str] = []
 
     for rel_dst, src in sorted(expected.items()):
         dst = root / rel_dst
         if not dst.is_file():
-            errors.append(f"отсутствует нативное зеркало {rel_dst} (запустите: python3 scripts/install-skills)")
+            errors.append(f"отсутствует нативное зеркало {rel_dst} (запустите: {fix_hint})")
         elif dst.read_bytes() != src.read_bytes():
-            errors.append(f"рассинхрон содержимого {rel_dst} != {src.relative_to(root)} (запустите: python3 scripts/install-skills)")
+            errors.append(f"рассинхрон содержимого {rel_dst} != {src.relative_to(canon)} (запустите: {fix_hint})")
 
     # Проверяем отсутствие устаревших файлов в .claude/agents, .claude/skills и .agents/skills
     managed_roots = [
@@ -92,13 +172,28 @@ def check_self_sync(root: Path = ROOT) -> list[str]:
         root / ".agents" / "skills",
     ]
     expected_set = set(expected.keys())
+    canon_names = frozenset(skills.keys())
     for mroot in managed_roots:
         if not mroot.exists():
             continue
         for f in sorted(mroot.rglob("*")):
             if f.is_file():
                 rel = f.relative_to(root).as_posix()
-                if rel not in expected_set:
+                if rel in expected_set:
+                    continue
+                if rel.startswith((".claude/skills/", ".agents/skills/")):
+                    kind = classify_extra(rel, env_skills)
+                    if kind == "env_skill":
+                        # Заявленный в project.json локальный навык стека (PROJECT.template.md §4) —
+                        # штатная часть оверлея, не ошибка синхронизации канона.
+                        continue
+                    name = skill_name_of(rel)
+                    if name in canon_names:
+                        hint = f"посторонний файл внутри канон-навыка {name}"
+                    else:
+                        hint = "устаревшее зеркало канона или незаявленный навык (добавьте имя в env_skills project.json, если это навык проекта)"
+                    errors.append(f"лишний файл в нативном каталоге: {rel} ({hint}; для очистки запустите {fix_hint})")
+                else:
                     errors.append(f"лишний устаревший файл в нативном каталоге: {rel}")
 
     return errors
@@ -111,6 +206,8 @@ def sync_into_target(
     is_self: bool,
     force: bool,
     dry_run: bool,
+    env_skills: frozenset[str] = frozenset(),
+    prune_env_skills: frozenset[str] = frozenset(),
 ) -> tuple[int, list[str]]:
     conflicts: list[str] = []
     actions: list[str] = []
@@ -138,20 +235,43 @@ def sync_into_target(
     if conflicts:
         return 2, [f"КОНФЛИКТ (файл уже существует и отличается, укажите --force): {c}" for c in conflicts]
 
-    # В режиме --self удаляем устаревшие зеркала, если исходный навык/роль удалены
+    # В режиме --self удаляем устаревшие зеркала, если исходный навык/роль удалены (#104).
+    # Три класса файлов в .claude/skills и .agents/skills: канон (в mapping, синхронизируется),
+    # env_skill (заявлен в project.json — KEEP, --force не сносит, только --force
+    # --prune-env-skill <имя>), прочее (устаревшее зеркало/мусор — чистится штатно, без --force).
     if is_self:
         expected_set = set(mapping.keys())
+
+        def remove_file(f: Path, mroot: Path) -> None:
+            if not dry_run:
+                f.unlink()
+                if f.parent != mroot and not any(f.parent.iterdir()):
+                    shutil.rmtree(f.parent, ignore_errors=True)
+
         for sub in (".claude/agents", ".claude/skills", ".agents/skills"):
             mroot = target / sub
             if not mroot.exists():
                 continue
             for f in sorted(mroot.rglob("*")):
-                if f.is_file() and f.relative_to(target).as_posix() not in expected_set:
-                    actions.append(f"REMOVE    {f.relative_to(target).as_posix()}")
-                    if not dry_run:
-                        f.unlink()
-                        if f.parent != mroot and not any(f.parent.iterdir()):
-                            shutil.rmtree(f.parent, ignore_errors=True)
+                rel = f.relative_to(target).as_posix()
+                if f.is_file() and rel not in expected_set:
+                    if sub == ".claude/agents":
+                        actions.append(f"REMOVE    {rel}")
+                        remove_file(f, mroot)
+                        continue
+                    if classify_extra(rel, env_skills) == "env_skill":
+                        name = skill_name_of(rel) or ""
+                        if name in prune_env_skills:
+                            actions.append(f"REMOVE    {rel} (env_skill, --force --prune-env-skill {name})")
+                            remove_file(f, mroot)
+                        else:
+                            actions.append(
+                                f"KEEP      {rel} (env_skill — заявлен в project.json, --force не удаляет;"
+                                f" для сноса: --force --prune-env-skill {name})"
+                            )
+                    else:
+                        actions.append(f"REMOVE    {rel} (устаревшее зеркало/не заявлен в env_skills project.json)")
+                        remove_file(f, mroot)
 
     return 0, actions
 
@@ -160,25 +280,73 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Проверить побайтовую синхронность .claude/ и .agents/ с agents/ и skills/")
     parser.add_argument("--target", type=Path, help="Целевой проектный репозиторий для установки ролей и навыков")
-    parser.add_argument("--with-harness", action="store_true", help="При --target также скопировать agents/, skills/, schema/bus.json и scripts/spawn-pack")
-    parser.add_argument("--force", action="store_true", help="Разрешить перезапись отличающихся файлов в --target")
+    parser.add_argument("--project-root", type=Path, help="Корень целевого проекта для установки .claude/ и .agents/ (синоним --target для раскладки workflow/)")
+    parser.add_argument("--with-harness", action="store_true", help="При --target/--project-root также скопировать agents/, skills/, schema/bus.json и scripts/spawn-pack")
+    parser.add_argument("--force", action="store_true", help="Разрешить перезапись отличающихся файлов в --target/--project-root (env_skills не сносит — см. --prune-env-skill)")
+    parser.add_argument(
+        "--prune-env-skill", action="append", default=[], metavar="NAME",
+        help="Имя env_skill из project.json для сноса в режиме --self; действует ТОЛЬКО вместе с --force (флаг можно повторять)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Показать план без записи файлов на диск")
     args = parser.parse_args(argv)
 
+    if args.prune_env_skill and not args.force:
+        parser.error("--prune-env-skill имеет смысл только вместе с --force")
+
+    if args.target and args.project_root and args.target.resolve() != args.project_root.resolve():
+        parser.error("укажите либо --target, либо --project-root (или один и тот же путь)")
+
     if args.check:
-        errs = check_self_sync(ROOT)
+        try:
+            env_skills, env_src = load_env_skills(ROOT)
+        except ValueError as exc:
+            print(f"install-skills: {exc}", file=sys.stderr)
+            return 2
+        # --check --project-root <host>: сверяем зеркала .claude/.agents в указанном
+        # корне против канона ROOT (в том числе в переносимой раскладке workflow/,
+        # где install-skills лежит в <host>/workflow/scripts). Без флага в раскладке
+        # workflow/ зеркала автоматически ищем в родителе канона (#107, R2-07).
+        mirror_root = args.project_root or args.target
+        if mirror_root is not None:
+            mirror_root = mirror_root.resolve()
+        elif ROOT.name == "workflow" and ((ROOT.parent / ".claude").is_dir() or (ROOT.parent / ".agents").is_dir()):
+            mirror_root = ROOT.parent
+        if mirror_root is not None and mirror_root != ROOT:
+            errs = check_self_sync(
+                mirror_root,
+                frozenset(env_skills),
+                canon_root=ROOT,
+                fix_hint=f"python3 scripts/install-skills --project-root {mirror_root}",
+            )
+        else:
+            errs = check_self_sync(ROOT, frozenset(env_skills))
         if errs:
             print("install-skills CHECK FAILED:", file=sys.stderr)
             for e in errs:
                 print(f"  - {e}", file=sys.stderr)
             return 1
         roles, skills = canonical_sources(ROOT)
-        print(f"install-skills OK: синхронизированы {len(roles)} ролей (.claude/agents) и {len(skills)} навыков (.claude/skills + .agents/skills)")
+        scope = f" target={mirror_root}" if mirror_root is not None and mirror_root != ROOT else ""
+        print(f"install-skills OK: синхронизированы {len(roles)} ролей (.claude/agents) и {len(skills)} навыков (.claude/skills + .agents/skills){scope}")
+        print(
+            f"  env_skills={len(env_skills)} ({env_src}): файлы в .claude/skills и .agents/skills вне канона"
+            " классифицируются по имени каталога навыка — заявлен в env_skills project.json = защищён (OK),"
+            " остальное = устаревшее зеркало/мусор (ошибка --check, чистится запуском без --force)"
+        )
         return 0
 
     roles, skills = canonical_sources(ROOT)
-    target = args.target.resolve() if args.target else ROOT
+    chosen_target = args.project_root or args.target
+    target = chosen_target.resolve() if chosen_target else ROOT
     is_self = target == ROOT
+
+    env_skills: list[str] = []
+    if is_self:
+        try:
+            env_skills, _ = load_env_skills(ROOT)
+        except ValueError as exc:
+            print(f"install-skills: {exc}", file=sys.stderr)
+            return 2
 
     if not target.exists() and not args.dry_run:
         target.mkdir(parents=True, exist_ok=True)
@@ -193,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
         is_self=is_self,
         force=args.force,
         dry_run=args.dry_run,
+        env_skills=frozenset(env_skills),
+        prune_env_skills=frozenset(args.prune_env_skill),
     )
     if rc != 0:
         print("install-skills ABORTED (соблюдение ADOPTION.md §1 — без перезаписи чужих правок):", file=sys.stderr)
@@ -209,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         for m in messages:
             print(f"  {m}")
+    else:
+        # Перечисляем удаления и защищённые env_skills в любом режиме (не только --dry-run)
+        for m in messages:
+            if m.startswith(("REMOVE", "KEEP")):
+                print(f"  {m}")
     return 0
 
 

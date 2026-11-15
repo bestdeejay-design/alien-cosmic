@@ -23,17 +23,24 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from project_overlay import load_overlay, validate_claim_as  # noqa: E402
+
 DEPENDS_RE = re.compile(r"Depends on:\s*([^\n]+)", re.I)
+BLOCKED_BY_RE = re.compile(r"Blocked by:\s*([^\n]+)", re.I)
 ISSUE_REF_RE = re.compile(r"#(\d+)")
+COLLEGIUM_SIZES = frozenset({"M", "L"})
 
 
 def sh(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check)
 
 
-def detect_repo(explicit: str) -> str:
+def detect_repo(explicit: str, overlay_repo: str = "") -> str:
     if explicit:
         return explicit
+    if overlay_repo:
+        return overlay_repo
     res = sh(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], check=False)
     if res.returncode == 0 and res.stdout.strip():
         return res.stdout.strip()
@@ -85,10 +92,11 @@ def fetch_json_etag(endpoint: str, state_dir: Path) -> list | dict:
 
 
 def unresolved_dependencies(repo: str, body: str, state_dir: Path) -> list[int]:
-    m = DEPENDS_RE.search(body or "")
-    if not m:
-        return []
-    dep_nums = [int(x) for x in ISSUE_REF_RE.findall(m.group(1))]
+    dep_nums: list[int] = []
+    for pattern in (DEPENDS_RE, BLOCKED_BY_RE):
+        m = pattern.search(body or "")
+        if m:
+            dep_nums.extend(int(x) for x in ISSUE_REF_RE.findall(m.group(1)))
     open_deps: list[int] = []
     for num in dep_nums:
         issue_data = fetch_json_etag(f"repos/{repo}/issues/{num}", state_dir)
@@ -97,11 +105,52 @@ def unresolved_dependencies(repo: str, body: str, state_dir: Path) -> list[int]:
     return open_deps
 
 
+def native_blocked_by(repo: str, num: int, state_dir: Path) -> list[int]:
+    """Нативные GitHub blocked-by зависимости (если endpoint недоступен — считаем данных нет)."""
+    try:
+        data = fetch_json_etag(f"repos/{repo}/issues/{num}/dependencies/blocked_by", state_dir)
+    except RuntimeError as exc:
+        print(f"agent-runner WARN: native blocked-by недоступен для #{num}: {exc}", file=sys.stderr)
+        return []
+    if not isinstance(data, list):
+        return []
+    blockers: list[int] = []
+    for b in data:
+        if isinstance(b, dict):
+            n = b.get("number")
+            state = b.get("state")
+            if isinstance(n, int) and state != "closed":
+                blockers.append(n)
+    return blockers
+
+
+def issue_size(issue: dict) -> str:
+    lbls = [l["name"] for l in issue.get("labels", []) if isinstance(l, dict) and "name" in l]
+    sizes = [l.split(":", 1)[1] for l in lbls if l.startswith("size:")]
+    return sizes[0] if sizes else "S"
+
+
+def collegium_refusal(num: int, size: str) -> str:
+    """Отказ брать size:M/L в кодинг без коллегии (AUDIT-REPORT-69 B-04, WORKFLOW.md §6.1)."""
+    researcher = (", researcher" if size == "L" else "")
+    return (
+        f"agent-runner REFUSED #{num} (size:{size}): задачи M/L не берутся сразу в кодинг executor — "
+        f"обход гейта коллегии CONCLUSION/GATE OPEN запрещён (WORKFLOW.md §6.1, ADR-0002).\n"
+        f"Инструкция координатору:\n"
+        f"  1. Соберите пакеты первой волны: python3 scripts/spawn-pack --role auditor --auto "
+        f"--size {size} --issue {num} (и так же --role reviewer{researcher} --auto).\n"
+        f"  2. Запустите сабов первой волны, получите AUDIT_PACK/SPEC_PACK/REVIEWER_KICK и дайте гейт CONCLUSION/GATE OPEN.\n"
+        f"  3. Либо перезапустите agent-runner с --with-collegium: он соберёт первую волну пакетов сам "
+        f"(executor-фаза стартует только после GATE OPEN)."
+    )
+
+
 def find_eligible_issues(
     repo: str,
     allowed_to: set[str],
     agent_role: str | None,
     state_dir: Path,
+    with_collegium: bool = False,
 ) -> list[dict]:
     items = fetch_json_etag(f"repos/{repo}/issues?state=open&labels=status:ready&per_page=50", state_dir)
     if not isinstance(items, list):
@@ -123,11 +172,17 @@ def find_eligible_issues(
             continue
         if unresolved_dependencies(repo, item.get("body") or "", state_dir):
             continue
+        if native_blocked_by(repo, item["number"], state_dir):
+            continue
+        # Гейт коллегии (AUDIT-REPORT-69 B-04): M/L не идут сразу в кодинг executor.
+        size = issue_size(item)
+        item["_size"] = size
+        item["_collegium_gate"] = size in COLLEGIUM_SIZES and not with_collegium
         eligible.append(item)
     return sorted(eligible, key=lambda x: x["number"])
 
 
-def prepare_worktree(issue: dict, worktree_root: Path) -> tuple[Path, str]:
+def prepare_worktree(issue: dict, worktree_root: Path, env_skills: list[str] | None = None) -> tuple[Path, str]:
     num = issue["number"]
     branch = f"work/{num}-task"
     wt_dir = worktree_root / f"issue-{num}"
@@ -143,26 +198,66 @@ def prepare_worktree(issue: dict, worktree_root: Path) -> tuple[Path, str]:
         else:
             sh(["git", "worktree", "add", "-b", branch, str(wt_dir), base_ref])
 
-    sh(["git", "config", "core.hooksPath", ".githooks"], cwd=wt_dir, check=False)
+    hooks_rel = ".githooks"
+    if (wt_dir / "workflow" / ".githooks").is_dir() and not (wt_dir / ".githooks").is_dir():
+        hooks_rel = "workflow/.githooks"
+    sh(["git", "config", "core.hooksPath", hooks_rel], cwd=wt_dir, check=False)
 
-    lbls = [l["name"] for l in issue.get("labels", [])]
-    sizes = [l.split(":")[1] for l in lbls if l.startswith("size:")]
-    size = sizes[0] if sizes else "S"
+    size = issue_size(issue)
 
     brief_path = wt_dir / ".agent-context-brief.md"
     brief_path.write_text(f"# {issue.get('title', '')}\n\n{issue.get('body') or ''}\n", encoding="utf-8")
-    spawn_out = wt_dir / "SPAWN_BRIEF.md"
-    sh([
-        sys.executable,
-        str(ROOT / "scripts" / "spawn-pack"),
-        "--role", "executor",
-        "--skills", "clean-execution,bus-delivery",
-        "--size", size,
-        "--issue", str(num),
-        "--brief-file", str(brief_path),
-        "--allow-incomplete",
-        "--output", str(spawn_out),
-    ])
+
+    def spawn(role: str, skills: str, out: Path, allow_incomplete: bool = False, auto: bool = False) -> None:
+        spawn_cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "spawn-pack"),
+            "--role", role,
+            "--size", size,
+            "--issue", str(num),
+            "--brief-file", str(brief_path),
+            "--output", str(out),
+        ]
+        if auto:
+            spawn_cmd.append("--auto")
+        else:
+            spawn_cmd.extend(["--skills", skills])
+        if allow_incomplete:
+            spawn_cmd.append("--allow-incomplete")
+        if env_skills:
+            spawn_cmd.extend(["--env-skills", ",".join(env_skills)])
+        res = sh(spawn_cmd, check=False)
+        if res.returncode != 0:
+            raise RuntimeError(f"spawn-pack ({role}) упал для #{num}: {res.stderr.strip() or res.stdout.strip()}")
+
+    if size in COLLEGIUM_SIZES:
+        # Гейт коллегии (B-04): первая волна = пакеты AUDIT_PACK/SPEC_PACK/REVIEWER_KICK,
+        # а не кодинг executor. Без --allow-incomplete: executor-фаза стартует только
+        # после GATE OPEN координатора с полным пакетом коллегии.
+        spawn("auditor", "", wt_dir / "SPAWN_BRIEF-AUDITOR.md", auto=True)
+        if size == "L":
+            spawn("researcher", "", wt_dir / "SPAWN_BRIEF-RESEARCHER.md", auto=True)
+        spawn("reviewer", "", wt_dir / "SPAWN_BRIEF-REVIEWER.md", auto=True)
+        gate_path = wt_dir / "SPAWN_BRIEF-GATE.md"
+        packs = "AUDIT_PACK + SPEC_PACK + REVIEWER_KICK"
+        gate_path.write_text(
+            f"# #GATE OPEN — задачa #{num} (size:{size})\n\n"
+            f"Executor-фаза ЗАБЛОКИРОВАНА до гейта координатора (WORKFLOW.md §6.1, ADR-0002).\n\n"
+            f"1. Координатор запускает первую волну по готовым пакетам в этом worktree:\n"
+            f"   SPAWN_BRIEF-AUDITOR.md, {'SPAWN_BRIEF-RESEARCHER.md, ' if size == 'L' else ''}SPAWN_BRIEF-REVIEWER.md.\n"
+            f"2. Координатор ждёт гейт CONCLUSION и даёт явный маркер GATE OPEN с пакетами: {packs}.\n"
+            f"3. Только после GATE OPEN собрать executor-промпт (БЕЗ --allow-incomplete):\n\n"
+            f"```\n"
+            f"python3 scripts/spawn-pack --role executor --auto --size {size} --issue {num} \\\n"
+            f"  --audit-file AUDIT_PACK.md --spec-file SPEC_PACK.md --kick-file REVIEWER_KICK.md \\\n"
+            f"  --output SPAWN_BRIEF.md\n"
+            f"```\n\n"
+            f"Запуск executor до GATE OPEN = поставка не признаётся и возвращается.\n",
+            encoding="utf-8",
+        )
+    else:
+        # size:S — прежний Fast-Track: executor сразу, с --allow-incomplete.
+        spawn("executor", "clean-execution,bus-delivery", wt_dir / "SPAWN_BRIEF.md", allow_incomplete=True)
     brief_path.unlink(missing_ok=True)
     return wt_dir, branch
 
@@ -188,9 +283,10 @@ def cleanup_closed_worktrees(repo: str, worktree_root: Path, state_dir: Path) ->
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--repo", default="", help="Репозиторий owner/repo")
-    p.add_argument("--claim-id", default="SZ-1 / agent-runner", help="Подпись узла для wait-signal --claim")
-    p.add_argument("--claim-as", default="sz-1", help="Идентификатор sz-1..sz-5 для замены to:sz-pool")
-    p.add_argument("--to", default="", help="Какие to:* слушать через запятую (по умолчанию to:sz-pool,to:<claim-as>)")
+    p.add_argument("--project-config", type=Path, help="Явный путь к project.json")
+    p.add_argument("--claim-id", default="worker-1 / agent-runner", help="Подпись узла для wait-signal --claim")
+    p.add_argument("--claim-as", default="worker-1", help="Идентификатор узла из ростера проекта для замены to:pool")
+    p.add_argument("--to", default="", help="Какие to:* слушать через запятую (по умолчанию <pool_label>,to:<claim-as>)")
     p.add_argument("--agent", default="", help="Фильтр функции agent:<роль> (например coder, reviewer; пусто = любая)")
     p.add_argument("--worktree-root", type=Path, default=Path("/tmp/agents-worktrees"), help="Каталог изолированных worktree")
     p.add_argument("--state-dir", type=Path, default=Path("/tmp/agent-runner-etag"), help="Каталог ETag-кэша")
@@ -198,19 +294,29 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--once", action="store_true", help="Один проход опроса/захвата вместо бесконечного демона")
     p.add_argument("--dry-run", action="store_true", help="Только показать найденных кандидатов без claim и без создания worktree")
     p.add_argument("--cleanup-closed", action="store_true", help="Удалить worktree закрытых issues перед опросом")
+    p.add_argument("--with-collegium", action="store_true",
+                   help="Для size:M/L собирать первую волну коллегии (AUDIT/SPEC/REVIEWER_KICK пакеты) вместо отказа; executor-фаза — только после GATE OPEN")
     p.add_argument("--cmd", default="", help="Команда запуска CLI агента внутри worktree (получает SPAWN_BRIEF.md)")
     args = p.parse_args(argv)
 
     try:
-        repo = detect_repo(args.repo)
-    except RuntimeError as exc:
+        overlay = load_overlay(ROOT, args.project_config)
+        claim_err = validate_claim_as(args.claim_as, overlay)
+        if claim_err:
+            raise ValueError(claim_err)
+        repo = detect_repo(args.repo, overlay["project"].get("repo", ""))
+    except (RuntimeError, ValueError) as exc:
         print(f"agent-runner ERROR: {exc}", file=sys.stderr)
         return 2
 
+    pool_label = overlay.get("pool_label", "to:pool")
+    # issue-формы канона нейтральны и предлагают дефолтный `to:pool`; при кастомном
+    # pool_label в project.json задачи из форм оставались невидимыми рою (#83, M-04),
+    # поэтому слушаем и активный pool_label проекта, и дефолт.
     allowed_to = (
         {x.strip() for x in args.to.split(",") if x.strip()}
         if args.to.strip()
-        else {"to:sz-pool", f"to:{args.claim_as}"}
+        else {pool_label, "to:pool", f"to:{args.claim_as}"}
     )
 
     while True:
@@ -220,15 +326,29 @@ def main(argv: list[str] | None = None) -> int:
                 if removed:
                     print(f"agent-runner: очищены worktree закрытых задач: {removed}", file=sys.stderr)
 
-            candidates = find_eligible_issues(repo, allowed_to, args.agent.strip() or None, args.state_dir)
+            candidates = find_eligible_issues(
+                repo, allowed_to, args.agent.strip() or None, args.state_dir, with_collegium=args.with_collegium,
+            )
             if args.dry_run:
-                summary = [{"number": c["number"], "title": c["title"], "labels": [l["name"] for l in c.get("labels", [])]} for c in candidates]
+                summary = [
+                    {
+                        "number": c["number"],
+                        "title": c["title"],
+                        "labels": [l["name"] for l in c.get("labels", [])],
+                        "size": c.get("_size"),
+                        "collegium_gate": c.get("_collegium_gate", False),
+                    }
+                    for c in candidates
+                ]
                 print(json.dumps({"repo": repo, "eligible": summary}, ensure_ascii=False))
                 return 0
 
             dispatched = False
             for issue in candidates:
                 num = issue["number"]
+                if issue.get("_collegium_gate"):
+                    print(collegium_refusal(num, issue.get("_size", "M")), file=sys.stderr)
+                    continue
                 claim_cmd = [
                     str(ROOT / "scripts" / "wait-signal"),
                     "--repo", repo,
@@ -236,10 +356,13 @@ def main(argv: list[str] | None = None) -> int:
                     "--claim", args.claim_id,
                     "--claim-as", args.claim_as,
                 ]
+                if args.project_config:
+                    claim_cmd.extend(["--project-config", str(args.project_config)])
                 cres = sh(claim_cmd, check=False)
                 if cres.returncode == 0:
-                    wt_dir, branch = prepare_worktree(issue, args.worktree_root)
-                    print(f"DISPATCHED #{num} | branch={branch} | worktree={wt_dir} | brief={wt_dir / 'SPAWN_BRIEF.md'}")
+                    wt_dir, branch = prepare_worktree(issue, args.worktree_root, overlay.get("env_skills"))
+                    wave = "first-wave (collegium)" if issue_size(issue) in COLLEGIUM_SIZES else "executor (Fast-Track)"
+                    print(f"DISPATCHED #{num} | branch={branch} | worktree={wt_dir} | wave={wave}")
                     if args.cmd.strip():
                         env = os.environ.copy()
                         env["AGENT_ISSUE"] = str(num)

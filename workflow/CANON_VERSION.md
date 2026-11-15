@@ -1,27 +1,54 @@
 # Версия комплекта канона (ADOPTION §2)
 
-- Апстрим: bestdeejay-design/agents, origin/main **f793de3** (Workflow v2, ADR-0002 «Коллегия саб-агентов со сменой ролей, модульные навыки и механическое принуждение», вариант C утверждён владельцем 03.11.2026)
-- Скопировано координатором: 06.11.2026 (раскладка: канон в `workflow/` — зеркало структуры апстрима; проектная конкретизация — `workflow/PROJECT.md`; корневой `AGENTS.md` проекта НЕ перезаписан — он канон владельца, совмещение по ADOPTION §2)
-- Новое против f60565d: `agents/` (карточки ролей), `skills/` (модульные навыки + зеркала `.claude/`/`.agents/`), `scripts/{spawn-pack,install-skills,preflight,agent-runner,wait-signal v2.2.7}`, `schema/bus.json`, `.githooks`/`.github` (bus-hygiene, guard-main), тир size:S Fast-Track, 2 волны со сменой ролей на M/L, лестница принуждения (§12 COORDINATOR_RULES)
-- Отображение уровней (PROJECT.md §Уровни): test = локальные стенды + ветка test (Pages /test/), staging = ace.dj1.ru/r/ после ревью и полного канона, production = Pages deploy-prod + rsync gostiny-prod-01 после приёмки владельца. Правила уровней соблюдены процессно; rulesets/environments (уровни 2–3 лестницы) НЕ установлены — честный статус: «гейты на дисциплине» (кандидат в задачи)
-- Установка: `python3 workflow/scripts/preflight --install-hooks` выполнена в alien-cosmic (локальный уровень 1.5); GitHub Actions хаба (guard-main/bus-hygiene) в alien-cosmic не включены — кандидат в задачи
-- Обновление: координатор перечитывает апстрим, rsync-копирует, сохраняя PROJECT.md/CANON_VERSION.md, поднимает SHA здесь
+- Апстрим: hub-репо канона (адрес — `project.json` → `project.repo`), origin/main
+  **841794a** (комплект D+: ADR-0003 «стерильное ядро + проектный оверлей», #170
+  owner-guard «репозиторий закрыт по умолчанию», #169 «серверные Actions сняты с хаба»;
+  предыдущая база копии — f793de3/ADR-0002)
+- Скопировано координатором: **15.11.2026**, rsync в `workflow/` (режим B), с
+  сохранением проектного слоя: `project.json`, `PROJECT.md`, этот файл
+- Против f793de3 новое: ADR-0003 — имена сабов/проектов/доменов вынесены из ядра в
+  оверлей (`project.json` + стерильный `PROJECT.md` по шаблону), `schema/bus.json`
+  → 46 базовых меток (`to:owner|coordinator|pool` + roster-паттерн), архив хаба в
+  `docs/history/` (не копируется), `tests/regression.py` = автоматический Гейт
+  Чистоты в preflight; #170 — pre-push замок владельца (`scripts/guard`, закрыт по
+  умолчанию) + запрет прямых пушей в main; #169 — серверные Actions хаба сняты;
+  #168/#167/#166 — дедупликация CLAIM/SPEC_PACK/REVIEWER_KICK/Fast-Track, починка
+  нумерации BUS; #165 — canon fingerprint в квитанции preflight; #164 — preflight
+  требует phase:action на size:M/L; #162 — `CLAUDE.md` точка входа; #159 — метка
+  шины `to:infra`; новые скиллы security-audit (black/white/grey-box, fintech,
+  gaming, reporting) + `scripts/{guard,custodian,board_link,project_overlay}`
+- Проектный оверлей создан: `workflow/project.json` (roster и префиксы
+  веток — см. файл; состав: внешний изолированный исполнитель + пул
+  direct_gh-исполнителей)
+- Отображение уровней (PROJECT.md §5): test = локальные стенды + ветка test
+  (Pages /test/); staging = игровой домен после ревью и полного регресса;
+  production = Pages deploy-prod + rsync prod-сервера после приёмки владельца.
+  rulesets/environments НЕ установлены — честный статус: «гейты на дисциплине»
+- Хуки: `core.hooksPath=.githooks` в проекте указывает на несуществующий каталог
+  корня (workflow/.githooks не подключён) — замок #170 и запрет пуша в main в
+  проекте НЕ активны механически (работа по корневому AGENTS.md: координатор
+  пишет в main). Подключение `workflow/.githooks` = отдельное решение владельца
+  (конфликтует с практикой док-коммитов координатора в main)
 
-## Расхождения от апстрима f793de3 (project-layer patches)
+## Верификация копии 15.11.2026
 
-1. **`scripts/preflight` — скоуп автотестов через `workflow/preflight.json`** (помечено в коде
-   «PROJECT-LAYER PATCH (alien-cosmic, база канона f793de3)»). Единственное изменение логики:
-   список тестовых файлов собирается по гло́бу `tests/test_*.py` с учётом исключений из
-   `preflight.json` (`test_exclude_files` — файлы не запускаются; `test_exclude_ids` —
-   точечные исключения отдельных тестов по fnmatch-гло́бу полного id) вместо одного фиксированного
-   `discover -p test_*.py`. Без `preflight.json` поведение идентично апстриму.
-   Причина: два хаб-теста структурно невыполнимы в проектной раскладке alien-cosmic:
-   - `tests/test_documentation.py` (12 errors) — сверяет docs/scripts с BASE-коммитом истории
-     **хаба** (`fedec3b8…` в bestdeejay-design/agents), которого в alien-cosmic нет
-     (`git show` → 128). Проверки «approved owner decisions» — инварианты истории хаба, не проекта.
-   - `tests/test_collegium_and_tooling.py::HooksWorkflowsAndRunnerTests::test_preflight_skip_tests_and_radius_guard`
-     (1 failure) — требует чистого worktree всего репозитория (радиус-пробник против `git diff HEAD`);
-     в alien-cosmic всегда есть чужие незакоммиченные файлы (design/shots, scripts/harness.mjs, sim_*)
-     вне workflow/ → тест падает по состоянию репозитория, а не канона. Остальные 20 тестов модуля проходят.
-   Исключённые тесты — кандидат в задачу на адаптацию к проектной раскладке (например,
-   перепривязка BASE на снапшот в `workflow/reference-workflow-source.txt`).
+- Гейт Чистоты: 0 нарушений (PROJECT.md стерилен, имена — только в project.json)
+- Гейты labels/префиксов/маркеров: зелёные с проектным оверлеем
+- Автотесты preflight: **135/137**, 2 структурных красных (не регресс копии):
+  1. `test_field_lessons…reference-workflow-source.txt` — файл-маркер перемещён в
+     `docs/history/` апстримом; в режиме B ожидание «файла не существует»
+     фактически выполняется, тест падает только на способ проверки (файл удалён,
+     версия комплекта живёт здесь)
+  2. `test_github_workflows_parse…ci.yml` — фолбэк Режима B находит собственные
+     Actions проекта (check/deploy-prod/deploy-test) и требует хаб-имена
+     ci/bus-hygiene/guard-main — непереносим в проект со своей автоматикой.
+     Кандидат в issue апстрима (адаптация фолбэка на parse любых workflow)
+- Старый механизм исключений `workflow/preflight.json` упразднён апстримом
+  (preflight его больше не читает) — файл удалён; оба исключения старой базы
+  (`test_documentation`, radius-guard) в новой базе зелёные — канон стал
+  переносимым (ADR-0003), что и подтверждает прогон
+
+## Обновление (регламент PROJECT.md §6)
+
+fetch апстрима → diff от SHA выше → rsync (exclude `docs/history`, сохранение
+проектного слоя) → поднять SHA и список нового здесь → preflight → коммит в main.

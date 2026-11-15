@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "slug": "alien-cosmic",
+    "repo": "bestdeejay-design/alien-cosmic",
+    "canon_prefix": "workflow/"
+  },
+  "pool_label": "to:pool",
+  "branch_prefixes": [
+    "work",
+    "ext",
+    "agent",
+    "arena",
+    "coord",
+    "audit",
+    "test"
+  ],
+  "roster": [
+    {
+      "id": "arena",
+      "name": "Arena",
+      "mode": "isolated_branch",
+      "color": "C5DEF5",
+      "board_color": "GREEN",
+      "description": "Исполнитель-Арена: ветка arena/<id> + письмо в design/ARENA_MAILBOX.md, в issues не пишет"
+    },
+    {
+      "id": "sz-pool",
+      "name": "SZ Pool",
+      "mode": "direct_gh",
+      "color": "D4C5F9",
+      "board_color": "PURPLE",
+      "description": "Пул исполнителей SZ (m1/m2): issues + маркеры шины, claim через wait-signal --claim"
+    },
+    {
+      "id": "sz-m1",
+      "name": "SZ m1",
+      "mode": "direct_gh",
+      "color": "D4C5F9",
+      "board_color": "PURPLE",
+      "description": "Саб-исполнитель SZ m1"
+    },
+    {
+      "id": "sz-m2",
+      "name": "SZ m2",
+      "mode": "direct_gh",
+      "color": "D4C5F9",
+      "board_color": "PURPLE",
+      "description": "Саб-исполнитель SZ m2"
+    }
+  ]
+}

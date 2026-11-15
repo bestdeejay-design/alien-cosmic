@@ -1,7 +1,7 @@
 {
-  "schema_version": "2.0.0",
-  "updated_at": "2026-11-06",
-  "description": "Единый машиночитаемый источник правды: 52 labels ядра, 21 маркер шины, тир-матрица S/M/L и роли саб-агентов коллегии (ADR-0002).",
+  "schema_version": "2.1.0",
+  "updated_at": "2026-11-11",
+  "description": "Единый машиночитаемый источник правды: 46 универсальных labels ядра (+ расширяемый проектный ростер to:<id>), 21 маркер шины, тир-матрица S/M/L и роли саб-агентов коллегии (ADR-0002, ADR-0003).",
   "label_groups": {
     "status": {
       "cardinality": "exactly_one_when_open",
@@ -39,16 +39,11 @@
     },
     "to": {
       "cardinality": "exactly_one_when_open_none_when_closed",
+      "roster_pattern": "^to:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$",
       "values": [
         {"name": "to:owner", "color": "1F6FEB", "description": "Текущий адресат: владелец"},
         {"name": "to:coordinator", "color": "1F6FEB", "description": "Текущий адресат: координатор"},
-        {"name": "to:arena", "color": "1F6FEB", "description": "Текущий адресат: внешний исполнитель Арена"},
-        {"name": "to:sz-pool", "color": "1F6FEB", "description": "Текущий адресат: любой свободный SZ, ждёт claim"},
-        {"name": "to:sz-1", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-1"},
-        {"name": "to:sz-2", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-2"},
-        {"name": "to:sz-3", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-3"},
-        {"name": "to:sz-4", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-4"},
-        {"name": "to:sz-5", "color": "1F6FEB", "description": "Текущий адресат: конкретный SZ-5"}
+        {"name": "to:pool", "color": "1F6FEB", "description": "Текущий адресат: общий пул свободных исполнителей, ждёт claim"}
       ]
     },
     "type": {

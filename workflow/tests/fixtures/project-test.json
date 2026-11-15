@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "project": { "slug": "test-project", "repo": "example/test-project", "canon_prefix": "" },
+  "pool_label": "to:pool",
+  "branch_prefixes": ["work", "ext", "agent", "arena", "coord"],
+  "roster": [
+    { "id": "worker-1", "name": "Worker 1", "mode": "direct_gh", "color": "C5DEF5", "board_color": "GREEN", "description": "Тестовый исполнитель worker-1" },
+    { "id": "worker-2", "name": "Worker 2", "mode": "direct_gh", "color": "C5DEF5", "board_color": "GREEN", "description": "Тестовый исполнитель worker-2" },
+    { "id": "sandbox-1", "name": "Sandbox 1", "mode": "isolated_branch", "branch_prefix": "ext", "color": "BFDADC", "board_color": "PURPLE", "description": "Тестовый изолированный исполнитель sandbox-1" }
+  ],
+  "env_skills": [],
+  "custom_board_fields": []
+}

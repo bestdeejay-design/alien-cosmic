@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""custodian — единый вход пилота фоновых агентов непрерывной гигиены (issue #127).
+
+Читает роли `custodians` из проектного оверлея project.json (см. scripts/project_overlay.py),
+для каждой роли запускает её check-команду (существующий скрипт/режим) и сравнивает
+результат с прошлым прогоном (state-файл, по умолчанию `.custodian-state.json` в корне
+канона, в .gitignore). Печатает маркер `👤 NEEDS-HUMAN` ТОЛЬКО при новом расхождении
+с прошлым прогоном; без изменений — тихий `ok`. Первый прогон для роли — базлайн,
+он никогда не кричит.
+
+Границы наблюдателя (позиции коллегии #70): custodian только ПЕЧАТАЕТ маркеры —
+не пишет код, не создаёт issues (создание issue — решение координатора) и не трогает
+метки `status:*` / `to:*`. Новый тип узла в schema/bus.json не вводится: маркеры
+`👤 NEEDS-HUMAN` / `📣 PING` / `❓ QUESTION` и обычные метки переиспользуются как есть.
+
+Роли пилота (kind):
+  schema-sentinel  — сверка меток: tests/check_core_labels.py --report-extra (missing+extra);
+  board-gardener   — дрейф борда: scripts/board_link.py --hygiene;
+  doc-linter       — счётчики regression.py (broken/purity/drift) против прошлого прогона.
+
+Режимы: --once (по умолчанию) — один проход по всем ролям; --list — показать роли.
+Крон НЕ настраивается каноном (решение хаба), но скрипт детерминирован и готов к нему.
+Лимит шума: 3 ложных срабатывания роли подряд = роль ставится на паузу владельцем
+(убирается из project.json, см. docs/KNOWLEDGE_BASE.md).
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from project_overlay import load_overlay  # noqa: E402
+
+NEEDS_HUMAN = "👤 NEEDS-HUMAN"
+DEFAULT_STATE_FILE = ".custodian-state.json"
+CHECK_TIMEOUT = 600
+
+
+def run_check(command: str, cwd: Path) -> dict:
+    """Запускает check-команду роли и возвращает машиносравнимый снимок результата."""
+    try:
+        proc = subprocess.run(
+            command, shell=True, cwd=cwd, text=True,
+            capture_output=True, timeout=CHECK_TIMEOUT,
+        )
+        return {"exit": proc.returncode, "output": f"{proc.stdout}{proc.stderr}"}
+    except subprocess.TimeoutExpired:
+        return {"exit": 124, "output": f"custodian: check превысил таймаут {CHECK_TIMEOUT}s\n"}
+
+
+def snapshot_digest(snapshot: dict) -> str:
+    """Стабильный ключ сравнения прогонов (exit-код + нормализованный вывод)."""
+    normalized = "\n".join(snapshot["output"].splitlines()).strip()
+    return f"exit={snapshot['exit']}\n{normalized}"
+
+
+def load_state(state_path: Path) -> dict:
+    if not state_path.is_file():
+        return {}
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--once", action="store_true", default=True,
+                   help="Один проход по всем ролям (режим по умолчанию; крон настраивается хабом)")
+    p.add_argument("--list", action="store_true", help="Показать роли custodians из оверлея и выйти")
+    p.add_argument("--root", type=Path, default=SCRIPTS.parent, help="Корень канона")
+    p.add_argument("--project-config", type=Path, help="Явный путь к project.json")
+    p.add_argument("--state", type=Path, default=None,
+                   help=f"State-файл с прошлыми снимками (по умолчанию <root>/{DEFAULT_STATE_FILE})")
+    args = p.parse_args(argv)
+
+    root = args.root.resolve()
+    try:
+        overlay = load_overlay(root, args.project_config)
+    except ValueError as exc:
+        print(f"custodian: {exc}", file=sys.stderr)
+        return 2
+
+    custodians = overlay.get("custodians", [])
+    if args.list:
+        if not custodians:
+            print("custodian: роли custodians в оверлее не объявлены")
+            return 0
+        for c in custodians:
+            cadence = f" (cadence: {c['cadence']})" if c["cadence"] else ""
+            print(f"{c['id']}\t{c['kind']}\t{c['check']}{cadence}")
+        return 0
+    if not custodians:
+        print("custodian: роли custodians в оверлее не объявлены — нечего наблюдать")
+        return 0
+
+    state_path = args.state if args.state is not None else root / DEFAULT_STATE_FILE
+    state = load_state(state_path)
+    new_state: dict = {}
+    alerts = 0
+
+    for c in custodians:
+        key = c["id"]
+        snapshot = run_check(c["check"], root)
+        digest = snapshot_digest(snapshot)
+        new_state[key] = {"kind": c["kind"], "check": c["check"], "digest": digest}
+
+        previous = state.get(key)
+        if previous is None:
+            # Первый прогон роли — базлайн: фиксируем, молчим (иначе каждый новый
+            # наблюдатель кричал бы сразу при любом состоянии проекта).
+            print(f"custodian: {key} ({c['kind']}) — базлайн зафиксирован, ok")
+            continue
+        if previous.get("digest") == digest:
+            print(f"custodian: {key} ({c['kind']}) — ok")
+            continue
+
+        alerts += 1
+        print(f"{NEEDS_HUMAN} custodian[{key}] ({c['kind']}): новое расхождение с прошлым прогоном "
+              f"(check: {c['check']})")
+        diff = difflib.unified_diff(
+            (previous.get("digest") or "").splitlines(), digest.splitlines(),
+            fromfile=f"previous/{key}", tofile=f"current/{key}", lineterm="",
+        )
+        for line in list(diff)[:40]:
+            print(f"  {line}")
+
+    try:
+        state_path.write_text(json.dumps(new_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"custodian: не удалось записать state-файл {state_path}: {exc}", file=sys.stderr)
+        return 2
+
+    if alerts:
+        print(f"custodian: {alerts} расхождение(й) — требуется человек (см. маркеры выше)")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

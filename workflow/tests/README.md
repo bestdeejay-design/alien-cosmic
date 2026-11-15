@@ -1,15 +1,15 @@
-# Воспроизводимые проверки
+# Воспроизводимые проверки комплекта канона
 
-Проверки ниже относятся к предложенному диффу поверх базы
-`fedec3b8702f71ab89c10294158858b5f7c5520e`. Нужны Python 3, Git, Bash и PyYAML;
-для повторной выборки labels — `gh` с доступом на чтение. В этом запуске были
-Python 3.11.2, Git 2.39.5 и PyYAML 6.0.3. Установка в отдельный временный каталог:
+Набор автотестов проверяет инварианты переносимого канона (`ADR-0001`..`ADR-0003`)
+и всего инструментария без выхода в сеть и без привязки к git-истории конкретного репозитория.
+Нужны Python 3, Git, Bash и PyYAML:
 
 ```sh
 python3 -m pip install --target /tmp/agents-docs-pyyaml -r tests/requirements.txt
 export PYTHONPATH=/tmp/agents-docs-pyyaml
 export PYTHONDONTWRITEBYTECODE=1
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 tests/regression.py
 for script in scripts/wait-signal docs/create-labels.sh docs/project-apply.sh; do
   bash -n "$script" || exit 1
 done
@@ -17,27 +17,25 @@ git diff --check
 git diff --cached --check
 ```
 
-15 тестов проверяют конкретные инварианты C и текущие изменения: в том числе
-неизменность решений владельца и скриптов, неизменность отобранной истории, локальный
-поднабор схемы форм, отсутствие closing keywords в действующих шаблонах и маршруты
-после копирования комплекта `docs/` в синтетический проект. Это не установщик и не
-проверка внедрения в реальный проект. Проверка незатирания касается текста инструкции,
-а не исполнения автоматизированного merge. Код теста — `test_documentation.py`.
-Дополнительно `test_collegium_and_tooling.py` покрывает Workflow v2 (`ADR-0002`):
-единую схему `schema/bus.json` (52 labels + 21 маркер + тиры `S/M/L`), компактность
+`test_documentation.py` проверяет переносимые инварианты варианта C и `ADR-0003`:
+сохранность решений владельца, заголовки регламентов, локальный поднабор схемы форм,
+синхронность 46 базовых labels ядра с `schema/bus.json` и `tests/fixtures/labels-core.json`,
+отсутствие автозакрытия в действующих шаблонах и маршруты после копирования `docs/`
+в синтетический проект.
+Дополнительно `test_collegium_and_tooling.py` покрывает Workflow v2/v2.1 (`ADR-0002`, `ADR-0003`):
+единую схему `schema/bus.json` (46 базовых labels + ростер проекта + 21 маркер + тиры `S/M/L`), компактность
 `AGENTS.md` и 11 модулей `skills/*/SKILL.md`, нативную синхронизацию `.claude/` +
 `.agents/` и безопасную раскатку в целевой проект через `scripts/install-skills`,
-Delegation Enforcer `scripts/spawn-pack` (включая `--auto`, `--preset fullstack-audit`,
+Delegation Enforcer `scripts/spawn-pack` (включая `--auto`, `--preset fullstack-audit`, `--env-skills`,
 `REVIEWER_KICK` и 2-ю волну со сменой ролей), `scripts/preflight`, `.githooks/pre-push`,
-`.github/workflows/*.yml`, фильтрацию/ETag в `scripts/agent-runner` и обработку
-`skipped`/`neutral` проверок в `scripts/wait-signal`.
+`.github/workflows/*.yml`, фильтрацию/ETag в `scripts/agent-runner`, `scripts/board_link.py`
+и обработку `skipped`/`neutral` проверок в `scripts/wait-signal`.
 
 ## Поведенческие тесты wait-signal: `test_wait_signal.py`
 
-`scripts/wait-signal` больше не сверяется побайтово с исторической базой: эта
-проверка v2.1.0 зафиксирована в [VALIDATION-2026-11-03.md](../docs/VALIDATION-2026-11-03.md),
-а актуальное поведение покрывается поведенческими тестами. `test_documentation.py`
-оставляет byte-match только для `docs/create-labels.sh` и `docs/project-apply.sh`.
+Актуальное поведение `scripts/wait-signal` покрывается поведенческими тестами через
+`tests/mock_gh.py` (историческая сверка первой редакции сохранена в архиве
+[VALIDATION-2026-11-03.md](../docs/history/VALIDATION-2026-11-03.md)).
 
 Запуск (без сети, без `gh`, ~45–50 секунд):
 

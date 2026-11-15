@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schema" / "bus.json"
+sys.path.insert(0, str(ROOT / "scripts"))
+from project_overlay import load_overlay  # noqa: E402
 
 UI_PATH_RE = re.compile(
     r"(?:^|/)(?:frontend|client|web|ui|app|pages|views|components|widgets|styles|public)(?:/|$)"
@@ -68,6 +70,24 @@ AUDIT_TEXT_RE = re.compile(
     r"|(?:полн[а-я]+\s+аудит|сквозн[а-я]+\s+аудит|аудит\s+фронт|аудит\s+проекта|трёхслойн[а-я]+\s+аудит|трехслойн[а-я]+\s+аудит)",
     re.I,
 )
+SECURITY_AUDIT_TEXT_RE = re.compile(
+    r"\b(?:pentest|pen[- ]?test(?:ing)?|security\s+(?:audit|review|check)|vulnerabilit|exploit|threat\s+model|red\s+team|cvss)\b"
+    r"|(?:пентест|аудит\s+безопасност|тестировани[ея]\s+безопасност|проверк[аи]\s+безопасност|уязвимост|проникновен|дыр[ау]\s+в\s+безопасн)",
+    re.I,
+)
+SEC_BLACK_BOX_TEXT_RE = re.compile(r"\bblack[- ]?box\b|(?:чёрн[а-я]+|черн[а-я]+)\s+ящик", re.I)
+SEC_GREY_BOX_TEXT_RE = re.compile(r"\b(?:grey|gray)[- ]?box\b|сер[а-я]+\s+ящик", re.I)
+SEC_WHITE_BOX_TEXT_RE = re.compile(r"\bwhite[- ]?box\b|бел[а-я]+\s+ящик", re.I)
+SEC_GAMING_TEXT_RE = re.compile(
+    r"\b(?:game|gaming|gameplay|loot\s?box|anticheat|anti[- ]?cheat|casino)\b"
+    r"|(?:игров|лутбокс|античит|казино|читер|дюп|донат)",
+    re.I,
+)
+SEC_FINTECH_TEXT_RE = re.compile(
+    r"\b(?:fintech|payment|wallet|ledger|kyc|aml|billing|banking|double\s+spend)\b"
+    r"|(?:финтех|платёж|платеж|кошел|биллинг|банковск|финансов|леджер|двойн[а-я]+\s+трат)",
+    re.I,
+)
 
 
 def load_schema() -> dict:
@@ -85,13 +105,24 @@ def read_arg_or_file(inline: str | None, file_path: str | None, label: str) -> s
     return ""
 
 
-def available_skills() -> dict[str, Path]:
-    skills_dir = ROOT / "skills"
+def available_skills(extra_roots: list[Path] | None = None) -> dict[str, Path]:
     found: dict[str, Path] = {}
-    if skills_dir.is_dir():
-        for child in sorted(skills_dir.iterdir()):
+    search_dirs = [ROOT / "skills"]
+    # Подхват локальных проектных скиллов стека из .claude/skills и .agents/skills
+    candidate_roots = [ROOT]
+    if ROOT.name == "workflow":
+        candidate_roots.append(ROOT.parent)
+    if extra_roots:
+        candidate_roots.extend(extra_roots)
+    for r in candidate_roots:
+        search_dirs.append(r / ".claude" / "skills")
+        search_dirs.append(r / ".agents" / "skills")
+    for sdir in search_dirs:
+        if not sdir.is_dir():
+            continue
+        for child in sorted(sdir.iterdir()):
             skill_md = child / "SKILL.md"
-            if child.is_dir() and skill_md.is_file():
+            if child.is_dir() and skill_md.is_file() and child.name not in found:
                 found[child.name] = skill_md
     return found
 
@@ -195,6 +226,27 @@ def auto_select_skills(
     if has_data:
         add("data-migration", "затронуты схемы/БД/миграции/сохранения")
 
+    # 2b. Аудит безопасности и пентест (security-audit-*)
+    has_security = "type:security" in label_set or bool(SECURITY_AUDIT_TEXT_RE.search(combined_text))
+    has_black_box = bool(SEC_BLACK_BOX_TEXT_RE.search(combined_text))
+    has_grey_box = bool(SEC_GREY_BOX_TEXT_RE.search(combined_text))
+    has_white_box = bool(SEC_WHITE_BOX_TEXT_RE.search(combined_text))
+    has_sec_gaming = bool(SEC_GAMING_TEXT_RE.search(combined_text))
+    has_sec_fintech = bool(SEC_FINTECH_TEXT_RE.search(combined_text))
+    if has_security or has_black_box or has_grey_box or has_white_box or has_sec_gaming or has_sec_fintech:
+        add("security-audit-core", "сигналы аудита/пентеста безопасности — scope, RoE, выбор режима")
+        add("security-audit-reporting", "отчётность аудита — находки с доказательствами, CVSS")
+    if has_black_box:
+        add("security-audit-black-box", "явный режим Black Box — только публичная поверхность")
+    if has_grey_box:
+        add("security-audit-grey-box", "явный режим Grey Box — часть доступов")
+    if has_white_box:
+        add("security-audit-white-box", "явный режим White Box — полный доступ к коду")
+    if has_sec_gaming:
+        add("security-audit-gaming", "игровой домен — экономика, читы, донат, античит")
+    if has_sec_fintech:
+        add("security-audit-fintech", "финтех-домен — деньги, платежи, KYC/PII")
+
     # 3. Усиление ревьювера и Волны 2 со сменой ролей
     if wave == 2 or (role == "reviewer" and (has_ui or has_api_be or has_data)):
         add("edge-case-testing", "Волна 2 / ревью — матрица пограничных и стресс-сценариев")
@@ -240,6 +292,14 @@ def render_pack(
     ]
     if auto_reasons:
         sections.append(f"- **Автоподбор навыков (`--auto`):** {'; '.join(auto_reasons)}")
+
+    if role == "executor":
+        sections.append(
+            "- **Обязательное правило `PROTOCOL.md` §9 («Рассуждение и обход правил») — прочти до кода:** "
+            "в поставке видно «почему» (проверенный критерий + чем опровергнуты альтернативы), "
+            "любой обход правила записан по схеме «что обходится / почему / чем компенсирован риск»; "
+            "ревьювер возвращает поставку без видимого «почему» или записи обхода."
+        )
 
     if wave == 2 and swap_from:
         sections.extend([
@@ -425,6 +485,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-dir", type=Path, help="Папка вывода для --preset fullstack-audit")
     p.add_argument("--role", choices=("auditor", "researcher", "executor", "reviewer"), help="Роль саб-агента")
     p.add_argument("--skills", default="", help="Список навыков через запятую ('default', 'auto' или список)")
+    p.add_argument("--env-skills", default="", help="Локальные навыки стека проекта через запятую (в дополнение к project.json env_skills)")
+    p.add_argument("--project-config", type=Path, help="Явный путь к project.json (для чтения env_skills и project.repo)")
+    p.add_argument("--project-root", type=Path, help="Корень целевого проекта для поиска локальных .claude/skills и .agents/skills")
     p.add_argument("--auto", action="store_true", help="Автоматически подобрать профильные навыки по меткам, радиусу и брифу")
     p.add_argument("--explain-skills", action="store_true", help="Показать только выбранные навыки и причины подбора")
     p.add_argument("--labels", default="", help="Метки issue через запятую для автоподбора (например: type:bugfix,size:M)")
@@ -456,7 +519,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     schema = load_schema()
-    skills_map = available_skills()
+    extra_roots = [args.project_root.resolve()] if args.project_root else []
+    try:
+        overlay = load_overlay(ROOT, args.project_config)
+    except ValueError as exc:
+        print(f"spawn-pack ERROR: {exc}", file=sys.stderr)
+        return 2
+    if overlay.get("path"):
+        extra_roots.append(Path(overlay["path"]).resolve().parent)
+    skills_map = available_skills(extra_roots)
 
     if args.list:
         return print_catalog(schema)
@@ -495,7 +566,7 @@ def main(argv: list[str] | None = None) -> int:
             print("spawn-pack ERROR: для --from-issue укажите реальный номер --issue > 0.", file=sys.stderr)
             return 2
         try:
-            repo_slug = detect_repo_slug(args.repo)
+            repo_slug = detect_repo_slug(args.repo or overlay["project"].get("repo", ""))
             live_labels, live_title, live_body = fetch_issue_metadata(repo_slug, args.issue)
         except ValueError as exc:
             print(f"spawn-pack ERROR: {exc}", file=sys.stderr)
@@ -551,6 +622,14 @@ def main(argv: list[str] | None = None) -> int:
         for must_have in role_cfg["default_skills"]:
             if must_have not in skill_names:
                 skill_names.insert(0, must_have)
+
+    env_skill_list = list(overlay.get("env_skills", [])) + [
+        s.strip() for s in args.env_skills.split(",") if s.strip()
+    ]
+    for esk in env_skill_list:
+        if esk not in skill_names:
+            skill_names.append(esk)
+            auto_reasons.append(f"`{esk}` (навык окружения/стека проекта)")
 
     unknown = [s for s in skill_names if s not in skills_map]
     if unknown:

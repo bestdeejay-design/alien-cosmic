@@ -3,8 +3,8 @@
 Без сети: `gh` подменяется исполняемой копией мока в /tmp, состояние и сценарий
 передаются через JSON (fixtures: tests/fixtures/json/wait-signal-*.json).
 Проверяются коды выхода, stdout-сигналы и эффекты claim (labels, комментарии),
-а не текст скрипта: побайтовая сверка с исторической базой зафиксирована в
-docs/VALIDATION-2026-11-03.md.
+а не текст скрипта: историческая сверка с базой сохранена в архиве
+docs/history/VALIDATION-2026-11-03.md.
 """
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ class WaitSignalCase(unittest.TestCase):
         scenario_path.write_text(json.dumps(scenario or {}, ensure_ascii=False), encoding="utf-8")
         state_dir = tmp / "etag-cache"
         env = dict(os.environ)
+        env["AGENT_PROJECT_CONFIG"] = str(ROOT / "tests" / "fixtures" / "project-test.json")
         env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
         env["WS_MOCK_STATE"] = str(state_path)
         env["WS_MOCK_SCENARIO"] = str(scenario_path)
@@ -70,7 +71,7 @@ class WaitSignalCase(unittest.TestCase):
 
     def base_state(self):
         return {
-            "labels": ["status:ready", "agent:coder", "to:sz-2"],
+            "labels": ["status:ready", "agent:coder", "to:worker-2"],
             "updated_at": "2026-11-03T08:00:00Z",
             "body_first": "Задача на поставку",
             "comments": [], "checks": {"total_count": 0, "runs": []},
@@ -177,6 +178,7 @@ class RobustnessTests(WaitSignalCase):
             state_path = tmp / "state.json"
             state_path.write_text(json.dumps(self.base_state()), encoding="utf-8")
             env = dict(os.environ)
+            env["AGENT_PROJECT_CONFIG"] = str(ROOT / "tests" / "fixtures" / "project-test.json")
             env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
             env["WS_MOCK_STATE"] = str(state_path)
             env["WS_MOCK_SCENARIO"] = str(tmp / "scenario.json")
@@ -192,7 +194,7 @@ class RobustnessTests(WaitSignalCase):
 
 
 class ClaimTests(WaitSignalCase):
-    def claim_argv(self, claim_as="sz-2", claim_id="SZ-2 / сессия 2026-11-03-a"):
+    def claim_argv(self, claim_as="worker-2", claim_id="worker-2 / сессия 2026-11-03-a"):
         return ["--claim", claim_id, "--claim-as", claim_as]
 
     def test_claim_free_task_roundtrip(self):
@@ -208,17 +210,18 @@ class ClaimTests(WaitSignalCase):
             scenario_path = tmp / "scenario.json"
             scenario_path.write_text("{}", encoding="utf-8")
             env = dict(os.environ)
+            env["AGENT_PROJECT_CONFIG"] = str(ROOT / "tests" / "fixtures" / "project-test.json")
             env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
             env["WS_MOCK_STATE"] = str(state_path)
             env["WS_MOCK_SCENARIO"] = str(scenario_path)
             argv = ["--repo", REPO, "--issue", "12", "--state-dir", str(tmp / "cache"),
-                    "--claim", "SZ-2 / сессия 2026-11-03-a", "--claim-as", "sz-2"]
+                    "--claim", "worker-2 / сессия 2026-11-03-a", "--claim-as", "worker-2"]
             proc = subprocess.run(["bash", str(ROOT / "scripts" / "wait-signal")] + argv,
                                   capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(0, proc.returncode, proc.stderr)
             self.assertIn("CLAIMED", proc.stdout)
             final = json.loads(state_path.read_text(encoding="utf-8"))
-            self.assertEqual(["status:in-progress", "agent:coder", "to:sz-2"], final["labels"])
+            self.assertEqual(["status:in-progress", "agent:coder", "to:worker-2"], final["labels"])
             self.assertEqual(1, len([c for c in final["comments"]
                                      if c["first"].startswith("✋ CLAIM")]))
         finally:
@@ -227,21 +230,21 @@ class ClaimTests(WaitSignalCase):
     def test_claim_busy_on_foreign_claim(self):
         state = self.base_state()
         state["comments"] = [{"id": 5, "created_at": now_iso(),
-                              "first": "✋ CLAIM #12 — взял: SZ-1 / другая сессия"}]
+                              "first": "✋ CLAIM #12 — взял: worker-1 / другая сессия"}]
         rc, out, _ = self.run_wait(state, argv=self.claim_argv())
         self.assertEqual(3, rc)
         self.assertIn("BUSY: есть claim", out)
 
     def test_claim_in_progress_with_reclaimed_reports_possible_free(self):
         state = self.base_state()
-        state["labels"] = ["status:in-progress", "to:sz-1"]
+        state["labels"] = ["status:in-progress", "to:worker-1"]
         state["comments"] = [{"id": 5, "created_at": now_iso(), "first": "♻️ RECLAIMED #12"}]
         rc, out, _ = self.run_wait(state, argv=self.claim_argv())
         self.assertEqual(3, rc)
         self.assertIn("RECLAIMED", out)
 
     def test_claim_resume_own_unfinished_claim(self):
-        header = "✋ CLAIM #12 — взял: SZ-2 / сессия 2026-11-03-a"
+        header = "✋ CLAIM #12 — взял: worker-2 / сессия 2026-11-03-a"
         state = self.base_state()
         state["comments"] = [{"id": 5, "created_at": now_iso(), "first": header}]
         rc, out, err = self.run_wait(state, argv=self.claim_argv())
@@ -254,7 +257,7 @@ class ClaimTests(WaitSignalCase):
         state = self.base_state()
         state["comments"] = [
             {"id": 5, "created_at": "2026-11-03T09:00:00Z",
-             "first": "✋ CLAIM #12 — взял: SZ-1 / старая попытка"},
+             "first": "✋ CLAIM #12 — взял: worker-1 / старая попытка"},
             {"id": 6, "created_at": "2026-11-03T10:00:00Z",
              "first": "♻️ RECLAIMED #12 — задача освобождена, координатор вернул в ready"},
         ]
@@ -270,7 +273,7 @@ class ClaimTests(WaitSignalCase):
             {"id": 5, "created_at": "2026-11-03T09:00:00Z",
              "first": "♻️ RECLAIMED #12 — освобождена"},
             {"id": 6, "created_at": "2026-11-03T10:00:00Z",
-             "first": "✋ CLAIM #12 — взял: SZ-1 / актуальная попытка"},
+             "first": "✋ CLAIM #12 — взял: worker-1 / актуальная попытка"},
         ]
         rc, out, _ = self.run_wait(state, argv=self.claim_argv())
         self.assertEqual(3, rc)
@@ -282,9 +285,9 @@ class ClaimTests(WaitSignalCase):
         state = self.base_state()
         scenario = {"race": {"on_query": 3,
                              "created_at": "2026-11-03T00:00:00Z",
-                             "first": "✋ CLAIM #12 — взял: SZ-1 / competitor"}}
+                             "first": "✋ CLAIM #12 — взял: worker-1 / competitor"}}
         rc, out, err, tmp = self.run_wait(state, scenario=scenario,
-                                        argv=self.claim_argv("sz-2", "SZ-2 / гонка"), keep=True)
+                                        argv=self.claim_argv("worker-2", "worker-2 / гонка"), keep=True)
         try:
             self.assertEqual(3, rc)
             self.assertIn("LOST", out)  # LOST печатается в stdout, как BUSY/CLAIMED
@@ -294,9 +297,10 @@ class ClaimTests(WaitSignalCase):
             env_cmd = ["bash", str(ROOT / "scripts" / "wait-signal"),
                        "--repo", REPO, "--issue", "12",
                        "--state-dir", str(tmp / "cache"),
-                       "--claim", "SZ-1 / competitor", "--claim-as", "sz-1"]
+                       "--claim", "worker-1 / competitor", "--claim-as", "worker-1"]
             bin_dir = tmp / "bin"
             env = dict(os.environ)
+            env["AGENT_PROJECT_CONFIG"] = str(ROOT / "tests" / "fixtures" / "project-test.json")
             env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
             env["WS_MOCK_STATE"] = str(state_path)
             env["WS_MOCK_SCENARIO"] = str(tmp / "scenario.json")
@@ -313,7 +317,7 @@ class ClaimTests(WaitSignalCase):
         state = self.base_state()
         scenario = {"race": {"on_query": 3,
                              "created_at": "2026-11-03T00:00:00Z",
-                             "first": "✋ CLAIM #12 — взял: SZ-1 / competitor"}}
+                             "first": "✋ CLAIM #12 — взял: worker-1 / competitor"}}
         rc, out, _ = self.run_wait(state, scenario=scenario, argv=self.claim_argv())
         self.assertEqual(3, rc)
         self.assertIn("LOST", out)

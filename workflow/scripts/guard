@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""guard — замок репозитория по слову владельца (решение владельца 15.11.2026).
+
+Репозиторий ЗАМКНУТ по умолчанию: ни одного пуша/правки, пока владелец лично
+не разрешит. Замок снимается ТОЛЬКО действием владельца на его машине:
+
+    python3 scripts/guard --unlock "слово владельца"   # снять замок (только владелец)
+    python3 scripts/guard --lock                        # поставить замок обратно
+    python3 scripts/guard --status                      # состояние замка
+
+Технически: файл .guard-unlock (вне гита, .gitignore) с фразой владельца и
+датой; окно = сегодня/вчера UTC). pre-push хук refuses ЛЮБОЙ пуш при замкнутом состоянии — до сети
+локально, как и запрет прямых пушей в main (инцидент #41).
+
+Дизайн-граница (честно): локальный замок обходится технически грамотной
+сессией (--no-verify, удаление файла). Это гейт ДИСЦИПЛИНЫ, а не криптография;
+серверный ruleset недоступен на приватном репо без платного плана (403,
+проверено 15.11). Нарушение замка = инцидент по PROTOCOL §3 (казус → правило).
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+UNLOCK_FILE = Path(os.environ.get("GUARD_UNLOCK_FILE", str(ROOT / ".guard-unlock")))
+
+
+def _read_unlock() -> str | None:
+    if not UNLOCK_FILE.is_file():
+        return None
+    text = UNLOCK_FILE.read_text(encoding="utf-8").strip()
+    return text or None
+
+
+def _is_unlock_valid(record: str) -> bool:
+    """Замок открыт, если фраза владельца проставлена сегодня или вчера (UTC-дата в записи)."""
+    try:
+        first_line = record.splitlines()[0].strip()
+        date_part = first_line.split("|", 1)[0].strip()
+        day = datetime.strptime(date_part, "%Y-%m-%d").date()
+    except (ValueError, IndexError):
+        return False
+    today = datetime.now(timezone.utc).date()
+    delta = (today - day).days
+    return 0 <= delta <= 1
+
+
+def status() -> int:
+    record = _read_unlock()
+    if record is None:
+        print("🔒 ЗАМОК: репозиторий закрыт — правки и пуши запрещены.")
+        print("   Владелец снимает замок: python3 scripts/guard --unlock \"<фраза>\"")
+        return 1
+    if _is_unlock_valid(record):
+        print(f"🔓 ЗАМОК ОТКРЫТ (запись: {record.splitlines()[0]})")
+        print("   Не забудь закрыть после задачи: python3 scripts/guard --lock")
+        return 0
+    print("🔒 ЗАМОК: запись разблокировки просрочена — репозиторий закрыт.")
+    return 1
+
+
+def unlock(phrase: str) -> int:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    UNLOCK_FILE.write_text(f"{today} | {phrase}\n", encoding="utf-8")
+    print(f"🔓 Замок снят владельцем ({today}). Не забудь --lock после задачи.")
+    return 0
+
+
+def lock() -> int:
+    UNLOCK_FILE.unlink(missing_ok=True)
+    print("🔒 Замок поставлен: правки/пуши запрещены до слова владельца.")
+    return 0
+
+
+def is_open_for_hooks() -> bool:
+    """Быстрая проверка для pre-push хука (exit-код 0 = пуш разрешён)."""
+    record = _read_unlock()
+    return record is not None and _is_unlock_valid(record)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Замок репозитория по слову владельца")
+    ap.add_argument("--unlock", metavar="PHRASE", help="снять замок (только владелец)")
+    ap.add_argument("--lock", action="store_true", help="поставить замок")
+    ap.add_argument("--status", action="store_true", help="показать состояние")
+    ap.add_argument("--is-open", action="store_true", help="для хука: exit 0 если пуш разрешён")
+    args = ap.parse_args(argv)
+    if args.unlock is not None:
+        if not args.unlock.strip():
+            print("⛔ Пустая фраза не снимает замок: --unlock \"<непустая фраза>\"")
+            return 2
+        return unlock(args.unlock)
+    if args.lock:
+        return lock()
+    if args.is_open:
+        return 0 if is_open_for_hooks() else 1
+    return status()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
